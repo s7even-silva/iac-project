@@ -1,4 +1,4 @@
-# iac 2026
+# IAC 2026
 
 ## Entorno de simulación
 
