@@ -1,0 +1,69 @@
+# ─── Compilación (cualquier carpeta build, a cualquier profundidad) ───
+build/
+Build/
+build-*/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+install_manifest.txt
+Makefile
+*.o
+*.a
+*.so
+*.dylib
+
+# ─── Datos de fantomas (se descargan o se piden aparte) ───
+ICRPdata/
+*.g4dcm
+*.g4pdcm
+*.dcm
+# ICRP145 / MRCP (mallas tetraédricas)
+*.node
+*.ele
+*.material
+
+# ─── Mapas de campo (regenerables desde el código) ───
+*.fld
+*.map
+field/maps/
+
+# ─── Resultados de simulación (usa siempre esta carpeta) ───
+output/
+results/
+*.root
+*.hepmc
+*.csv
+
+# ─── ANSYS ───
+*.aedtresults/
+*.aedb/
+*.lock*
+*.asol
+*.aedt.batchinfo/
+
+# ─── Python (análisis) ───
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.venv/
+venv/
+
+# ─── LaTeX ───
+*.aux
+*.log
+*.bbl
+*.blg
+*.out
+*.synctex.gz
+*.fdb_latexmk
+*.fls
+*.toc
+
+# ─── Sistema / editor ───
+.DS_Store
+.vscode/
+.idea/
+*.swp
+

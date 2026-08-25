@@ -1,0 +1,9 @@
+name: geant4_env
+channels:
+  - defaults
+dependencies:
+  - geant4
+  - cmake
+  - gxx_linux-64
+  - gcc_linux-64
+prefix: /home/s7even/miniconda3/envs/geant4_env

@@ -1,0 +1,4 @@
+11.4.2
+cmake version 4.4.1
+g++ (Debian 14.2.0-19) 14.2.0
+Linux parrot 7.0.13+parrot7-amd64 #1 SMP PREEMPT_DYNAMIC Parrot 7.0.13-1parrot1 (2026-07-12) x86_64 GNU/Linux
