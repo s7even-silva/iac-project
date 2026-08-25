@@ -1,9 +1,8 @@
 name: geant4_env
 channels:
-  - defaults
+  - conda-forge
 dependencies:
-  - geant4
-  - cmake
-  - gxx_linux-64
-  - gcc_linux-64
-prefix: /home/s7even/miniconda3/envs/geant4_env
+  - geant4=11.4.2
+  - cmake=4.4.1
+  - gcc_linux-64=15.2.0
+  - gxx_linux-64=15.2.0
