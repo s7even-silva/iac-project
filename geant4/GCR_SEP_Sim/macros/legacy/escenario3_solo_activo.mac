@@ -1,0 +1,11 @@
+# LEGADO: escenarios de blindaje pasivo, ya no usados en el barrido actual (ver CLAUDE.md). El CSV de salida actual (resultados_dosis_sweep.csv) no registra columnas de blindaje/direccion.
+# Escenario 3: SOLO blindaje activo (campo magnetico), sin blindaje pasivo
+/run/initialize
+
+/detector/shield false
+/detector/field true
+/detector/fieldValue 2.0
+
+/gun/model GCR
+/gun/dirMode isotropic
+/run/beamOn 10000

@@ -35,6 +35,8 @@ results/
 *.root
 *.hepmc
 *.csv
+# Excepcion: CSV de datos de entrada (espectros de energia), SI se versionan
+!geant4/**/data/*.csv
 
 # ─── ANSYS ───
 *.aedtresults/

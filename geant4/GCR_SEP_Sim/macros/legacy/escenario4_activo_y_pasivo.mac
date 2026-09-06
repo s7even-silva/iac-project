@@ -1,0 +1,13 @@
+# LEGADO: escenarios de blindaje pasivo, ya no usados en el barrido actual (ver CLAUDE.md). El CSV de salida actual (resultados_dosis_sweep.csv) no registra columnas de blindaje/direccion.
+# Escenario 4: blindaje activo (campo) + blindaje pasivo (Al + polietileno) combinados
+/run/initialize
+
+/detector/shield true
+/detector/alThickness 0.3
+/detector/polyThickness 5.0
+/detector/field true
+/detector/fieldValue 2.0
+
+/gun/model GCR
+/gun/dirMode isotropic
+/run/beamOn 10000
