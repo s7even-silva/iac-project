@@ -68,6 +68,20 @@ Medido en una laptop de gama baja: una corrida de 10000 eventos tarda entre **~2
     cd geant4/GCR_SEP_Sim/build
     python3 ../scripts/run_sweep.py --only-model GCR --n-events 10000 --limit 3
 
+### Si el barrido se corta a la mitad (Ctrl+C, corte de luz, se cierra la sesión SSH sin `tmux`/`screen`)
+
+No hace falta empezar de cero. El binario `gcrsim` va agregando (append) una fila a `resultados_dosis_sweep.csv` por cada corrida que termina, y `run_sweep.py` hace lo mismo con `sweep_manifest.csv` — ninguno de los dos se sobrescribe de golpe al final, así que lo ya corrido antes del corte queda guardado. Para retomar exactamente donde quedó, relanzar el mismo comando agregando `--resume`:
+
+    python3 ../scripts/run_sweep.py --only-model GCR --repeats 5 --n-events 10000 --resume
+
+`--resume` lee `sweep_manifest.csv` y salta toda combinación `(índice, repetición)` que ya haya terminado con éxito (`exit_code 0`); las que fallaron se vuelven a intentar. Sin `--resume`, el script reinicia el manifiesto desde cero y volvería a correr — y a duplicar en el CSV de resultados — todo lo que ya se había hecho, así que **siempre usar `--resume` al retomar un barrido interrumpido**, nunca relanzar el comando "pelado".
+
+Si van a dejar el barrido corriendo desatendido en una máquina remota (por ejemplo las de la universidad por SSH), lanzarlo dentro de `tmux` o `screen` para que sobreviva un corte de la conexión:
+
+    tmux new -s sweep
+    python3 ../scripts/run_sweep.py --only-model GCR --repeats 5 --n-events 10000
+    # Ctrl+B, D para desconectar sin matar el proceso; tmux attach -t sweep para volver a verlo
+
 ### 1. Correr el barrido asignado
 
 Persona A (GCR):
