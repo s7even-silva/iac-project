@@ -56,7 +56,11 @@ Barrido completo (140 corridas):
 ## Pendientes conocidos
 
 - **Reemplazar los 6 CSV placeholder de `data/` con espectros reales por fase solar.** Modelos elegidos: **Badhwar-O'Neill 2020** (GCR, vía [OLTARIS](https://oltaris.larc.nasa.gov/)) y **ESP-PSYCHIC** (SEP, vía [SPENVIS](https://www.spenvis.oma.be/)) — CREME96 se descartó porque su componente de GCR está anclado a datos de 1986-87, más viejo que Badhwar-O'Neill. Checklist de qué exportar de cada herramienta: [`docs/checklist_espectros_reales.md`](geant4/GCR_SEP_Sim/docs/checklist_espectros_reales.md).
-- **Dosis absoluta pendiente de implementar.** El artículo necesita Gy/día o Sv/año, no solo comparación relativa. Hoy `RunAction.cc` calcula dosis por los `N` eventos simulados (`/run/beamOn N`), sin normalizar por el flujo físico real — falta agregar un factor de escala `(flujo_real_integrado × área_esfera_fuente × tiempo_exposición) / N` una vez que se tengan las unidades exactas de los exports de OLTARIS/SPENVIS (ver checklist).
+- **Dosis absoluta pendiente de implementar.** El artículo necesita Gy/día o Sv/año, no solo comparación relativa. Hoy `RunAction.cc` calcula dosis por los `N` eventos simulados (`/run/beamOn N`), sin normalizar por el flujo físico real. La fórmula de escala es distinta para GCR y SEP porque no son la misma clase de cantidad:
+  - **GCR** (flujo continuo): `dosis_Gy_por_dia = dosis_sim × (flujo_integrado[part/cm²/s] × área_esfera_fuente[cm²] × 86400[s/dia]) / N`.
+  - **SEP** (con "Worst Case Event" de ESP-PSYCHIC, ver checklist — es la fluencia de UN evento puntual, ya integrada en el tiempo, no una tasa): `dosis_Gy_del_evento = dosis_sim × (fluencia_evento[part/cm²] × área_esfera_fuente[cm²]) / N` — sin factor de tiempo, porque la fluencia ya representa el evento completo.
+  
+  Falta implementar esto en `RunAction.cc` (probablemente como un factor de normalización configurable por modelo/fase, ya que cada uno de los 6 CSV de espectro real va a traer su propio valor de flujo/fluencia integrada) una vez que se tengan las unidades exactas de los exports de OLTARIS/SPENVIS (ver checklist).
 - Medir el tiempo del barrido completo con `--n-events 10000` real antes de dejarlo corriendo desatendido (un piloto con 200 eventos tomó ~2s/corrida; a 10000 eventos cada corrida será más lenta, sobre todo por la physics list `Shielding` — corran un piloto con el `--n-events` real primero para estimar el total de las 140 corridas).
 
 ## Reglas de trabajo en este repositorio
