@@ -89,7 +89,7 @@ Si van a dejar el barrido corriendo desatendido en una máquina remota (por ejem
 - **GCR**: el flujo es **más alto en mínimo solar** (menos viento solar blindeando la heliosfera) y más bajo en máximo solar.
 - **SEP**: los eventos grandes son **más frecuentes/severos en máximo solar**, casi no ocurren en mínimo.
 
-Por eso hay que usar la **misma fecha de calendario** en ambas herramientas (OLTARIS para GCR, SPENVIS para SEP) para cada fase, así el parámetro significa lo mismo en los dos casos:
+Por eso hay que usar la **misma fecha de calendario** en los dos modelos (ambos en SPENVIS: ISO-15390 para GCR, ESP-PSYCHIC para SEP) para cada fase, así el parámetro significa lo mismo en los dos casos:
 
 | Fase | Fecha de referencia | Por qué |
 |---|---|---|
@@ -98,9 +98,9 @@ Por eso hay que usar la **misma fecha de calendario** en ambas herramientas (OLT
 
 Con esto, el resultado esperado es que **la dosis de GCR salga mayor en `min` que en `max`, y la dosis de SEP salga mayor en `max` que en `min`** — es física real del ciclo solar, no un error si se da así; coméntenlo en la Discusión del artículo.
 
-Aplicación en cada herramienta:
-- **OLTARIS (GCR)**: usar la opción de periodo histórico de mínimo/máximo solar, o el rango de fechas manual, centrado en las fechas de la tabla de arriba.
-- **SPENVIS ESP-PSYCHIC (SEP)**: la fecha de inicio de misión (o el "offset en el ciclo solar" en modo avanzado) se fija con estas mismas fechas — mantener la misma duración de misión y nivel de confianza entre la corrida `max` y la `min` (ver [`docs/checklist_espectros_reales.md`](geant4/GCR_SEP_Sim/docs/checklist_espectros_reales.md)).
+Aplicación en cada modelo (**ambos en SPENVIS** — se descartó OLTARIS/Badhwar-O'Neill porque la aprobación de la cuenta quedó pendiente sin tiempo estimado; ver `CLAUDE.md`):
+- **ISO-15390 (GCR)**: el formulario pide una fecha específica directamente (SPENVIS la convierte internamente a potencial de modulación solar) — usar las fechas de la tabla de arriba.
+- **ESP-PSYCHIC (SEP)**: la fecha de inicio de misión (o el "offset en el ciclo solar" en modo avanzado) se fija con estas mismas fechas — mantener la misma duración de misión y nivel de confianza entre la corrida `max` y la `min` (ver [`docs/checklist_espectros_reales.md`](geant4/GCR_SEP_Sim/docs/checklist_espectros_reales.md)).
 
 ### 1. Correr el barrido asignado
 
