@@ -37,6 +37,9 @@ results/
 *.csv
 # Excepcion: CSV de datos de entrada (espectros de energia), SI se versionan
 !geant4/**/data/*.csv
+# Excepcion: resultados finales del barrido (crudos por persona + agregado
+# con estadistica), SI se versionan -- son los datos que van al articulo
+!geant4/**/resultados/*.csv
 
 # ─── ANSYS ───
 *.aedtresults/
