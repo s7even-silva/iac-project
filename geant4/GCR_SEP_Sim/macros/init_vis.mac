@@ -1,1 +1,62 @@
 /run/initialize
+
+# --- Configurar geometria y consumirla ANTES de abrir el visor ---
+#
+# Los comandos /detector/* llaman a G4RunManager::ReinitializeGeometry()
+# (ver DetectorMessenger.cc:74), que solo marca geometryInitialized=false;
+# la reconstruccion real (un G4VPhysicalVolume nuevo para el World) ocurre
+# recien en el siguiente /run/beamOn. El backend grafico ToolsSG cachea el
+# puntero al World vigente al abrir el visor (/vis/open) y NO lo refresca
+# de forma fiable si la geometria se reconstruye despues (es un bug
+# conocido, ver https://geant4-forum.web.cern.ch/t/error-with-toolssg-function-getorcreatenode/12233) --
+# revienta con "G4Exception ToolsSG-0000 ... World mis-match" en el primer
+# beamOn tras abrir el visor.
+#
+# Fix: forzar la reconstruccion de geometria con un beamOn de 0 eventos
+# ANTES de /vis/open, para que el visor cachee ya el World definitivo.
+/detector/shield false
+/detector/field true
+/detector/fieldValue 8.5
+/detector/hullThicknessCm 0.3
+/detector/astronautX 140
+/run/beamOn 0
+
+# --- Visor ---
+# Qt si esta disponible (ventana con controles); si tu build de Geant4 no
+# tiene Qt, cambiar la linea de abajo por "/vis/open OGL".
+/vis/open
+
+/vis/viewer/set/autoRefresh false
+/vis/verbose errors
+
+# Crea la escena y dibuja el World (como hace examples/basic/B1/vis.mac).
+/vis/drawVolume
+
+/vis/viewer/set/viewpointThetaPhi 60 30
+/vis/viewer/zoom 1.4
+/vis/viewer/set/style wireframe
+/vis/viewer/set/autoRefresh true
+/vis/viewer/flush
+
+# Trayectorias: colorear por carga y acumular todas las del run en pantalla.
+/vis/scene/add/trajectories smooth
+/vis/modeling/trajectories/create/drawByCharge
+/vis/modeling/trajectories/drawByCharge-0/default/setDrawStepPts true
+/vis/scene/endOfEventAction accumulate
+
+/gun/model SEP
+/gun/phase max
+/gun/dirMode isotropic
+
+/run/beamOn 20
+
+# --- IMPORTANTE: no cambiar geometria despues de este punto ---
+# Volver a llamar /detector/* (shield, field, fieldValue, hullThicknessCm,
+# astronautX) EN ESTA MISMA SESION grafica y despues correr otro beamOn
+# reproduce el mismo "World mis-match", porque esta vez la reconstruccion
+# de geometria ocurre con el visor ya abierto y GeometryHasChanged() no
+# siempre logra refrescar el cache de ToolsSG (probado: falla incluso con
+# /vis/viewer/rebuild intercalado). Para probar otra configuracion
+# (otro modelo, campo, posicion, fase), cerrar esta sesion (Ctrl+D o
+# /control/shell exit) y volver a lanzar ./gcrsim desde cero cambiando los
+# valores de /detector/* y /gun/* arriba en este archivo.
