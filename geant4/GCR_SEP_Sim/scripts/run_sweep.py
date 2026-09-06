@@ -18,18 +18,20 @@ Uso:
     python3 run_sweep.py --n-events 100 --limit 4        # piloto rapido
     python3 run_sweep.py --only-model GCR --repeats 5    # trabajo repartido en equipo, con estadistica
     python3 run_sweep.py --build-dir ../build            # si el build no esta en ../build
-    python3 run_sweep.py --only-model GCR --repeats 5 --resume   # retomar un barrido cortado a medias
+    python3 run_sweep.py --only-model GCR --repeats 5            # resume esta activado por defecto
+    python3 run_sweep.py --only-model GCR --repeats 5 --no-resume  # forzar rehacer todo desde cero
 
---resume: si el proceso se corta a la mitad (Ctrl+C, corte de luz, se cierra
-la sesion SSH sin tmux, etc.), las corridas ya completadas con exito NO se
-pierden -- el binario gcrsim hace append a resultados_dosis_sweep.csv corrida
-por corrida, y este script hace lo mismo con sweep_manifest.csv. Al relanzar
-el mismo comando con --resume, se lee el manifiesto existente y se saltan las
-combinaciones (index, repeticion) que ya tengan una corrida con exit_code 0;
-todo lo demas (incluidas las que fallaron) se vuelve a correr. Sin --resume,
-el manifiesto se reinicia desde cero y las corridas viejas de un barrido
-anterior con los mismos parametros quedarian duplicadas en el CSV de
-resultados -- usar --resume precisamente para evitar eso.
+Resume esta activado por defecto: si el proceso se corta a la mitad (Ctrl+C,
+corte de luz, se cierra la sesion SSH sin tmux, etc.), las corridas ya
+completadas con exito NO se pierden -- el binario gcrsim hace append a
+resultados_dosis_sweep.csv corrida por corrida, y este script hace lo mismo
+con sweep_manifest.csv. Al relanzar el mismo comando, se lee el manifiesto
+existente y se saltan las combinaciones (index, repeticion) que ya tengan una
+corrida con exit_code 0; todo lo demas (incluidas las que fallaron) se vuelve
+a correr. Pasar --no-resume solo cuando se quiere rehacer el barrido desde
+cero a proposito (por ejemplo, cambio de parametros que invalida corridas
+previas) -- de lo contrario las corridas viejas quedarian duplicadas en el
+CSV de resultados.
 """
 import argparse
 import csv
@@ -83,9 +85,9 @@ def main():
                          help="Solo correr las 70 combinaciones de este modelo (para repartir el barrido en equipo)")
     parser.add_argument("--limit", type=int, default=None,
                          help="Solo correr las primeras N combinaciones ya filtradas (para pilotos rapidos)")
-    parser.add_argument("--resume", action="store_true",
-                         help="Saltar (index, repeticion) que ya aparecen exitosas (exit_code 0) en sweep_manifest.csv, "
-                              "para retomar un barrido que se corto a la mitad sin duplicar corridas")
+    parser.add_argument("--no-resume", dest="resume", action="store_false", default=True,
+                         help="Desactivar resume (activado por defecto): rehacer desde cero incluso las (index, "
+                              "repeticion) que ya aparecen exitosas (exit_code 0) en sweep_manifest.csv")
     args = parser.parse_args()
 
     project_root = Path(__file__).resolve().parent.parent
@@ -117,7 +119,8 @@ def main():
             for row in csv.DictReader(f):
                 if row["exit_code"] == "0":
                     done_runs.add((int(row["index"]), int(row["repeticion"])))
-        print(f"--resume: {len(done_runs)} corrida(s) ya completada(s) en {manifest_path}, se saltaran.")
+        print(f"resume: {len(done_runs)} corrida(s) ya completada(s) en {manifest_path}, se saltaran "
+              f"(usar --no-resume para rehacerlas).")
 
     # Modo de apertura del manifiesto: "a" (append) si se retoma sobre uno
     # existente, "w" (nuevo) en cualquier otro caso -- incluido --resume sin
@@ -185,7 +188,7 @@ def main():
 
     manifest_file.close()
 
-    print(f"\nListo: {total_runs - n_skipped} corridas nuevas, {n_failed} fallidas, {n_skipped} saltadas por --resume.")
+    print(f"\nListo: {total_runs - n_skipped} corridas nuevas, {n_failed} fallidas, {n_skipped} ya completadas (saltadas).")
     print(f"Manifiesto: {manifest_path}")
     print(f"Resultados: {build_dir / 'resultados_dosis_sweep.csv'}")
     if n_failed:

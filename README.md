@@ -70,11 +70,11 @@ Medido en una laptop de gama baja: una corrida de 10000 eventos tarda entre **~2
 
 ### Si el barrido se corta a la mitad (Ctrl+C, corte de luz, se cierra la sesión SSH sin `tmux`/`screen`)
 
-No hace falta empezar de cero. El binario `gcrsim` va agregando (append) una fila a `resultados_dosis_sweep.csv` por cada corrida que termina, y `run_sweep.py` hace lo mismo con `sweep_manifest.csv` — ninguno de los dos se sobrescribe de golpe al final, así que lo ya corrido antes del corte queda guardado. Para retomar exactamente donde quedó, relanzar el mismo comando agregando `--resume`:
+No hace falta empezar de cero. El binario `gcrsim` va agregando (append) una fila a `resultados_dosis_sweep.csv` por cada corrida que termina, y `run_sweep.py` hace lo mismo con `sweep_manifest.csv` — ninguno de los dos se sobrescribe de golpe al final, así que lo ya corrido antes del corte queda guardado. **Resume está activado por defecto:** basta con relanzar exactamente el mismo comando que se cortó:
 
-    python3 ../scripts/run_sweep.py --only-model GCR --repeats 5 --n-events 10000 --resume
+    python3 ../scripts/run_sweep.py --only-model GCR --repeats 5 --n-events 10000
 
-`--resume` lee `sweep_manifest.csv` y salta toda combinación `(índice, repetición)` que ya haya terminado con éxito (`exit_code 0`); las que fallaron se vuelven a intentar. Sin `--resume`, el script reinicia el manifiesto desde cero y volvería a correr — y a duplicar en el CSV de resultados — todo lo que ya se había hecho, así que **siempre usar `--resume` al retomar un barrido interrumpido**, nunca relanzar el comando "pelado".
+El script lee `sweep_manifest.csv` y salta automáticamente toda combinación `(índice, repetición)` que ya haya terminado con éxito (`exit_code 0`); las que fallaron se vuelven a intentar. Si en cambio se quiere rehacer el barrido desde cero a propósito (por ejemplo, tras cambiar algún parámetro que invalida las corridas previas), agregar `--no-resume` — de lo contrario esas corridas viejas quedarían duplicadas en el CSV de resultados.
 
 Si van a dejar el barrido corriendo desatendido en una máquina remota (por ejemplo las de la universidad por SSH), lanzarlo dentro de `tmux` o `screen` para que sobreviva un corte de la conexión:
 
