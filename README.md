@@ -82,6 +82,26 @@ Si van a dejar el barrido corriendo desatendido en una máquina remota (por ejem
     python3 ../scripts/run_sweep.py --only-model GCR --repeats 5 --n-events 10000
     # Ctrl+B, D para desconectar sin matar el proceso; tmux attach -t sweep para volver a verlo
 
+### 0.5. Fechas de referencia para la fase solar (GCR y SEP)
+
+`/gun/phase max|min` representa la **fase real del ciclo solar**, no "el peor caso de esa especie" — y GCR y SEP reaccionan al revés uno del otro ante esa fase:
+
+- **GCR**: el flujo es **más alto en mínimo solar** (menos viento solar blindeando la heliosfera) y más bajo en máximo solar.
+- **SEP**: los eventos grandes son **más frecuentes/severos en máximo solar**, casi no ocurren en mínimo.
+
+Por eso hay que usar la **misma fecha de calendario** en ambas herramientas (OLTARIS para GCR, SPENVIS para SEP) para cada fase, así el parámetro significa lo mismo en los dos casos:
+
+| Fase | Fecha de referencia | Por qué |
+|---|---|---|
+| `min` | **enero 2020** | El mínimo solar del ciclo 24→25 fue en diciembre 2019 (fecha oficial NASA/NOAA); enero 2020 cae justo después. |
+| `max` | **enero 2024** (o cualquier fecha entre 2024 y 2025) | Ventana de máximo del ciclo 25 observada/estimada por NASA/NOAA (aprox. enero 2024 – julio 2025). |
+
+Con esto, el resultado esperado es que **la dosis de GCR salga mayor en `min` que en `max`, y la dosis de SEP salga mayor en `max` que en `min`** — es física real del ciclo solar, no un error si se da así; coméntenlo en la Discusión del artículo.
+
+Aplicación en cada herramienta:
+- **OLTARIS (GCR)**: usar la opción de periodo histórico de mínimo/máximo solar, o el rango de fechas manual, centrado en las fechas de la tabla de arriba.
+- **SPENVIS ESP-PSYCHIC (SEP)**: la fecha de inicio de misión (o el "offset en el ciclo solar" en modo avanzado) se fija con estas mismas fechas — mantener la misma duración de misión y nivel de confianza entre la corrida `max` y la `min` (ver [`docs/checklist_espectros_reales.md`](geant4/GCR_SEP_Sim/docs/checklist_espectros_reales.md)).
+
 ### 1. Correr el barrido asignado
 
 Persona A (GCR):
