@@ -31,27 +31,27 @@ Herramienta: https://oltaris.larc.nasa.gov/
 
 Herramienta: https://www.spenvis.oma.be/ (registro: https://www.spenvis.oma.be/registration.php)
 
+**Importante:** ESP-PSYCHIC NO tiene un selector directo "solar mínimo/máximo". La fase solar se controla indirectamente vía la **fecha de inicio de misión** (o, en modo avanzado, el parámetro **"offset en el ciclo solar"**), y el modelo tiene dos tipos de salida — **Total Fluence** y **Worst Case Event** — que no son "max/min", son dos formas distintas de reportar severidad (ver más abajo cuál usar).
+
 - [ ] Cuenta creada / acceso confirmado.
 - [ ] Modelo corrido: **ESP-PSYCHIC**, protones.
-- [ ] **Duración de misión / periodo de exposición usado**: ______________ (ESP-PSYCHIC da fluencia acumulada para una duración elegida por el usuario — esto define qué significa "SEP max/min" en nuestro estudio, ver nota abajo)
-- [ ] **Nivel de confianza elegido** (ej. 50%, 95%, 99% — el modelo es probabilístico, el resultado cambia mucho según esto): ______________
-- [ ] Corrida para **"solar mínimo"**: parámetros usados: ______________
-- [ ] Corrida para **"solar máximo"**: parámetros usados: ______________
-- [ ] **Unidades exactas** del export (ej. `protones/cm²` acumulado, o `protones/(cm²·MeV)`): ______________
+- [ ] Tipo de salida usado: **Worst Case Event** (recomendado — ver nota abajo, no "Total Fluence").
+- [ ] **Duración de misión** usada (debe ser la MISMA para la corrida max y la min, para que la comparación sea justa): ______________
+- [ ] **Nivel de confianza** elegido (ej. 95% — el modelo es probabilístico, el resultado cambia mucho según esto; debe ser el mismo para max y min): ______________
+- [ ] Corrida **"SEP max"**: fecha de inicio de misión / offset de ciclo solar usado (ubicado en fase de **máximo** solar): ______________
+- [ ] Corrida **"SEP min"**: fecha de inicio de misión / offset de ciclo solar usado (ubicado en fase de **mínimo** solar): ______________
+- [ ] **Unidades exactas** del export (ej. `protones/cm²` por el evento, o `protones/(cm²·MeV)` diferencial): ______________
 - [ ] Rango de energía exportado (MeV, min–max): ______________
 - [ ] Archivo(s) guardado(s) en `data/raw_exports/`, ej.:
   - `spenvis_ESP-PSYCHIC_proton_solarmin.csv`
   - `spenvis_ESP-PSYCHIC_proton_solarmax.csv`
-- [ ] Captura de pantalla de la configuración del modelo guardada en `data/raw_exports/spenvis_config_screenshot.png`.
+- [ ] Captura de pantalla de la configuración del modelo (fecha/offset, duración, nivel de confianza) guardada en `data/raw_exports/spenvis_config_screenshot.png` — sin esto no se puede reproducir la corrida si falta un dato.
 
-### ⚠️ Decisión pendiente que afecta el resultado (anotar la respuesta, no solo el dato)
+### ⚠️ Por qué "Worst Case Event" y no "Total Fluence"
 
-ESP-PSYCHIC da **fluencia acumulada de un evento/periodo**, no una tasa continua como GCR. Hay que decidir y anotar cuál interpretación estamos usando para "dosis SEP":
+Nuestro estudio compara **eventos** de radiación (GCR/SEP máximo y mínimo como severidad instantánea de un evento), no la dosis acumulada de una misión completa de varios años. "Worst Case Event" te da la fluencia de un único evento SEP severo — el equivalente conceptual a "GCR en fase de máximo solar" — mientras que "Total Fluence" suma todos los eventos de toda la misión, que es una pregunta distinta (dosis acumulada de misión larga). Si tienen dudas sobre esto al momento de correrlo, avísenme antes de exportar — cambiar de opinión después implica volver a correr el modelo.
 
-- [ ] **Opción A**: dosis de un evento SEP puntual (fluencia total de un evento típico/peor caso) → dosis aguda, no "por día".
-- [ ] **Opción B**: fluencia anualizada (fluencia acumulada de la duración de misión elegida, dividida entre esa duración) → dosis promedio por día/año, comparable directamente con GCR.
-
-Anotar cuál se usó: ______________ (esto va a determinar la fórmula de normalización en `RunAction.cc`, así que avísenme cuál eligieron antes de que implemente esa parte).
+Con "Worst Case Event" la interpretación de dosis queda como **dosis aguda de un evento puntual** (no "por día"), consistente con lo que se anota en `RunAction.cc` — ver `CLAUDE.md`.
 
 ---
 
