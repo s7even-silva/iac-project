@@ -18,6 +18,18 @@ Uso:
     python3 run_sweep.py --n-events 100 --limit 4        # piloto rapido
     python3 run_sweep.py --only-model GCR --repeats 5    # trabajo repartido en equipo, con estadistica
     python3 run_sweep.py --build-dir ../build            # si el build no esta en ../build
+    python3 run_sweep.py --only-model GCR --repeats 5 --resume   # retomar un barrido cortado a medias
+
+--resume: si el proceso se corta a la mitad (Ctrl+C, corte de luz, se cierra
+la sesion SSH sin tmux, etc.), las corridas ya completadas con exito NO se
+pierden -- el binario gcrsim hace append a resultados_dosis_sweep.csv corrida
+por corrida, y este script hace lo mismo con sweep_manifest.csv. Al relanzar
+el mismo comando con --resume, se lee el manifiesto existente y se saltan las
+combinaciones (index, repeticion) que ya tengan una corrida con exit_code 0;
+todo lo demas (incluidas las que fallaron) se vuelve a correr. Sin --resume,
+el manifiesto se reinicia desde cero y las corridas viejas de un barrido
+anterior con los mismos parametros quedarian duplicadas en el CSV de
+resultados -- usar --resume precisamente para evitar eso.
 """
 import argparse
 import csv
@@ -71,6 +83,9 @@ def main():
                          help="Solo correr las 70 combinaciones de este modelo (para repartir el barrido en equipo)")
     parser.add_argument("--limit", type=int, default=None,
                          help="Solo correr las primeras N combinaciones ya filtradas (para pilotos rapidos)")
+    parser.add_argument("--resume", action="store_true",
+                         help="Saltar (index, repeticion) que ya aparecen exitosas (exit_code 0) en sweep_manifest.csv, "
+                              "para retomar un barrido que se corto a la mitad sin duplicar corridas")
     args = parser.parse_args()
 
     project_root = Path(__file__).resolve().parent.parent
@@ -92,17 +107,41 @@ def main():
         combos = combos[:args.limit]
 
     manifest_path = build_dir / "sweep_manifest.csv"
-    manifest_rows = []
+    manifest_fieldnames = ["index", "repeticion", "modelo", "fase", "field_T", "astronaut_x_m",
+                            "n_events", "seed1", "seed2", "macro_path", "exit_code",
+                            "duration_s", "log_path"]
+
+    done_runs = set()
+    if args.resume and manifest_path.is_file():
+        with open(manifest_path, newline="") as f:
+            for row in csv.DictReader(f):
+                if row["exit_code"] == "0":
+                    done_runs.add((int(row["index"]), int(row["repeticion"])))
+        print(f"--resume: {len(done_runs)} corrida(s) ya completada(s) en {manifest_path}, se saltaran.")
+
+    # Modo de apertura del manifiesto: "a" (append) si se retoma sobre uno
+    # existente, "w" (nuevo) en cualquier otro caso -- incluido --resume sin
+    # manifiesto previo, donde igual hay que escribir el encabezado.
+    manifest_mode = "a" if (args.resume and manifest_path.is_file()) else "w"
+    manifest_file = open(manifest_path, manifest_mode, newline="")
+    manifest_writer = csv.DictWriter(manifest_file, fieldnames=manifest_fieldnames)
+    if manifest_mode == "w":
+        manifest_writer.writeheader()
+        manifest_file.flush()
 
     total_runs = len(combos) * args.repeats
     print(f"Corriendo {len(combos)} combinaciones x {args.repeats} repeticion(es) = {total_runs} corridas "
           f"(n_events={args.n_events}) con gcrsim en {build_dir}")
 
     n_failed = 0
+    n_skipped = 0
     run_n = 0
     for combo in combos:
         for rep in range(args.repeats):
             run_n += 1
+            if (combo["index"], rep) in done_runs:
+                n_skipped += 1
+                continue
             seed1 = BASE_SEED + 1000 * rep + 2 * combo["index"]
             seed2 = seed1 + 1
             x_cm = combo["x_m"] * 100.0
@@ -134,7 +173,7 @@ def main():
                 n_failed += 1
             print(f"{status} ({duration_s:.1f}s)")
 
-            manifest_rows.append({
+            manifest_writer.writerow({
                 "index": combo["index"], "repeticion": rep,
                 "modelo": combo["model"], "fase": combo["phase"],
                 "field_T": combo["field_t"], "astronaut_x_m": combo["x_m"],
@@ -142,13 +181,11 @@ def main():
                 "macro_path": str(macro_path), "exit_code": result.returncode,
                 "duration_s": round(duration_s, 2), "log_path": str(log_path),
             })
+            manifest_file.flush()
 
-    with open(manifest_path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=list(manifest_rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(manifest_rows)
+    manifest_file.close()
 
-    print(f"\nListo: {total_runs} corridas, {n_failed} fallidas.")
+    print(f"\nListo: {total_runs - n_skipped} corridas nuevas, {n_failed} fallidas, {n_skipped} saltadas por --resume.")
     print(f"Manifiesto: {manifest_path}")
     print(f"Resultados: {build_dir / 'resultados_dosis_sweep.csv'}")
     if n_failed:
