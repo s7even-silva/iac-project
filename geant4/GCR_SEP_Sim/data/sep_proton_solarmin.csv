@@ -1,0 +1,19 @@
+# PLACEHOLDER identico entre fase max/min -- pendiente reemplazar con espectro real resuelto por fase solar (OMERE/SPENVIS/CREME96/Badhwar-O'Neill)
+# PLACEHOLDER - espectro ilustrativo de protones SEP (evento de particula solar)
+# E_MeV, flujo_diferencial (unidades arbitrarias, tipo "peor caso" simplificado)
+# Reemplazar con datos reales de OMERE / SPENVIS / CREME96 (ej. evento Oct 1989, Ago 1972)
+1,50.0
+5,30.0
+10,18.0
+20,10.0
+30,6.0
+50,3.2
+80,1.6
+100,1.0
+150,0.5
+200,0.28
+300,0.12
+400,0.06
+600,0.02
+800,0.008
+1000,0.003

@@ -1,0 +1,19 @@
+# PLACEHOLDER identico entre fase max/min -- pendiente reemplazar con espectro real resuelto por fase solar (OMERE/SPENVIS/CREME96/Badhwar-O'Neill)
+# PLACEHOLDER - espectro ilustrativo de protones GCR
+# E_MeV, flujo_diferencial (unidades arbitrarias, solo para forma de la distribucion)
+# Reemplazar con datos reales de OMERE / SPENVIS / CREME96 / Badhwar-O'Neill
+10,0.5
+30,1.2
+60,2.0
+100,2.8
+200,3.5
+400,3.8
+600,3.6
+1000,3.0
+2000,2.0
+4000,1.1
+8000,0.5
+15000,0.2
+30000,0.08
+60000,0.03
+100000,0.01
