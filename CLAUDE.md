@@ -90,6 +90,19 @@ scoring por mesh vs. acumulador manual, physics list `QGSP_BIC_HP` vs.
   bin de energía (monoenergético + reponderación) — afecta directamente si
   las barras de error del artículo son defendibles.
 
+### Tabla de seguimiento de estos pendientes (2026-09-07)
+
+| # | Punto | Estado | Depende de | Bloquea |
+|---|---|---|---|---|
+| 1 | ¿Halbach nativo en Geant4 o campo uniforme placeholder? | 🔴 Abierto | Grupal — diseño del imán (Plan A) | Puntos 4, 6; y si es "sí", invalida el barrido de campo uniforme que se corra mientras tanto |
+| 2 | Geometría de la nave (esfera vs. cilindro ARSSEM) | ✅ Resuelto | — | — |
+| 3 | Fantoma anatómico ICRP110 vs. esfera de tejido homogéneo | ✅ Resuelto | — | — |
+| 4 | Consistencia numérica del imán (vueltas/corriente/Ic CORC-REBCO) | 🔴 Abierto, bloqueado | Diseñador del imán | Geometría de bobinas del paso 3 |
+| 5 | N° de eventos: total vs. bins monoenergéticos + reponderación (detalle completo en "Pendientes conocidos" más abajo) | 🔴 Abierto, urgente | Grupal, pero cualquiera puede plantearlo — **no depende del punto 1** | Reusabilidad de las corridas de producción lanzadas hoy (GCR_SEP_Sim) |
+| 6 | Novedad del paper (Halbach nativo + scorer sobre conductor vs. otra) | 🟡 Investigación lista, decisión pendiente | Punto 1 | Sección de Introducción/Discusión del artículo |
+
+El punto 5 es el único no bloqueado por el punto 1 — aplica igual sin importar si se hace Halbach o no, así que no hay motivo para esperar la reunión de diseño del imán antes de resolverlo.
+
 ## Estructura de `geant4/GCR_SEP_Sim/`
 
 Proyecto GEANT4 en C++ (CMake), ejecutable `gcrsim`. Piezas clave:
