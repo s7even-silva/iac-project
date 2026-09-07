@@ -114,18 +114,29 @@ se espera físicamente al agregar un blindaje pasivo de por medio).
       esa fórmula, ambas válidas (la diferencia es dónde vive el cálculo
       original, no si Geant4 "simula" el campo o no — en ambos casos Geant4
       solo evalúa una función ya calculada):
-      - **Analítica dentro de Geant4** (recomendado, dado que ya no se usa
-        ANSYS): un Halbach dipolar tiene expresión cerrada razonable
-        (superposición de la contribución de cada bobina, cada una rotada
-        según el ángulo de magnetización Halbach `θ_mag = 2·θ_posición`).
-        Se implementa entera en C++, se evalúa en tiempo real durante el
-        tracking, sin depender de ningún archivo externo — esta es la
-        opción que se puede llamar "campo modelado nativamente en Geant4".
-      - **Tabulada/importada**: un script externo (Python, Biot-Savart
-        numérico) precalcula `B(x,y,z)` en una grilla y Geant4 la lee con
+      - **Analítica dentro de Geant4**: un Halbach dipolar tiene expresión
+        cerrada razonable (superposición de la contribución de cada bobina,
+        cada una rotada según el ángulo de magnetización Halbach
+        `θ_mag = 2·θ_posición`). Se implementa entera en C++, se evalúa en
+        tiempo real durante el tracking, sin depender de ningún archivo
+        externo — es la opción "más nativa" posible, y la que más
+        diferenciaría el proyecto de los antecedentes encontrados (ninguno
+        hace esto, ver más abajo).
+      - **Tabulada/importada** (camino más probable, según decisión del
+        equipo — 2026-09-07): un script externo (Python, Biot-Savart
+        numérico, o un FEM tipo lo que antes se planeaba en ANSYS)
+        precalcula `B(x,y,z)` en una grilla y Geant4 la lee con
         `G4CachedMagneticField` + interpolación. Más simple de implementar
-        si el equipo ya tiene ese cálculo hecho en otro lado, pero pierde
-        parte de la novedad de "todo nativo en Geant4".
+        y más flexible si la geometría de bobinas termina siendo compleja
+        (no puramente dipolar), a costa de que el cálculo del campo en sí
+        no vive dentro de Geant4. **Importante:** esto sigue contando como
+        "Halbach modelado en Geant4" en el sentido que importa para el
+        punto 1 de la geometría (bobinas reales + campo no uniforme en vez
+        del placeholder uniforme) — lo que cambia es solo cuánta "novedad
+        nativa" se puede reclamar en el punto 6 (ver tabla de seguimiento
+        en `CLAUDE.md`): con campo importado, el diferenciador real pasa a
+        depender más del scorer de fluencia sobre el conductor que de cómo
+        se calculó el campo.
 
    c. **Asociar el campo a una región**: una vez con (a) y (b), se registra
       el campo en un `G4FieldManager` asignado al volumen donde debe actuar
@@ -181,12 +192,22 @@ se espera físicamente al agregar un blindaje pasivo de por medio).
    Halbach con material HTS/REBCO real, (b) campo Halbach calculado
    nativamente (analítico o Biot-Savart) dentro del stepper de Geant4, y
    (c) scorer de fluencia específico sobre el conductor, los tres en Geant4
-   puro. Esa combinación específica —si el equipo logra implementar (b) de
-   forma nativa en vez de replicar el patrón dominante de campo
-   uniforme/importado— sería una contribución incremental genuinamente
-   novedosa frente a CREW HaT, ARSSEM y SR2S, y debe citarlos exactamente
-   así en la introducción/discusión del paper (dónde se sitúan y qué le
-   falta a cada uno frente a lo que este proyecto propone).
+   puro. Esa combinación específica sería una contribución incremental
+   genuinamente novedosa frente a CREW HaT, ARSSEM y SR2S, y debe citarlos
+   exactamente así en la introducción/discusión del paper (dónde se sitúan
+   y qué le falta a cada uno frente a lo que este proyecto propone).
+
+   **Actualización (2026-09-07):** el equipo ya decidió que el Halbach se
+   modela con geometría real dentro de Geant4 — no el placeholder
+   `G4UniformMagField` de `GCR_SEP_Sim`. Lo que sigue sin decidirse es si
+   (b) se resuelve analítico (más "nativo", más cercano a lo descrito
+   arriba como el vacío en la literatura) o importado de un cálculo externo
+   (más simple de implementar, pero comparte el patrón dominante que ya
+   usan otros estudios). Con campo importado, (a)+(c) —material real de
+   bobinas + scorer de fluencia sobre el conductor— siguen siendo el
+   diferenciador real frente a CREW HaT y ARSSEM (que no tienen scorer
+   sobre el conductor) y frente a SR2S (topología toroidal, no Halbach);
+   la novedad no depende exclusivamente de que (b) sea analítico.
 
 4. **Portar** `SpectrumSampler`, adaptar `PrimaryGeneratorAction` (fuente
    isotrópica cilíndrica), y decidir si el barrido usa `run_sweep.py` de
