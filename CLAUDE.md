@@ -22,6 +22,45 @@ Con esto se busca determinar qué intensidad de campo atenúa mejor la dosis, y 
 
 **Qué se conserva:** el código del blindaje pasivo (capas Al/polietileno) **no se borró**, solo queda desactivado por defecto y fuera del barrido nuevo — se puede reactivar más adelante si el equipo lo necesita.
 
+## Bitácora: inicio del proyecto de geometría real (2026-09-07)
+
+`GCR_SEP_Sim/` sigue siendo un **placeholder deliberado** (esfera + campo
+uniforme + tejido homogéneo) usado como pipeline de referencia para probar
+estadística, barrido y reproducibilidad — no la geometría de producción.
+
+Se abrió `geant4/ActiveShield_Sim/` para la geometría real que va al
+artículo: nave cilíndrica **ARSSEM (5.6 × 10 m)**, arreglo de bobinas
+**Halbach** (dimensiones aún sin definir por el equipo) y fantoma
+dosimétrico **ICRP110** (142 órganos, no una esfera de tejido homogéneo).
+Parte del ejemplo oficial de Geant4 `ICRP110_HumanPhantoms` (ya validado
+corriendo de punta a punta en este repo) en vez de extender `GCR_SEP_Sim`,
+porque ese ejemplo ya trae su propio `World` y el fantoma vóxel funcionando
+— es más barato agregar nave+bobinas como volúmenes hijos de ese `World` que
+extraer la lógica de vóxeles e insertarla en el `DetectorConstruction`
+actual. Ver `geant4/ActiveShield_Sim/README.md` para el estado detallado,
+diferencias de API frente a `GCR_SEP_Sim` (fuente `/gps/` vs `G4ParticleGun`,
+scoring por mesh vs. acumulador manual, physics list `QGSP_BIC_HP` vs.
+`Shielding`) y los próximos pasos concretos de implementación.
+
+**Decisiones de equipo ya tomadas que aplican a este proyecto nuevo:**
+- Fantoma en una sola posición, en el eje del cilindro, a media longitud
+  (no barrido de posición) — declarar la anisotropía del campo Halbach
+  (protege peor por los "caps") como limitación en el artículo.
+- Modelo GCR = ISO-15390, SEP = ESP-PSYCHIC, ambos vía SPENVIS, ambas fases
+  solares — igual que en `GCR_SEP_Sim` (ver checklist y README.md, sección
+  "Fechas de referencia para la fase solar").
+
+**Pendiente de decidir con el equipo (no asumir, no implementar todavía):**
+- Si el campo Halbach se modela nativamente en Geant4 (geometría de bobinas
+  real + campo no uniforme calculado) — la opción que da la novedad real del
+  paper (rigidez magnética integrada, scorer de fluencia sobre el propio
+  conductor HTS) — o se importa un mapa de campo precalculado externamente.
+- Consistencia numérica del imán (vueltas × corriente × Ic del conductor
+  CORC/REBCO) antes de fijar la geometría de las bobinas.
+- Número de eventos real: si el barrido final es por eventos totales o por
+  bin de energía (monoenergético + reponderación) — afecta directamente si
+  las barras de error del artículo son defendibles.
+
 ## Estructura de `geant4/GCR_SEP_Sim/`
 
 Proyecto GEANT4 en C++ (CMake), ejecutable `gcrsim`. Piezas clave:
