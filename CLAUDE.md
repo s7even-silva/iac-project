@@ -29,9 +29,11 @@ uniforme + tejido homogéneo) usado como pipeline de referencia para probar
 estadística, barrido y reproducibilidad — no la geometría de producción.
 
 Se abrió `geant4/ActiveShield_Sim/` para la geometría real que va al
-artículo: nave cilíndrica **ARSSEM (5.6 × 10 m)**, arreglo de bobinas
-**Halbach** (dimensiones aún sin definir por el equipo) y fantoma
-dosimétrico **ICRP110** (142 órganos, no una esfera de tejido homogéneo).
+artículo: nave cilíndrica **ARSSEM (5.6 × 10 m, ya implementada)**, arreglo
+de bobinas **Halbach** (número, dimensiones y posición dentro de la nave aún
+sin definir por el equipo — ver `ActiveShield_Sim/README.md`, paso 3) y
+fantoma dosimétrico **ICRP110** (142 órganos, no una esfera de tejido
+homogéneo, ya centrado en el eje de la nave a media longitud).
 Parte del ejemplo oficial de Geant4 `ICRP110_HumanPhantoms` (ya validado
 corriendo de punta a punta en este repo) en vez de extender `GCR_SEP_Sim`,
 porque ese ejemplo ya trae su propio `World` y el fantoma vóxel funcionando
@@ -51,10 +53,37 @@ scoring por mesh vs. acumulador manual, physics list `QGSP_BIC_HP` vs.
   "Fechas de referencia para la fase solar").
 
 **Pendiente de decidir con el equipo (no asumir, no implementar todavía):**
+- **Número, dimensiones y posición de las bobinas Halbach dentro de
+  `ShipInterior`** — bloquea directamente el paso 3 de `ActiveShield_Sim`
+  (geometría de las bobinas, y con ella la clase de campo custom).
 - Si el campo Halbach se modela nativamente en Geant4 (geometría de bobinas
-  real + campo no uniforme calculado) — la opción que da la novedad real del
-  paper (rigidez magnética integrada, scorer de fluencia sobre el propio
-  conductor HTS) — o se importa un mapa de campo precalculado externamente.
+  real + campo no uniforme calculado analíticamente, evaluado en tiempo real
+  durante el tracking — la opción que da la novedad real del paper: rigidez
+  magnética integrada, scorer de fluencia sobre el propio conductor HTS) o
+  se importa un mapa de campo tabulado/precalculado externamente. Ver la
+  explicación técnica completa (cómo Geant4 aplica un campo custom, y por
+  qué el material de las bobinas y el campo que producen son dos cosas
+  independientes que hay que conectar explícitamente) en
+  `ActiveShield_Sim/README.md`, paso 3.
+  **Antecedentes investigados (ver README.md para detalle y citas):**
+  ni siquiera **CREW HaT** (la referencia que el equipo daba por calcada)
+  modela el campo dentro de Geant4 — calcula el Halbach vía Biot-Savart+RK4
+  en un trazador propio, y usa Geant4 aparte solo para la dosis final con
+  blindaje simplificado. **ARSSEM** (mismo nombre que la nave del equipo)
+  sí modela material real de bobinas + descompone dosis campo/material,
+  pero en GEANT3 con campo uniforme confinado, no Halbach analítico. **SR2S**
+  es el antecedente más fuerte en Geant4 real (vía GRAS) para secundarios de
+  blindaje activo, pero con topología toroidal, no Halbach. Ningún estudio
+  combina Halbach nativo en Geant4 + material HTS real + scorer de fluencia
+  sobre el conductor — esa combinación sería la contribución novedosa real,
+  si se logra implementar (b) del paso 3 de forma nativa.
+- **El material real de las bobinas (REBCO/CORC + crióstato) debe estar en
+  la simulación, no solo el campo que producen** — son blindaje pasivo
+  incidental: absorben radiación primaria pero también la fragmentan en
+  secundarios (neutrones, fotones de captura, espalación) que pueden llegar
+  al fantoma con más facilidad que la radiación original. Ignorar esto
+  subestima la dosis real; es el mismo efecto que el estudio SR2S documentó
+  como hallazgo central para blindaje magnético activo en general.
 - Consistencia numérica del imán (vueltas × corriente × Ic del conductor
   CORC/REBCO) antes de fijar la geometría de las bobinas.
 - Número de eventos real: si el barrido final es por eventos totales o por
