@@ -35,8 +35,13 @@ results/
 *.root
 *.hepmc
 *.csv
-# Excepcion: CSV de datos de entrada (espectros de energia), SI se versionan
-!geant4/**/data/*.csv
+# Excepcion: CSV de espectros de energia POR FUENTE (SPENVIS, OLTARIS, etc.)
+# en data/sources/<fuente>/*.csv -- esa es la fuente de verdad que SI se
+# versiona. data/*.csv (nivel directo) NO se versiona a proposito: es el
+# destino generado por scripts/select_spectrum_source.py (copia de la fuente
+# activa), analogo a build/ -- versionarlo duplicaria contenido y generaria
+# diffs de git cada vez que alguien cambia de fuente activa.
+!geant4/**/data/sources/**/*.csv
 # Excepcion: resultados finales del barrido (crudos por persona + agregado
 # con estadistica), SI se versionan -- son los datos que van al articulo
 !geant4/**/resultados/*.csv

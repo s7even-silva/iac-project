@@ -102,6 +102,43 @@ Aplicación en cada modelo (**ambos en SPENVIS** — se descartó OLTARIS/Badhwa
 - **ISO-15390 (GCR)**: el formulario pide una fecha específica directamente (SPENVIS la convierte internamente a potencial de modulación solar) — usar las fechas de la tabla de arriba.
 - **ESP-PSYCHIC (SEP)**: la fecha de inicio de misión (o el "offset en el ciclo solar" en modo avanzado) se fija con estas mismas fechas — mantener la misma duración de misión y nivel de confianza entre la corrida `max` y la `min` (ver [`docs/checklist_espectros_reales.md`](geant4/GCR_SEP_Sim/docs/checklist_espectros_reales.md)).
 
+### 0.6. Cambiar de fuente de espectros (SPENVIS ↔ evento histórico Oct-1989 vía OLTARIS, u otra)
+
+Si más adelante se aprueba OLTARIS y se decide usar el evento histórico de
+octubre de 1989 en vez del "Worst Case Event" probabilístico de ESP-PSYCHIC
+para SEP (son conceptualmente distintos — un evento medido real vs. un
+percentil estadístico sobre la duración de misión; ver `CLAUDE.md` para la
+discusión completa de por qué no son intercambiables sin más), el cambio es
+barato porque el pipeline ya está separado en capas:
+
+- `SpectrumSampler` (el código C++ que lee el CSV y muestrea energías) es
+  **agnóstico a la fuente** — solo espera dos columnas (energía, flujo), sin
+  importar si vinieron de SPENVIS, OLTARIS, o cualquier otra herramienta.
+  No hay que tocar ni una línea de `SpectrumSampler.cc`/`.hh` ni de
+  `PrimaryGeneratorAction.cc` para cambiar de fuente.
+- Cada fuente vive en su propia carpeta bajo
+  `geant4/GCR_SEP_Sim/data/sources/<fuente>/` (hoy: `spenvis/`, y
+  `oltaris_oct1989/` preparada con su propio README para cuando se llene).
+  `data/*.csv` (sin la subcarpeta `sources/`) es solo el **destino activo**
+  — no se versiona en git (ver `.gitignore`), se regenera con:
+
+      cd geant4/GCR_SEP_Sim
+      python3 scripts/select_spectrum_source.py spenvis            # fuente activa hoy
+      python3 scripts/select_spectrum_source.py oltaris_oct1989     # cuando este lista
+
+  (`--only sep_proton_solarmax.csv sep_proton_solarmin.csv` si solo se
+  quiere cambiar SEP y dejar GCR en SPENVIS — es la combinación más probable
+  dado que Oct-1989 es un evento SEP, no tiene componente GCR).
+- Después de cambiar de fuente hay que volver a correr `cmake ..` dentro de
+  `build/` (no basta con `make -j`) para que el build recoja los CSV
+  nuevos — `CMakeLists.txt` copia `data/` a `build/data/` en la fase de
+  configuración de CMake, no en cada compilación.
+- Lo único que no es "gratis": la normalización de dosis absoluta en
+  `RunAction.cc` (pendiente de implementar, ver `CLAUDE.md`) y el párrafo
+  de Métodos del artículo, que sí cambian de contenido según la fuente
+  (aunque la fórmula conceptual para SEP —fluencia de un evento puntual,
+  sin factor de tiempo— es la misma para ESP-PSYCHIC y para Oct-1989).
+
 ### 1. Correr el barrido asignado
 
 Persona A (GCR):
