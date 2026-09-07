@@ -33,6 +33,7 @@
 #include "globals.hh"
 #include "G4SystemOfUnits.hh"
 #include "G4Box.hh"
+#include "G4Tubs.hh"
 #include "G4Colour.hh"
 #include "G4LogicalVolume.hh"
 #include "G4PVPlacement.hh"
@@ -42,6 +43,7 @@
 #include "G4PVParameterised.hh"
 #include "G4RunManager.hh"
 #include "G4VisAttributes.hh"
+#include "G4NistManager.hh"
 #include <map>
 #include <cstdlib>
 
@@ -208,7 +210,11 @@ G4VPhysicalVolume* ICRP110PhantomConstruction::Construct()
 }
   
   // World Volume
-  G4double worldSize = 2.*m ;
+  // Agrandado de 2 m a 7 m de half-size para contener la nave ARSSEM (cilindro
+  // de 5.6 m de diametro x 10 m de largo, ver ActiveShield_Sim/README.md) con
+  // margen alrededor -- el tamano original del ejemplo (2 m) solo alcanzaba
+  // para el fantoma solo.
+  G4double worldSize = 7.*m ;
   G4Box* world = new G4Box("world", worldSize, worldSize, worldSize);
 
   auto logicWorld = new G4LogicalVolume(world,
@@ -223,8 +229,34 @@ G4VPhysicalVolume* ICRP110PhantomConstruction::Construct()
 				    0);
 
   logicWorld -> SetVisAttributes(G4VisAttributes::GetInvisible());
- 
-  G4cout << "World has been built" << G4endl; 
+
+  G4cout << "World has been built" << G4endl;
+
+  // Nave ARSSEM: cilindro de 5.6 m de diametro (2.8 m de radio) x 10 m de
+  // largo. Eje del cilindro = eje Z, que coincide con el eje "de pie" del
+  // fantoma (altura ~1.78 m a lo largo de Z, ver calculo de voxeles abajo) --
+  // asi el fantoma queda de pie a lo largo del eje de la nave sin necesidad
+  // de rotarlo. Geometria estatica por ahora: sin bobinas Halbach ni campo
+  // magnetico todavia (ver ActiveShield_Sim/README.md, proximos pasos).
+  G4NistManager* nist = G4NistManager::Instance();
+  G4Material* matAluminum = nist->FindOrBuildMaterial("G4_Al");
+
+  const G4double shipRadius = 2.8*m;
+  const G4double shipHalfLength = 5.*m;   // 10 m de largo total
+  const G4double shipHullThickness = 5.*cm;
+
+  G4Tubs* solidShipHull = new G4Tubs("ShipHull", 0., shipRadius,
+                                      shipHalfLength, 0., 360.*deg);
+  auto logicShipHull = new G4LogicalVolume(solidShipHull, matAluminum, "ShipHull");
+  new G4PVPlacement(nullptr, G4ThreeVector(), logicShipHull, "ShipHull",
+                     logicWorld, false, 0, true);
+  logicShipHull->SetVisAttributes(new G4VisAttributes(G4Colour(0.7, 0.7, 0.75, 0.15)));
+
+  G4Tubs* solidShipInterior = new G4Tubs("ShipInterior", 0., shipRadius - shipHullThickness,
+                                          shipHalfLength - shipHullThickness, 0., 360.*deg);
+  auto logicShipInterior = new G4LogicalVolume(solidShipInterior, matAir, "ShipInterior");
+  new G4PVPlacement(nullptr, G4ThreeVector(), logicShipInterior, "ShipInterior",
+                     logicShipHull, false, 0, true);
 
   G4cout << "Phantom Sex: " << fSex << G4endl;
   G4cout << "Phantom Section: " << fSection << G4endl;
@@ -254,15 +286,18 @@ G4VPhysicalVolume* ICRP110PhantomConstruction::Construct()
 
   G4cout << " placing voxel container volume at " << posCentreVoxels << G4endl;
 
-   
+  // Fantoma colgado del interior de la nave (ShipInterior), no directo del
+  // World -- queda centrado en el eje del cilindro, a media longitud, tal
+  // como decidio el equipo (ver CLAUDE.md, sin barrido de posicion).
   fPhantomContainer
   = new G4PVPlacement(nullptr,                     // rotation
                       posCentreVoxels,
                       fContainer_logic,     // The logic volume
                       "phantomContainer",  // Name
-                      logicWorld,         // Mother
+                      logicShipInterior,  // Mother
                       false,            // No op. bool.
-                      1);              // Copy number
+                      1,               // Copy number
+                      true);           // Check overlaps
   
   fContainer_logic -> SetVisAttributes(new G4VisAttributes(G4Colour(1.,0.,0.,0.)));
 

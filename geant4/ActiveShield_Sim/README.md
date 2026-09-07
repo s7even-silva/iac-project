@@ -25,20 +25,38 @@ vóxeles de este ejemplo e insertarla dentro del `DetectorConstruction` de
 
 ## Estado actual (2026-09-07)
 
-Copia sin modificar del ejemplo oficial, ya validada en este repo:
+Partiendo del ejemplo oficial (fantoma + su `World` original de aire),
+validado en este repo:
 
 - Compila con el mismo toolchain que `GCR_SEP_Sim` (`g++`/`x86_64-conda-linux-gnu-c++`
   de `geant4_env` + `CMAKE_PREFIX_PATH="$CONDA_PREFIX"`, ver comandos abajo).
 - `ICRPdata` (~52 MB, datos de los fantomas AM/AF) se descarga solo en el
   primer build vía `ExternalProject_Add` en `CMakeLists.txt` — no hace falta
   copiarlos a mano ni versionarlos (están en `.gitignore` vía `ICRPdata/`).
-- Corrida de prueba (`male.in`, pencil beam de protones 250 MeV, 20-1000
-  eventos) corre sin errores y produce `ICRP110.out` con dosis por los 142
-  órganos del fantoma masculino completo, nombres legibles + masa + material.
+- Corrida de prueba (`male.in`/`female.in`, pencil beam de protones 250 MeV,
+  20-1000 eventos) corre sin errores y produce `ICRP110.out` con dosis por
+  los 142 órganos del fantoma, nombres legibles + masa + material.
 
-**Nada de nave, bobinas ni campo magnético está implementado todavía.** Esto
-es únicamente el punto de partida validado (fantoma + su World original de
-2 m de half-size, aire).
+**Ya implementado: nave ARSSEM como geometría estática** (`ICRP110PhantomConstruction.cc`):
+- `World` agrandado de 2 m a 7 m de half-size (el original solo alcanzaba
+  para el fantoma solo).
+- `ShipHull`: `G4Tubs` de aluminio, radio 2.8 m, 10 m de largo total (eje Z).
+- `ShipInterior`: `G4Tubs` de aire dentro del casco (radio y longitud menos
+  5 cm de espesor de casco), donde eventualmente irán las bobinas Halbach y
+  el campo magnético.
+- El fantoma (`phantomContainer`) cuelga de `ShipInterior`, centrado en el
+  eje del cilindro a media longitud (posición fija, sin barrido — decisión
+  de equipo ya tomada, ver `CLAUDE.md`). El eje Z del cilindro coincide con
+  el eje "de pie" del cuerpo (altura ≈1.78 m para el fantoma completo,
+  calculada de 222 vóxeles × 8 mm en Z) — el fantoma queda de pie a lo largo
+  del eje de la nave sin necesidad de rotarlo.
+- Validado sin overlaps (`G4PVPlacement` con chequeo activo) para ambos
+  fantomas, masculino y femenino, completos.
+
+**Todavía no implementado: bobinas Halbach ni campo magnético.** `ShipInterior`
+es aire vacío por ahora — el protón del pencil beam de prueba atraviesa el
+casco de aluminio sin desviarse (dosis distinta a la corrida sin nave, como
+se espera físicamente al agregar un blindaje pasivo de por medio).
 
 ## Diferencias clave frente a `GCR_SEP_Sim/` (a tener en cuenta al portar código)
 
@@ -63,14 +81,9 @@ es únicamente el punto de partida validado (fantoma + su World original de
 
 ## Próximos pasos (en orden)
 
-1. **Agrandar el `World`** (`ICRP110PhantomConstruction.cc`, línea
-   `G4double worldSize = 2.*m;`) — insuficiente para contener un cilindro de
-   10 m de largo. Ajustar a un tamaño que dé margen alrededor del cilindro
-   ARSSEM completo.
-2. **Agregar el cilindro ARSSEM** (`G4Tubs`, 5.6 m diámetro × 10 m largo)
-   como volumen hijo de `logicWorld`, con el fantoma centrado en el eje a
-   media longitud (decisión de equipo ya tomada, ver `CLAUDE.md` principal) —
-   sin campo todavía, solo geometría estática.
+1. ~~Agrandar el `World`~~ — hecho (7 m de half-size).
+2. ~~Agregar el cilindro ARSSEM~~ — hecho (`ShipHull`/`ShipInterior`, fantoma
+   centrado en el eje a media longitud, sin overlaps, geometría estática).
 3. **Bobinas Halbach**: geometría de las bobinas (dimensiones aún sin definir
    por el equipo) + clase de campo custom (`G4MagneticField` derivado, no
    `G4UniformMagField` — el campo Halbach no es uniforme) para poder además
@@ -93,6 +106,7 @@ Mismo entorno y mismo workaround de compilador que `GCR_SEP_Sim` (ver
     cmake -DCMAKE_CXX_COMPILER=g++ -DCMAKE_PREFIX_PATH="$CONDA_PREFIX" ..
     make -j$(nproc)
 
-Corrida de prueba (fantoma solo, sin nave ni campo — pencil beam de protones):
+Corrida de prueba (fantoma dentro de la nave ARSSEM, sin campo magnético
+todavía — pencil beam de protones):
 
     ./ICRP110phantoms male.in
