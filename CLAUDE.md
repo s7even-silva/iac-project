@@ -56,15 +56,22 @@ scoring por mesh vs. acumulador manual, physics list `QGSP_BIC_HP` vs.
 - **Número, dimensiones y posición de las bobinas Halbach dentro de
   `ShipInterior`** — bloquea directamente el paso 3 de `ActiveShield_Sim`
   (geometría de las bobinas, y con ella la clase de campo custom).
-- Si el campo Halbach se modela nativamente en Geant4 (geometría de bobinas
-  real + campo no uniforme calculado analíticamente, evaluado en tiempo real
-  durante el tracking — la opción que da la novedad real del paper: rigidez
-  magnética integrada, scorer de fluencia sobre el propio conductor HTS) o
-  se importa un mapa de campo tabulado/precalculado externamente. Ver la
-  explicación técnica completa (cómo Geant4 aplica un campo custom, y por
-  qué el material de las bobinas y el campo que producen son dos cosas
-  independientes que hay que conectar explícitamente) en
-  `ActiveShield_Sim/README.md`, paso 3.
+- **Ya decidido: el Halbach se modela dentro de Geant4 (geometría de bobinas
+  real + campo no uniforme), no el placeholder `G4UniformMagField` de
+  `GCR_SEP_Sim`.** Lo que sigue abierto es *cómo* se obtiene la función de
+  campo `B(x,y,z)` que Geant4 evalúa en cada paso: casi seguro será un mapa
+  de campo calculado en un programa externo (Biot-Savart/FEM) e importado
+  vía `G4CachedMagneticField` + interpolación, en vez de una fórmula
+  analítica escrita a mano en C++ — ambos caminos son "campo modelado en
+  Geant4" en el sentido de que la geometría de las bobinas y el acople del
+  campo viven en este proyecto; la diferencia es solo dónde vive el cálculo
+  original de `B`. Esto no bloquea empezar la geometría de las bobinas
+  (paso 3(a) de `ActiveShield_Sim/README.md`), pero sí determina cuánta
+  "novedad nativa" se puede reclamar en el paper (ver punto 6 de la tabla
+  de seguimiento más abajo). Ver la explicación técnica completa (cómo
+  Geant4 aplica un campo custom, y por qué el material de las bobinas y el
+  campo que producen son dos cosas independientes que hay que conectar
+  explícitamente) en `ActiveShield_Sim/README.md`, paso 3.
   **Antecedentes investigados (ver README.md para detalle y citas):**
   ni siquiera **CREW HaT** (la referencia que el equipo daba por calcada)
   modela el campo dentro de Geant4 — calcula el Halbach vía Biot-Savart+RK4
@@ -94,14 +101,12 @@ scoring por mesh vs. acumulador manual, physics list `QGSP_BIC_HP` vs.
 
 | # | Punto | Estado | Depende de | Bloquea |
 |---|---|---|---|---|
-| 1 | ¿Halbach nativo en Geant4 o campo uniforme placeholder? | 🔴 Abierto | Grupal — diseño del imán (Plan A) | Puntos 4, 6; y si es "sí", invalida el barrido de campo uniforme que se corra mientras tanto |
+| 1 | ¿Halbach nativo en Geant4 o campo uniforme placeholder? | ✅ Resuelto: Halbach en Geant4, no el placeholder de `G4UniformMagField` de `GCR_SEP_Sim`. **Sub-pendiente:** casi seguro que el cálculo del campo en sí (la función `B(x,y,z)`) se resuelva con un mapa importado de un programa externo (Biot-Savart/FEM), no con una fórmula analítica escrita a mano en Geant4 — ver el detalle de ambos caminos en `ActiveShield_Sim/README.md`, paso 3(b). "Nativo en Geant4" se refiere a que la geometría de las bobinas y el acople del campo viven en este proyecto, no a que el cálculo del campo necesariamente sea analítico. | — | Punto 4 sigue bloqueado hasta fijar la geometría de bobinas; punto 6 depende de si el campo termina siendo analítico o importado (afecta cuánto de "nativo" es realmente el aporte) |
 | 2 | Geometría de la nave (esfera vs. cilindro ARSSEM) | ✅ Resuelto | — | — |
 | 3 | Fantoma anatómico ICRP110 vs. esfera de tejido homogéneo | ✅ Resuelto | — | — |
 | 4 | Consistencia numérica del imán (vueltas/corriente/Ic CORC-REBCO) | 🔴 Abierto, bloqueado | Diseñador del imán | Geometría de bobinas del paso 3 |
-| 5 | N° de eventos: total vs. bins monoenergéticos + reponderación (detalle completo en "Pendientes conocidos" más abajo) | 🔴 Abierto, urgente | Grupal, pero cualquiera puede plantearlo — **no depende del punto 1** | Reusabilidad de las corridas de producción lanzadas hoy (GCR_SEP_Sim) |
-| 6 | Novedad del paper (Halbach nativo + scorer sobre conductor vs. otra) | 🟡 Investigación lista, decisión pendiente | Punto 1 | Sección de Introducción/Discusión del artículo |
-
-El punto 5 es el único no bloqueado por el punto 1 — aplica igual sin importar si se hace Halbach o no, así que no hay motivo para esperar la reunión de diseño del imán antes de resolverlo.
+| 5 | N° de eventos: total vs. bins monoenergéticos + reponderación (detalle completo en "Pendientes conocidos" más abajo) | 🔴 Abierto, urgente | Grupal, pero cualquiera puede plantearlo — no depende del punto 1 | Reusabilidad de las corridas de producción lanzadas hoy (GCR_SEP_Sim) |
+| 6 | Novedad del paper (Halbach nativo + scorer sobre conductor vs. otra) | 🟡 Investigación lista, decisión final pendiente de si el campo queda analítico o importado (punto 1) | Punto 1 | Sección de Introducción/Discusión del artículo |
 
 ## Estructura de `geant4/GCR_SEP_Sim/`
 
