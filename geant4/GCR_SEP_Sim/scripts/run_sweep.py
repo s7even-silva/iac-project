@@ -41,11 +41,18 @@ import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+import sweep_config  # noqa: E402 -- constantes compartidas entre proyectos, ver geant4/sweep_config.py
+
+# Especificas de la geometria de este proyecto (campo uniforme + barrido de
+# posicion del astronauta) -- NO mover a sweep_config.py, ActiveShield_Sim
+# tendra un espacio de parametros distinto (bobinas Halbach, no campo
+# uniforme simple).
 MODEL_PHASES = [("GCR", "max"), ("GCR", "min"), ("SEP", "max"), ("SEP", "min")]
 FIELD_VALUES_T = [7.0, 7.5, 8.0, 8.5, 9.0, 9.5, 10.0]
 POSITIONS_M = [0.0, 0.7, 1.4, 2.1, 2.8]
 
-BASE_SEED = 20260905  # fecha del pivote de metodologia, solo para tener un valor fijo
+BASE_SEED = sweep_config.BASE_SEED_GCR_SEP_SIM
 
 MACRO_TEMPLATE = """\
 /run/initialize
@@ -77,10 +84,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--build-dir", type=Path, default=None,
                          help="Directorio de build con el binario gcrsim compilado (default: <repo>/build)")
-    parser.add_argument("--n-events", type=int, default=10000,
-                         help="Eventos por corrida (/run/beamOn), default 10000")
+    parser.add_argument("--n-events", type=int, default=sweep_config.DEFAULT_N_EVENTS,
+                         help=f"Eventos por corrida (/run/beamOn), default {sweep_config.DEFAULT_N_EVENTS} "
+                              "(ver geant4/sweep_config.py)")
     parser.add_argument("--repeats", type=int, default=1,
-                         help="Repeticiones por combinacion, con semillas distintas (default 1; usar 5 para estadistica del articulo)")
+                         help=f"Repeticiones por combinacion, con semillas distintas (default 1 aqui -- para "
+                              f"pilotos rapidos; usar --repeats {sweep_config.DEFAULT_REPEATS} para la "
+                              "estadistica de produccion del articulo, ver geant4/sweep_config.py)")
     parser.add_argument("--only-model", choices=["GCR", "SEP"], default=None,
                          help="Solo correr las 70 combinaciones de este modelo (para repartir el barrido en equipo)")
     parser.add_argument("--limit", type=int, default=None,
