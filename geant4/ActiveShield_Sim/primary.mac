@@ -1,14 +1,9 @@
-#
-### Radiation field defined
-### by means of GPS
-
+# Prueba geometrica monoenergetica, no ambiente GCR/SEP de produccion.
+# El haz nace en el vacio exterior y cruza el casco antes del fantoma.
 /gps/verbose 0
-
-### Generates Pencil beam of 200MeV protons by default
-### Proton pencil beam is incident on far left side of the phantom 
-### (x = -27 cm)and centered in y and z 
-
 /gps/particle proton
-/gps/energy 250 MeV
-/gps/pos/centre -27. 0. 0. cm
-/gps/direction 1 0 0 
+/gps/ene/type Mono
+/gps/ene/mono 250 MeV
+/gps/pos/type Point
+/gps/pos/centre -6. 0. 0. m
+/gps/direction 1 0 0

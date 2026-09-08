@@ -39,6 +39,13 @@ add_executable(ICRP110standalone ICRP110standalone.cc ${sources} ${headers})
 target_link_libraries(ICRP110phantoms ${Geant4_LIBRARIES} )
 target_link_libraries(ICRP110standalone ${Geant4_LIBRARIES} )
 
+include(CTest)
+if(BUILD_TESTING)
+  add_executable(test_field_map tests/test_field_map.cc src/TabulatedMagneticField.cc)
+  target_link_libraries(test_field_map ${Geant4_LIBRARIES})
+  add_test(NAME field_map COMMAND test_field_map)
+endif()
+
 # Depend on data for runtime
 add_dependencies(ICRP110phantoms ICRPdata)
 add_dependencies(ICRP110standalone ICRPdata)
@@ -92,4 +99,3 @@ add_custom_target(ICRPstandalone DEPENDS phantom)
 #
 install(TARGETS ICRP110phantoms DESTINATION bin)
 install(TARGETS ICRP110standalone DESTINATION bin)
-

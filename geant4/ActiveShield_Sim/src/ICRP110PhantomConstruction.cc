@@ -44,6 +44,13 @@
 #include "G4RunManager.hh"
 #include "G4VisAttributes.hh"
 #include "G4NistManager.hh"
+#include "G4GenericMessenger.hh"
+#include "G4FieldBuilder.hh"
+#include "G4SubtractionSolid.hh"
+#include "TabulatedMagneticField.hh"
+#include <algorithm>
+#include <cmath>
+#include <stdexcept>
 #include <map>
 #include <cstdlib>
 
@@ -62,6 +69,24 @@ ICRP110PhantomConstruction::ICRP110PhantomConstruction():
   fMaterial_Male = new ICRP110PhantomMaterial_Male();
   fSex = "female"; // Female phantom is the default option
   fSection = "head"; // Head partial phantom is the default option
+  fWorldHalfSize = 10.*m;  // Minimum envelope, expanded to contain an imported map.
+  fHullThickness = 1.5*cm; // ARSSEM Geom01 radiation reference, not structural sizing.
+  fSpacecraftMessenger = new G4GenericMessenger(this, "/spacecraft/", "Spacecraft and field setup");
+  auto& size = fSpacecraftMessenger->DeclarePropertyWithUnit("worldHalfSize", "m", fWorldHalfSize);
+  size.SetParameterName("size", false);
+  size.SetRange("size>6");
+  size.SetStates(G4State_PreInit);
+  auto& hull = fSpacecraftMessenger->DeclarePropertyWithUnit("hullThickness", "cm", fHullThickness);
+  hull.SetParameterName("thickness", false);
+  hull.SetRange("thickness>0 && thickness<100");
+  hull.SetStates(G4State_PreInit);
+  fSpacecraftMessenger->DeclareProperty("fieldMap", fFieldMapFile).SetStates(G4State_PreInit);
+  auto& scale = fSpacecraftMessenger->DeclareProperty("fieldScale", fFieldScale);
+  scale.SetParameterName("scale", false);
+  scale.SetRange("scale>=0");
+  scale.SetStates(G4State_PreInit);
+  // Register field accuracy commands before /run/initialize; setup is thread local.
+  G4FieldBuilder::Instance();
 }
 
 ICRP110PhantomConstruction::~ICRP110PhantomConstruction()
@@ -69,6 +94,7 @@ ICRP110PhantomConstruction::~ICRP110PhantomConstruction()
   delete fMaterial_Female;
   delete fMaterial_Male;
   delete fMessenger;
+  delete fSpacecraftMessenger;
 }
 
 G4VPhysicalVolume* ICRP110PhantomConstruction::Construct()
@@ -209,54 +235,75 @@ G4VPhysicalVolume* ICRP110PhantomConstruction::Construct()
  
 }
   
-  // World Volume
-  // Agrandado de 2 m a 7 m de half-size para contener la nave ARSSEM (cilindro
-  // de 5.6 m de diametro x 10 m de largo, ver ActiveShield_Sim/README.md) con
-  // margen alrededor -- el tamano original del ejemplo (2 m) solo alcanzaba
-  // para el fantoma solo.
-  G4double worldSize = 7.*m ;
-  G4Box* world = new G4Box("world", worldSize, worldSize, worldSize);
-
-  auto logicWorld = new G4LogicalVolume(world,
-			                 matAir,
-				         "logicalWorld", nullptr, nullptr,nullptr);
-
-  fMotherVolume = new G4PVPlacement(nullptr,G4ThreeVector(),
-				    "physicalWorld",
-				    logicWorld,
-				    nullptr,
-				    false,
-				    0);
-
-  logicWorld -> SetVisAttributes(G4VisAttributes::GetInvisible());
-
-  G4cout << "World has been built" << G4endl;
-
-  // Nave ARSSEM: cilindro de 5.6 m de diametro (2.8 m de radio) x 10 m de
-  // largo. Eje del cilindro = eje Z, que coincide con el eje "de pie" del
-  // fantoma (altura ~1.78 m a lo largo de Z, ver calculo de voxeles abajo) --
-  // asi el fantoma queda de pie a lo largo del eje de la nave sin necesidad
-  // de rotarlo. Geometria estatica por ahora: sin bobinas Halbach ni campo
-  // magnetico todavia (ver ActiveShield_Sim/README.md, proximos pasos).
   G4NistManager* nist = G4NistManager::Instance();
-  G4Material* matAluminum = nist->FindOrBuildMaterial("G4_Al");
-
+  auto* matVacuum = nist->FindOrBuildMaterial("G4_Galactic");
+  auto* matAluminum = nist->FindOrBuildMaterial("G4_Al");
   const G4double shipRadius = 2.8*m;
-  const G4double shipHalfLength = 5.*m;   // 10 m de largo total
-  const G4double shipHullThickness = 5.*cm;
+  const G4double shipHalfLength = 5.*m;
 
-  G4Tubs* solidShipHull = new G4Tubs("ShipHull", 0., shipRadius,
-                                      shipHalfLength, 0., 360.*deg);
-  auto logicShipHull = new G4LogicalVolume(solidShipHull, matAluminum, "ShipHull");
-  new G4PVPlacement(nullptr, G4ThreeVector(), logicShipHull, "ShipHull",
-                     logicWorld, false, 0, true);
-  logicShipHull->SetVisAttributes(new G4VisAttributes(G4Colour(0.7, 0.7, 0.75, 0.15)));
+  fFieldMap.reset();
+  G4ThreeVector worldHalf(fWorldHalfSize, fWorldHalfSize, fWorldHalfSize);
+  if (!fFieldMapFile.empty()) {
+    try {
+      fFieldMap = std::make_shared<MagneticFieldMap>(fFieldMapFile);
+      const auto low = fFieldMap->Minimum();
+      const auto high = fFieldMap->Maximum();
+      const G4ThreeVector hullHalf(shipRadius, shipRadius, shipHalfLength);
+      for (int axis = 0; axis < 3; ++axis) {
+        if (low[axis] >= -hullHalf[axis] || high[axis] <= hullHalf[axis])
+          throw std::runtime_error("Field map must extend beyond the entire habitat on every axis");
+        worldHalf[axis] = std::max(worldHalf[axis],
+                                  std::max(std::abs(low[axis]), std::abs(high[axis])) + 1.*m);
+      }
+      G4cout << "Field map: " << fFieldMapFile << "; bounds [m]: " << low/m
+             << " to " << high/m << "; scale: " << fFieldScale
+             << "; max boundary |B| [T]: " << fFieldMap->BoundaryMaximum()*fFieldScale/tesla
+             << G4endl;
+      G4cout << "Field is ZERO outside map bounds. Domain and fringe-field convergence "
+                "must be checked before production." << G4endl;
+    } catch (const std::exception& error) {
+      G4Exception("ICRP110PhantomConstruction::Construct", "InvalidFieldMap",
+                  FatalException, error.what());
+    }
+  } else {
+    G4cout << "No field map supplied: magnetic field OFF." << G4endl;
+  }
 
-  G4Tubs* solidShipInterior = new G4Tubs("ShipInterior", 0., shipRadius - shipHullThickness,
-                                          shipHalfLength - shipHullThickness, 0., 360.*deg);
-  auto logicShipInterior = new G4LogicalVolume(solidShipInterior, matAir, "ShipInterior");
-  new G4PVPlacement(nullptr, G4ThreeVector(), logicShipInterior, "ShipInterior",
-                     logicShipHull, false, 0, true);
+  auto* world = new G4Box("world", worldHalf.x(), worldHalf.y(), worldHalf.z());
+  auto* logicWorld = new G4LogicalVolume(world, matVacuum, "logicalWorld");
+  fMotherVolume = new G4PVPlacement(nullptr, {}, logicWorld, "physicalWorld",
+                                   nullptr, false, 0, true);
+  logicWorld->SetVisAttributes(G4VisAttributes::GetInvisible());
+
+  // A common vacuum mother makes external coils siblings of the habitat.
+  // It leaves 0.5 m of world padding even when a map expands the world.
+  auto* envelope = new G4Box("MagnetEnvelope", worldHalf.x()-0.5*m,
+                            worldHalf.y()-0.5*m, worldHalf.z()-0.5*m);
+  auto* logicEnvelope = new G4LogicalVolume(envelope, matVacuum, "MagnetEnvelope");
+  new G4PVPlacement(nullptr, {}, logicEnvelope, "MagnetEnvelope", logicWorld, false, 0, true);
+  logicEnvelope->SetVisAttributes(G4VisAttributes::GetInvisible());
+
+  // Closed shell (barrel + flat endcaps) and cabin are disjoint siblings.
+  // Keeping outer dimensions fixed avoids moving future external coils when
+  // comparing different hull thicknesses. Air inside the habitat is retained.
+  auto* hullOuter = new G4Tubs("HullOuter", 0., shipRadius, shipHalfLength, 0., 360.*deg);
+  auto* cabin = new G4Tubs("ShipInterior", 0., shipRadius-fHullThickness,
+                          shipHalfLength-fHullThickness, 0., 360.*deg);
+  auto* hullSolid = new G4SubtractionSolid("ShipHull", hullOuter, cabin);
+  auto* logicHull = new G4LogicalVolume(hullSolid, matAluminum, "ShipHull");
+  new G4PVPlacement(nullptr, {}, logicHull, "ShipHull", logicEnvelope, false, 0, true);
+  logicHull->SetVisAttributes(new G4VisAttributes(G4Colour(0.7, 0.7, 0.75, 0.15)));
+  auto* logicShipInterior = new G4LogicalVolume(cabin, matAir, "ShipInterior");
+  new G4PVPlacement(nullptr, {}, logicShipInterior, "ShipInterior", logicEnvelope, false, 0, true);
+
+  G4cout << "Spacecraft: outer radius [m]=" << shipRadius/m
+         << "; outer length [m]=" << 2*shipHalfLength/m
+         << "; Al hull thickness [cm]=" << fHullThickness/cm
+         // Boolean solids estimate volume by Monte Carlo; use the exact
+         // difference here to avoid noisy masses for this thin closed shell.
+         << "; hull mass [kg]=" << (hullOuter->GetCubicVolume()-cabin->GetCubicVolume())
+                                    *matAluminum->GetDensity()/kg
+         << "; world half sizes [m]=" << worldHalf/m << G4endl;
 
   G4cout << "Phantom Sex: " << fSex << G4endl;
   G4cout << "Phantom Section: " << fSection << G4endl;
@@ -288,7 +335,7 @@ G4VPhysicalVolume* ICRP110PhantomConstruction::Construct()
 
   // Fantoma colgado del interior de la nave (ShipInterior), no directo del
   // World -- queda centrado en el eje del cilindro, a media longitud, tal
-  // como decidio el equipo (ver CLAUDE.md, sin barrido de posicion).
+  // como decidio el equipo (ver AGENTS.md, sin barrido de posicion).
   fPhantomContainer
   = new G4PVPlacement(nullptr,                     // rotation
                       posCentreVoxels,
@@ -346,6 +393,16 @@ G4VPhysicalVolume* ICRP110PhantomConstruction::Construct()
     param -> SetNoVoxel(fNVoxelX,fNVoxelY,fNVoxelZ);
 
   return fMotherVolume;
+}
+
+// Global field: vacuum, hull, cabin, phantom and future coils all sample the
+// same world-coordinate map. Never clip the field at the habitat boundary.
+void ICRP110PhantomConstruction::ConstructSDandField()
+{
+  auto* builder = G4FieldBuilder::Instance();
+  builder->SetGlobalField(fFieldMap && fFieldScale != 0.
+      ? new TabulatedMagneticField(fFieldMap, fFieldScale) : nullptr);
+  builder->ConstructFieldSetup();
 }
 
 void ICRP110PhantomConstruction::ReadPhantomData(const G4String& sex, const G4String& section)
