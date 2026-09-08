@@ -26,6 +26,32 @@ corresponden únicamente a `GCR_SEP_Sim`, conservado como piloto de referencia.
 
 ## Entorno de simulación
 
+### Instalación automática (recomendada, cualquier distro Linux)
+
+    bash scripts/install.sh
+
+Instala y configura todo lo necesario desde cero: dependencias de sistema
+(compilador, `libGLU` que requiere Gmsh en tiempo de ejecución — detecta
+apt/dnf/yum/pacman/zypper/apk automáticamente), Miniconda si no está
+presente, el entorno `geant4_env` (Geant4 11.4.2 + CMake + gcc/g++ de
+conda-forge, vía `environment.yml`), un entorno conda auxiliar
+`py313_bootstrap` (solo para tener un intérprete Python 3.13.x disponible
+en cualquier distro sin depender de qué versión traiga cada gestor de
+paquetes en sus repos), y `field/.venv` (Gmsh + NumPy, aislado de conda —
+ver [field/README.md](field/README.md) sobre por qué). Al final compila
+`GCR_SEP_Sim` y `ActiveShield_Sim`, y corre los tests de `field/` para
+confirmar que todo quedó operativo.
+
+Es idempotente: se puede volver a correr sin romper una instalación ya
+hecha (cada paso comprueba si su resultado ya existe). Usar
+`bash scripts/install.sh --skip-system` para omitir el paso que pide sudo
+(útil si las dependencias de sistema ya están instaladas, o si se corre en
+un entorno sin acceso a sudo). No instala Elmer — el solver FEM del campo
+magnético todavía no está integrado al flujo del proyecto (ver `AGENTS.md`
+y `field/GEOM14_STATUS.md`).
+
+### Instalación manual
+
     conda env create -f environment.yml
     conda activate geant4_env
 
