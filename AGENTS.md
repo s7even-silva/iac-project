@@ -22,7 +22,7 @@ Con esto se busca determinar qué intensidad de campo atenúa mejor la dosis, y 
 
 **Qué se conserva:** el código del blindaje pasivo (capas Al/polietileno) **no se borró**, solo queda desactivado por defecto y fuera del barrido nuevo — se puede reactivar más adelante si el equipo lo necesita.
 
-## Estado vigente de ActiveShield_Sim (2026-09-07)
+## Estado vigente de ActiveShield_Sim (2026-09-08)
 
 La implementación parte del ejemplo oficial ICRP110; `GCR_SEP_Sim` sigue
 como piloto de referencia. Instrucciones técnicas en
@@ -31,6 +31,17 @@ fuentes y pendientes en
 [decisiones del modelo](geant4/ActiveShield_Sim/docs/modelo_realista.md).
 
 **Implementado:**
+- Conversión `field/generate_mesh.py` → `.msh` → `field/mesh_to_gdml.py`
+  → GDML con componentes y materiales separados. Requiere tetraedros de
+  primer orden y grupos físicos con asignación explícita en JSON.
+- Importación `/spacecraft/coilGeometry` (PreInit): coloca piezas teseladas
+  directamente en `MagnetEnvelope`, comprueba límites, cobertura del mapa
+  y solapamientos. El ejemplo Cu/Al es una prueba de conversión, no el imán real.
+- Entorno separado `field/.venv`, creado con `python3 field/bootstrap.py`;
+  Python 3.13 (validado 3.13.5), Gmsh 4.15.2 y NumPy 2.3.3 fijados.
+  No instalar esas dependencias en `geant4_env`. Entorno y `field/generated/`
+  excluidos de Git; versionar fuentes, materiales y scripts. Manifiestos
+  con hashes/versiones junto a salidas. Ver [guía](field/README.md).
 - Exterior en vacío `G4_Galactic`; aire de cabina y tejidos ICRP110 conservados.
 - Cilindro de dimensiones exteriores 5.6 × 10 m, casco `G4_Al` de **1.5 cm**
   (sustituye 5 cm), tapas planas. Referencia radiológica de Al, no casco de
@@ -54,6 +65,8 @@ fuentes y pendientes en
   incertidumbre por órgano. No portar muestreo continuo como plan de producción.
 - **Gmsh + Elmer + Python** para calcular y exportar el campo. No implementar
   un Halbach uniforme ficticio; no inventar dimensiones/corrientes de bobinas.
+  Elmer todavía no está instalado/configurado por este flujo: el venv cubre
+  mallado y conversión, no la solución FEM ni sus dependencias nativas.
 - GCR ISO-15390 y SEP ESP-PSYCHIC vía SPENVIS, ambas fases solares. Los exports
   físicos siguen siendo necesarios como pesos aunque las energías se simulen
   por bins. El scorer actual no calcula por sí solo dosis absoluta o equivalente.

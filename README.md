@@ -13,6 +13,13 @@ simular por bins de energía y reponderar**, no usar el barrido continuo del
 piloto como producción. Véanse [estado e interfaces](geant4/ActiveShield_Sim/README.md)
 y [decisiones y justificación](geant4/ActiveShield_Sim/docs/modelo_realista.md).
 
+La generación de mallas y conversión de componentes con materiales a GDML
+ya dispone de un entorno Python aislado y una prueba de importación en Geant4.
+Desde la raíz: `python3 field/bootstrap.py` (Python 3.13, validado con 3.13.5).
+El entorno se crea en `field/.venv`, excluido de Git. Procedimiento completo,
+dependencias fijadas y ejemplos en [field/README.md](field/README.md).
+La conversión está preparada; el devanado real y el cálculo FEM siguen pendientes.
+
 El barrido de 140 combinaciones y las instrucciones de reparto que siguen
 corresponden únicamente a `GCR_SEP_Sim`, conservado como piloto de referencia.
 
@@ -191,4 +198,3 @@ Con los dos archivos ya en `resultados/`, cualquiera de los dos corre la agregac
 | `cv_pct` | coeficiente de variación, % |
 
 `resultados_agregados.csv` es directamente lo que va a la **tabla de resultados del artículo**, y la fuente de datos para la **gráfica** (dosis vs. intensidad de campo, una curva por posición/evento, con barras de error = IC95%) y para lo que se comente en Resultados y Discusión.
-

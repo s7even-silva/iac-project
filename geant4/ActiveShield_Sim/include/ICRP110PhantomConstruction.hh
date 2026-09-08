@@ -77,6 +77,7 @@ class ICRP110PhantomConstruction : public G4VUserDetectorConstruction
   ICRP110PhantomMessenger* fMessenger;
   G4GenericMessenger* fSpacecraftMessenger;
   G4String fFieldMapFile;
+  G4String fCoilGeometryFile;
   G4double fFieldScale = 1.;
   G4double fWorldHalfSize;
   G4double fHullThickness;

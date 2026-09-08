@@ -11,9 +11,9 @@ project(ICRPphantoms)
 #
 option(WITH_GEANT4_UIVIS "Build example with Geant4 UI and Vis drivers" ON)
 if(WITH_GEANT4_UIVIS)
-  find_package(Geant4 REQUIRED ui_all vis_all)
+  find_package(Geant4 REQUIRED gdml ui_all vis_all)
 else()
-  find_package(Geant4 REQUIRED)
+  find_package(Geant4 REQUIRED gdml)
 endif()
 
 #----------------------------------------------------------------------------

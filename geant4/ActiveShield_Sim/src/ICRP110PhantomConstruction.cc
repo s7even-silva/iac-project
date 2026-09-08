@@ -47,6 +47,8 @@
 #include "G4GenericMessenger.hh"
 #include "G4FieldBuilder.hh"
 #include "G4SubtractionSolid.hh"
+#include "G4GDMLParser.hh"
+#include "G4TessellatedSolid.hh"
 #include "TabulatedMagneticField.hh"
 #include <algorithm>
 #include <cmath>
@@ -81,6 +83,7 @@ ICRP110PhantomConstruction::ICRP110PhantomConstruction():
   hull.SetRange("thickness>0 && thickness<100");
   hull.SetStates(G4State_PreInit);
   fSpacecraftMessenger->DeclareProperty("fieldMap", fFieldMapFile).SetStates(G4State_PreInit);
+  fSpacecraftMessenger->DeclareProperty("coilGeometry", fCoilGeometryFile).SetStates(G4State_PreInit);
   auto& scale = fSpacecraftMessenger->DeclareProperty("fieldScale", fFieldScale);
   scale.SetParameterName("scale", false);
   scale.SetRange("scale>=0");
@@ -295,6 +298,53 @@ G4VPhysicalVolume* ICRP110PhantomConstruction::Construct()
   logicHull->SetVisAttributes(new G4VisAttributes(G4Colour(0.7, 0.7, 0.75, 0.15)));
   auto* logicShipInterior = new G4LogicalVolume(cabin, matAir, "ShipInterior");
   new G4PVPlacement(nullptr, {}, logicShipInterior, "ShipInterior", logicEnvelope, false, 0, true);
+
+  if (!fCoilGeometryFile.empty()) {
+    G4GDMLParser parser;
+    // Generated local GDML: no remote schema retrieval. Our flat-volume
+    // contract is checked below; material references are resolved by Geant4.
+    parser.Read(fCoilGeometryFile, false);
+    auto* imported = parser.GetWorldVolume()->GetLogicalVolume();
+    if (imported->GetName() != "coil_transport_world" || imported->GetNoDaughters() == 0)
+      G4Exception("ICRP110PhantomConstruction::Construct", "InvalidCoilGeometry",
+                  FatalException, "Expected nonempty coil_transport_world from field/mesh_to_gdml.py");
+    for (std::size_t i = 0; i < imported->GetNoDaughters(); ++i) {
+      auto* part = imported->GetDaughter(i);
+      auto* logical = part->GetLogicalVolume();
+      if (logical->GetNoDaughters() != 0 ||
+          !dynamic_cast<G4TessellatedSolid*>(logical->GetSolid()))
+        G4Exception("ICRP110PhantomConstruction::Construct", "InvalidCoilPart",
+                    FatalException, "Only flat tessellated material components are supported");
+      G4ThreeVector low, high;
+      logical->GetSolid()->BoundingLimits(low, high);
+      const auto rotation = part->GetObjectRotationValue();
+      const auto translation = part->GetObjectTranslation();
+      for (int corner = 0; corner < 8; ++corner) {
+        const auto point = rotation * G4ThreeVector(corner&1 ? high.x() : low.x(),
+            corner&2 ? high.y() : low.y(), corner&4 ? high.z() : low.z()) + translation;
+        for (int axis = 0; axis < 3; ++axis) {
+          if (std::abs(point[axis]) >= worldHalf[axis]-0.5*m)
+            G4Exception("ICRP110PhantomConstruction::Construct", "CoilOutsideEnvelope",
+                        FatalException, "Increase /spacecraft/worldHalfSize to contain imported coils");
+          if (fFieldMap && (point[axis] < fFieldMap->Minimum()[axis] ||
+                            point[axis] > fFieldMap->Maximum()[axis]))
+            G4Exception("ICRP110PhantomConstruction::Construct", "CoilOutsideMap",
+                        FatalException, "Field map must cover the imported coil geometry");
+        }
+      }
+      // Place components directly, NOT the GDML vacuum wrapper: inserting the
+      // wrapper would overlap the existing cabin and hull.
+      auto* placed = new G4PVPlacement(G4Transform3D(rotation, translation), logical,
+          part->GetName(), logicEnvelope, false, static_cast<G4int>(i), false);
+      if (placed->CheckOverlaps(10000, 0., true))
+        G4Exception("ICRP110PhantomConstruction::Construct", "CoilOverlap",
+                    FatalException, "Imported coil overlaps the habitat or another component");
+      G4cout << "Imported coil component: " << logical->GetName()
+             << "; material=" << logical->GetMaterial()->GetName()
+             << "; density [g/cm3]=" << logical->GetMaterial()->GetDensity()/(g/cm3)
+             << "; mass [kg]=" << logical->GetMass()/kg << G4endl;
+    }
+  }
 
   G4cout << "Spacecraft: outer radius [m]=" << shipRadius/m
          << "; outer length [m]=" << 2*shipHalfLength/m

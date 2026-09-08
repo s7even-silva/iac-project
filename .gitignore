@@ -77,3 +77,6 @@ venv/
 .idea/
 *.swp
 
+# Regenerable FEM/CAD conversion outputs; source geometries and material JSON stay tracked.
+/field/generated/
+/field/wheelhouse/

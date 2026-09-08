@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "length_unit": "m",
+  "elements": {
+    "Cu": {"Z": 29, "A": 63.546},
+    "Al": {"Z": 13, "A": 26.9815385}
+  },
+  "materials": {
+    "copper": {"density_g_cm3": 8.96, "mass_fractions": {"Cu": 1.0}},
+    "aluminium": {"density_g_cm3": 2.699, "mass_fractions": {"Al": 1.0}}
+  },
+  "groups": {"demo_winding": "copper", "demo_support": "aluminium"}
+}
