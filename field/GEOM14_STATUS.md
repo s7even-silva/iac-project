@@ -54,7 +54,127 @@ Geom14 mejora la composición YBCO respecto a Geom13. El informe no equivale a
 tener en el repositorio su CAD/CoilCad, todas las coordenadas, la ley de corriente
 y la composición lista para importar. Hay además una inconsistencia de unidades
 en §4.3: ocho espesores de 0,2 mm suman **1,6 mm**, no 1,6 µm; no adoptar ese
-valor textual como espesor sin resolver qué apilamiento describe.
+valor textual como espesor sin resolver qué apilamiento describe. **Confirmado
+por lectura directa del PDF (2026-09-08): esa contradicción está en el texto
+original de ARSSEM tal cual, sin errata ni corrección en ningún otro lugar del
+documento** — decidir con criterio propio cuál de los dos números usar (0,2 mm
+por capa está citado dos veces y es internamente consistente con "8 capas";
+1,6 µm aparece una sola vez y contradice esa multiplicación).
+
+### Qué está y qué no está explícitamente bajo el rótulo "Geom14" (verificado 2026-09-08)
+
+Lectura directa de ARSSEM confirma algo importante para no sobre-prometer
+reproducibilidad: **Geom14 no tiene figura propia** (a diferencia de Geom12,
+Geom13 y Geom15, que sí tienen Fig. 5.3/5.4/5.5) — se presenta únicamente en
+la Tabla 5.4 (p. 69, "*Geom014 with a 2, 4 and 8 T field for the 2 m ⌀ barrel
+solenoids*"), reutilizando la geometría de barrel de 2 m de diámetro y 12
+bobinas descrita en §4.3, sin repetir sus dimensiones de conjunto. La única
+frase del paper sobre qué distingue a Geom14 de Geom13 es literal y escueta:
+"*Geom14 with respect to Geom13 has a more accurate simulation of the
+composition of the YBCO tape*" — sin tabla de capas ni fracciones másicas.
+
+Explícitamente confirmados en el texto para el diseño DH de §4.3 (que Geom14
+hereda): diámetro de bobina **2 m**, **12 bobinas** en arreglo tipo Halbach,
+longitud de bobina **18 m** con meseta de campo de **10 m**, **8 capas** de
+cinta, ancho de cinta **50 mm**, capa YBCO activa **2 µm**, masa **0,040
+kg/m**, temperatura de operación **25 K**, campo perpendicular sobre el
+conductor **2,5–3 T**, Ic bajo esas condiciones **~10 000 A**. Geom14 es
+**paramétrico** sobre tres campos de barrel — 2 T, 4 T, 8 T (Tabla 5.4) —
+con BdL de **4 T·m** (2 T) y **16 T·m** (8 T) explícitos en el texto (el BdL
+de la columna 4 T no se declara literalmente); masa de barrel usada en la
+física del transporte (no la masa real del imán): **4833 kg** (BL=4 Tm) y
+**19 296 kg** (BL=16 Tm), Tabla 5.6; reducción de dosis anual equivalente en
+BFO frente a espacio libre: ~41% (2 T), ~42% (4 T), ~61% (8 T), Tabla 5.4.
+
+**No disponible en el paper para Geom14 específicamente** (no es que falte
+buscarlo — se confirmó su ausencia por lectura directa):
+- Si el arreglo lleva endcaps DH (como Geom12/13) o es únicamente barrel.
+- Separación entre las 12 bobinas y radio interior/exterior del conjunto.
+- Detalle capa-por-capa de la "composición más precisa" de la cinta YBCO que
+  distingue a Geom14 de Geom13 (sustrato, buffer, plata, cobre de
+  estabilización, con espesores y fracciones másicas).
+- Corriente de operación vinculada explícitamente a Geom14 (el único número
+  cercano, 36 000 A, aparece en una figura distinta —fuerzas axiales, Fig.
+  4.8— sin conexión textual clara a Geom14).
+- Estructura/crióstato específico de Geom14: el detalle de soporte, MLI y
+  criogenia con H₂ líquido vive en el capítulo 6, que describe el diseño
+  conceptual de misión genérico **sin usar el rótulo "Geom14" en ningún
+  momento** — no se puede confirmar que esos números (masa total del
+  escudo ≈46 300–48 200 kg, Tabla 6.1) apliquen exactamente a esta variante.
+
+En la práctica, "Geom14" en ARSSEM es una tabla de resultados de dosis
+construida sobre la geometría de barrel ya fijada en §4.3, no una ficha
+constructiva independiente y completa. Replicarlo con reproducibilidad
+literal no es posible solo con este paper — los vacíos de arriba son
+decisiones propias del equipo por documentar como tales, no errores de
+esta investigación.
+
+## Las cinco brechas de implementación, en orden de dependencia (2026-09-08)
+
+Cada una bloquea la siguiente; no tiene sentido saltar el orden sin invalidar
+el trabajo posterior. Los números del paper (sección de arriba) resuelven
+buena parte de la brecha 1; las brechas 2-5 son trabajo de código nuevo, no
+de investigación bibliográfica adicional.
+
+1. **Fijar los parámetros dimensionales reales.** `generate_dh.py` ya es
+   completamente paramétrico (acepta cualquier `radii_m`, `turns`,
+   `pitch_m`, `tilt_deg`, `current_A` vía JSON) — no hace falta escribir
+   código nuevo para esto, solo reemplazar los valores del piloto por los
+   reales, incluyendo las decisiones propias que el paper no cierra
+   (endcaps sí/no, separación entre bobinas, etc., ver sección de arriba).
+   **Bloqueante técnico:** `controls()` en `generate_dh.py` valida
+   invariantes geométricos entre parámetros (`r1 > 4*a`, `pitch > 4*a`,
+   etc.) — meter números reales de Geom14 sin ajustarlos juntos puede fallar
+   esa validación o crear autointersecciones en la CAD generada. No es
+   cambiar un número, es coordinar ~10 parámetros interdependientes hacia
+   un diseño geométricamente consistente.
+
+2. **Sustituir cobre circular por la cinta YBCO/CORC real (rectangular).**
+   El generador asume hoy sección transversal **circular**
+   (`conductor_radius_m`, barrida con `occ.addDisk(...)` en
+   `generate_dh.py`). Una cinta HTS real es plana y rectangular (50 mm ×
+   0,2 mm según §4.3) — hay que reemplazar el disco por un rectángulo
+   orientado con su ancho tangente a la dirección de arrollamiento, lo que
+   sí es una modificación real de `controls()`/`generate()`, no solo de
+   datos. Además el material deja de ser homogéneo: una cinta YBCO real es
+   un laminado multicapa (sustrato, buffer, YBCO, plata, cobre de
+   estabilización) — decidir si se homogeneiza a un material compuesto
+   (más barato, recomendado como primer paso, ya permitido por
+   `modelo_realista.md`) o se modelan capas separadas.
+
+3. **Configurar y ejecutar Elmer** (el paso de mayor esfuerzo nuevo;
+   confirmado que Elmer no está instalado en ningún entorno del proyecto
+   a la fecha). Piezas que faltan, todas nuevas:
+   - Dominio FEM de vacío alrededor de las bobinas (malla distinta de la
+     grilla de exportación que ya prepara `prepare_domain_sweep.py` — son
+     discretizaciones diferentes, ver `DOMAINS.md`).
+   - Densidad de corriente vectorial `J` siguiendo la trayectoria
+     helicoidal real en cada elemento del conductor, no una corriente
+     axial simplificada. El ejemplo oficial `mgdyn_steady_coils` de Elmer
+     es plantilla, no la solución de este imán.
+   - Solver magnetostático y verificación de convergencia.
+   - Exportador que remuestree la solución Elmer (en su malla FEM propia)
+     a la grilla regular que el lector de Geant4 ya implementado
+     (`MagneticFieldMap`/`TabulatedMagneticField`) espera.
+
+4. **Validar el campo Elmer contra Biot-Savart** lejos del conductor (donde
+   Biot-Savart es válido sin regularización), antes de confiar en el mapa
+   FEM. El flujo de auditoría ya existe en miniatura (`audit_dh.py` calcula
+   sondas de campo con el mismo `field_at()` de `compute_field.py`) — falta
+   aplicarlo al mapa Elmer real en vez del Biot-Savart regularizado actual.
+
+5. **Convergencia de dominio/malla, y solo entonces replicar a 12 bobinas.**
+   El pipeline ya sigue el orden correcto (una bobina primero, ver
+   `DOMAINS.md`) — expandir a las 12 bobinas de Geom14 es repetición y
+   transformación geométrica del mismo generador una vez validados los
+   pasos 1-4, no una reescritura. Replicar antes de validar multiplicaría
+   el costo de mallado/Elmer y propagaría cualquier error de diseño doce
+   veces en vez de una.
+
+El lado de Geant4 (importar GDML + leer un mapa de campo tabulado) ya está
+completo y probado (`/spacecraft/coilGeometry`, `TabulatedMagneticField`) —
+toda la brecha real está en generar los datos de Geom14 que Geant4 va a
+consumir, no en la integración con Geant4 en sí.
 
 ## Valores que sí ejecuta el código hoy
 
@@ -83,6 +203,14 @@ Evaluar su distribución y `∫B_perp ds` en trayectorias representativas, adem�
 la respuesta radiológica. Propongo **el caso de referencia de 2 T / 4 T·m** como
 primer objetivo de comparación con ARSSEM; todavía no se ha dimensionado un
 devanado que lo produzca. No significa 2 T uniformes en la cabina ni en todo World.
+**Confirmado por lectura directa (2026-09-08):** ARSSEM sí evalúa exactamente
+el par 2 T / 4 T·m para Geom14 (Tabla 5.4, ~41% de reducción de dosis anual
+equivalente en BFO frente a espacio libre), junto con 4 T y 8 T (este último
+con 16 T·m explícito; el BdL de la columna 4 T no aparece declarado en el
+texto). Elegir 2 T/4 T·m como primer objetivo es entonces comparar contra
+el caso *más conservador* de los tres que reporta el paper, no el único
+disponible — subir a 8 T/16 T·m casi duplica la reducción de dosis reportada
+(~61%) a costa de más masa de barrel (19 296 kg vs. 4833 kg, Tabla 5.6).
 
 Se deben informar por separado:
 
