@@ -2,7 +2,7 @@
 
 Fuente de datos activa hoy para los 6 CSV de espectro (GCR y SEP, ambas
 fases solares). Ver `docs/checklist_espectros_reales.md` para el
-procedimiento completo de exportación desde SPENVIS, y `CLAUDE.md` (raíz
+procedimiento completo de exportación desde SPENVIS, y `AGENTS.md` (raíz
 del repo) para el porqué de esta elección (OLTARIS quedó bloqueado sin
 fecha de aprobación).
 

@@ -46,7 +46,7 @@ validado en este repo:
   el campo magnético.
 - El fantoma (`phantomContainer`) cuelga de `ShipInterior`, centrado en el
   eje del cilindro a media longitud (posición fija, sin barrido — decisión
-  de equipo ya tomada, ver `CLAUDE.md`). El eje Z del cilindro coincide con
+  de equipo ya tomada, ver `AGENTS.md`). El eje Z del cilindro coincide con
   el eje "de pie" del cuerpo (altura ≈1.78 m para el fantoma completo,
   calculada de 222 vóxeles × 8 mm en Z) — el fantoma queda de pie a lo largo
   del eje de la nave sin necesidad de rotarlo.
@@ -134,7 +134,7 @@ se espera físicamente al agregar un blindaje pasivo de por medio).
         punto 1 de la geometría (bobinas reales + campo no uniforme en vez
         del placeholder uniforme) — lo que cambia es solo cuánta "novedad
         nativa" se puede reclamar en el punto 6 (ver tabla de seguimiento
-        en `CLAUDE.md`): con campo importado, el diferenciador real pasa a
+        en `AGENTS.md`): con campo importado, el diferenciador real pasa a
         depender más del scorer de fluencia sobre el conductor que de cómo
         se calculó el campo.
 
@@ -219,7 +219,7 @@ se espera físicamente al agregar un blindaje pasivo de por medio).
 ## Cómo compilar y correr
 
 Mismo entorno y mismo workaround de compilador que `GCR_SEP_Sim` (ver
-`CLAUDE.md` en la raíz del repo):
+`AGENTS.md` en la raíz del repo):
 
     cd geant4/ActiveShield_Sim
     mkdir -p build && cd build

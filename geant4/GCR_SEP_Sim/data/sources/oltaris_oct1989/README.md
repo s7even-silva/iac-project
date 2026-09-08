@@ -2,7 +2,7 @@
 
 Carpeta preparada para activar esta fuente en cuanto se apruebe el acceso a
 OLTARIS (bloqueado sin fecha estimada al momento de escribir esto — ver
-`CLAUDE.md`, sección de decisiones pendientes). Mientras tanto queda vacía
+`AGENTS.md`, sección de decisiones pendientes). Mientras tanto queda vacía
 (el `.gitkeep` es solo para que la carpeta exista en git).
 
 ## Por qué esta fuente, y en qué difiere de SPENVIS/ESP-PSYCHIC
@@ -17,7 +17,7 @@ a los cuatro `gcr_*`.
 
 Conceptualmente son el mismo tipo de cantidad (fluencia de UN evento
 puntual, no una tasa continua), así que la fórmula de normalización de
-dosis ya diseñada para SEP en `CLAUDE.md`
+dosis ya diseñada para SEP en `AGENTS.md`
 (`dosis_Gy_del_evento = dosis_sim × (fluencia_evento × área_fuente) / N`,
 sin factor de tiempo) aplica sin cambios conceptuales — solo cambia qué
 número entra como fluencia del evento.

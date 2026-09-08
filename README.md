@@ -1,5 +1,9 @@
 # IAC 2026
 
+Las instrucciones y decisiones del proyecto se mantienen en [AGENTS.md](AGENTS.md).
+`CLAUDE.md` importa ese archivo mediante `@AGENTS.md` para que Claude Code
+cargue las mismas instrucciones sin duplicar su contenido.
+
 ## Entorno de simulación
 
     conda env create -f environment.yml
@@ -61,7 +65,7 @@ Ambos deben partir exactamente del mismo código:
     git pull
     git log -1 --oneline   # confirmar que las dos personas ven el mismo commit
 
-Y compilar con el mismo comando (ver nota en `CLAUDE.md` sobre el workaround de compilador — `$CXX` no sirve en `geant4_env`, hay que usar `g++` + `CMAKE_PREFIX_PATH`).
+Y compilar con el mismo comando (ver nota en `AGENTS.md` sobre el workaround de compilador — `$CXX` no sirve en `geant4_env`, hay que usar `g++` + `CMAKE_PREFIX_PATH`).
 
 Medido en una laptop de gama baja: una corrida de 10000 eventos tarda entre **~2 y ~10 segundos** según la combinación (campo/posición). Con eso, 350 corridas por persona toman entre **~15 y ~60 minutos** — sobra tiempo dentro de una ventana de 4 días incluso con poder de cómputo bajo, así que **no hace falta bajar `--n-events`**. Si en su hardware resulta mucho más lento, midan con un piloto chico antes de lanzar todo:
 
@@ -98,7 +102,7 @@ Por eso hay que usar la **misma fecha de calendario** en los dos modelos (ambos 
 
 Con esto, el resultado esperado es que **la dosis de GCR salga mayor en `min` que en `max`, y la dosis de SEP salga mayor en `max` que en `min`** — es física real del ciclo solar, no un error si se da así; coméntenlo en la Discusión del artículo.
 
-Aplicación en cada modelo (**ambos en SPENVIS** — se descartó OLTARIS/Badhwar-O'Neill porque la aprobación de la cuenta quedó pendiente sin tiempo estimado; ver `CLAUDE.md`):
+Aplicación en cada modelo (**ambos en SPENVIS** — se descartó OLTARIS/Badhwar-O'Neill porque la aprobación de la cuenta quedó pendiente sin tiempo estimado; ver `AGENTS.md`):
 - **ISO-15390 (GCR)**: el formulario pide una fecha específica directamente (SPENVIS la convierte internamente a potencial de modulación solar) — usar las fechas de la tabla de arriba.
 - **ESP-PSYCHIC (SEP)**: la fecha de inicio de misión (o el "offset en el ciclo solar" en modo avanzado) se fija con estas mismas fechas — mantener la misma duración de misión y nivel de confianza entre la corrida `max` y la `min` (ver [`docs/checklist_espectros_reales.md`](geant4/GCR_SEP_Sim/docs/checklist_espectros_reales.md)).
 
@@ -107,7 +111,7 @@ Aplicación en cada modelo (**ambos en SPENVIS** — se descartó OLTARIS/Badhwa
 Si más adelante se aprueba OLTARIS y se decide usar el evento histórico de
 octubre de 1989 en vez del "Worst Case Event" probabilístico de ESP-PSYCHIC
 para SEP (son conceptualmente distintos — un evento medido real vs. un
-percentil estadístico sobre la duración de misión; ver `CLAUDE.md` para la
+percentil estadístico sobre la duración de misión; ver `AGENTS.md` para la
 discusión completa de por qué no son intercambiables sin más), el cambio es
 barato porque el pipeline ya está separado en capas:
 
@@ -134,7 +138,7 @@ barato porque el pipeline ya está separado en capas:
   nuevos — `CMakeLists.txt` copia `data/` a `build/data/` en la fase de
   configuración de CMake, no en cada compilación.
 - Lo único que no es "gratis": la normalización de dosis absoluta en
-  `RunAction.cc` (pendiente de implementar, ver `CLAUDE.md`) y el párrafo
+  `RunAction.cc` (pendiente de implementar, ver `AGENTS.md`) y el párrafo
   de Métodos del artículo, que sí cambian de contenido según la fuente
   (aunque la fórmula conceptual para SEP —fluencia de un evento puntual,
   sin factor de tiempo— es la misma para ESP-PSYCHIC y para Oct-1989).

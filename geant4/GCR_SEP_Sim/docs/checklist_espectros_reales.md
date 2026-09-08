@@ -51,7 +51,7 @@ Sin cambios respecto a antes.
 
 Nuestro estudio compara **eventos** de radiación (GCR/SEP máximo y mínimo como severidad instantánea de un evento), no la dosis acumulada de una misión completa de varios años. "Worst Case Event" te da la fluencia de un único evento SEP severo — el equivalente conceptual a "GCR en fase de máximo solar" — mientras que "Total Fluence" suma todos los eventos de toda la misión, que es una pregunta distinta (dosis acumulada de misión larga). Si tienen dudas sobre esto al momento de correrlo, avísenme antes de exportar — cambiar de opinión después implica volver a correr el modelo.
 
-Con "Worst Case Event" la interpretación de dosis queda como **dosis aguda de un evento puntual** (no "por día"), consistente con lo que se anota en `RunAction.cc` — ver `CLAUDE.md`.
+Con "Worst Case Event" la interpretación de dosis queda como **dosis aguda de un evento puntual** (no "por día"), consistente con lo que se anota en `RunAction.cc` — ver `AGENTS.md`.
 
 ---
 
