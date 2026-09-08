@@ -6,6 +6,14 @@ geométrica y la importación de componentes de prueba ya están implementadas.
 
 ## Conversión y entorno implementados (2026-09-08)
 
+Actualización de desarrollo: `field/generate_dh.py` añade un circuito Double
+Helix de ensayo; `compute_field.py`, un mapa Biot–Savart regularizado de referencia.
+No son el ensamblaje Geom14 ni una solución Elmer. La secuencia reproducible está
+en la [guía del campo](../../../field/README.md); la propuesta 2A/4A/8A,
+sus macros/costes y verificaciones con fuentes están en
+[dominios y ruta Geom14](../../../field/DOMAINS.md). El planificador no ejecuta
+el muestreo por bins ni demuestra convergencia automáticamente.
+
 `field/` contiene el generador de malla y el conversor a GDML, con un JSON
 explícito de elementos, densidades y fracciones másicas por grupo de volúmenes.
 Se extraen superficies cerradas de tetraedros lineales y se conservan piezas
@@ -229,7 +237,7 @@ Polietileno es un candidato por su contenido en hidrógeno, no un reemplazo
 automático del casco estructural.
 [Investigación NASA](https://techport.nasa.gov/projects/88568).
 
-Propuesta de matriz (todavía no implementada; las bobinas también faltan):
+Propuesta de matriz (todavía no implementada; falta el ensamblaje de bobinas real):
 
 | Caso | Casco | Bobinas/material | Campo | Capa pasiva adicional |
 |---|---|---|---|---|

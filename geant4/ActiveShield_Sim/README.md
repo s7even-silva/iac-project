@@ -21,6 +21,11 @@ conservado en `README_ICRP110_original.md`; datos descargados durante CMake.
   conversión de mallas tetraédricas de Gmsh a componentes GDML con materiales,
   y su carga mediante `/spacecraft/coilGeometry`. Ejemplo Cu/Al y entorno
   Python reproducible en [field/README.md](../../field/README.md).
+- Piloto DH paramétrico con retornos cerrados y mapa Biot–Savart de referencia:
+  secuencia en esa misma guía. Alcance, materiales pendientes de Geom14 y
+  preparación reproducible del ensayo 2A/4A/8A en
+  [verificación de dominios](../../field/DOMAINS.md). Es un ensayo de desarrollo,
+  no una configuración radiológica de producción.
 - El equipo decidió **bins de energía + reponderación**, sustituyendo el
   muestreo continuo para la producción de este proyecto. GPS ya permite
   energías monoenergéticas; faltan el orquestador por bins, su estadística

@@ -3,9 +3,85 @@
 Estado 2026-09-08: **conversión implementada y probada de extremo a extremo**.
 El ejemplo es un anillo de cobre y un soporte de aluminio situados fuera del
 hábitat. No representa una bobina Double Helix, REBCO, Geom14 ni un diseño
-aceptado del imán. No calcula campo ni prescribe corrientes.
+aceptado del imán. Ese ejemplo no calcula campo ni prescribe corrientes.
+Ahora existe además un **piloto Double Helix paramétrico**, con circuito cerrado,
+CAD y campo de referencia Biot–Savart regularizado. No es todavía Geom14 ni
+una solución Elmer. Ver [alcance, fuentes y plan de dominios](DOMAINS.md).
+
+## Secuencia nueva: Double Helix de ensayo
+
+Ejecutar desde la raíz, tras preparar el entorno indicado abajo:
+
+```bash
+# 1. JSON de parámetros → CAD, fuente Gmsh, materiales y recorrido de corriente.
+field/.venv/bin/python field/generate_dh.py \
+  field/examples/dh_pilot.json field/generated/dh
+
+# 2. CAD → malla tetraédrica del conductor (puede tardar).
+field/.venv/bin/python field/generate_mesh.py \
+  field/generated/dh/dh.geo field/generated/dh/dh.msh \
+  --dependency field/generated/dh/dh.brep \
+  --dependency field/examples/dh_pilot.json
+
+# 3. Malla + materiales → geometría transportable por Geant4.
+field/.venv/bin/python field/mesh_to_gdml.py \
+  field/generated/dh/dh.msh field/generated/dh/materials.json \
+  field/generated/dh/dh.gdml
+
+# 4. Recorrido + corriente → mapa de referencia en tesla.
+field/.venv/bin/python field/compute_field.py \
+  field/generated/dh/current_path.json field/generated/dh/dh.map \
+  --half-size 6 --spacing 0.5
+
+# 5. Preparar la propuesta de convergencia, sin lanzar mapas ni eventos.
+field/.venv/bin/python field/prepare_domain_sweep.py \
+  field/generated/dh/current_path.json field/generated/domain_study \
+  --enclosing-radius 10 --spacing 0.5
+```
+
+El paso 4 usa la curva del paso 1 y puede ejecutarse independientemente de 2–3.
+No calcula B a partir del GDML ni del material cobre. Los 0.5 m son una grilla
+gruesa para comprobar el flujo, **no resolución aceptada para producción**.
+El radio A=10 m del paso 5 ilustra 20/40/80 m; no es una dimensión adoptada.
+Revisar `domain_plan.json` antes de ejecutar `bash .../generate_maps.sh`:
+los mapas que excedan un millón de nodos requieren aumentar explícitamente
+`--max-points` en el comando, una vez revisados almacenamiento y tiempo.
+
+En los manifiestos quedan hashes y parámetros. Comparar el volumen CAD de
+`current_path.json` con volumen/masa de `dh.manifest.json`; refinar la malla
+si la discrepancia no cumple el presupuesto de error acordado. Refinar también
+`control_points_per_turn` (curva CAD) y `field_segments` (integración del campo).
+El mallado exitoso no sustituye el chequeo de solapamientos en Geant4.
+
+Validación del piloto en el entorno fijado: 13 pruebas Python aprobadas, incluida
+espira circular analítica, signo de corriente, cierre del circuito, coherencia
+del volumen CAD y orden de escritura del mapa. Dos generaciones CAD produjeron
+BREP idéntico en este entorno. El ejemplo mallado produce 119558 triángulos
+exteriores, volumen 0.01037638 m³ y masa de cobre 92.9723 kg frente a
+0.01070421 m³ de CAD (**3.06% de diferencia**). Es una tolerancia de ensayo,
+no aceptación para Geom14; habrá que refinar curvatura/tamaño y comparar masas.
+La macro `field/examples/import_dh.mac` carga ambos archivos y lanza un geantino
+para comprobar navegación; no mide deflexión magnética ni dosis.
+Probada con Geant4 11.4.2: campo global leído, pieza de 92.9723 kg importada sin
+solapamientos detectados, y geantino entrando en `coil_placement_1` y saliendo
+de nuevo al vacío. Ejecutarla desde `geant4/ActiveShield_Sim/build` con
+`./ICRP110phantoms ../../../field/examples/import_dh.mac`.
+
+**Elmer es el siguiente paso electromagnético pendiente**, no un comando oculto
+de esta secuencia. Faltan dominio exterior FEM, J volumétrica, solver y exportador
+de su solución; el mapa de referencia permite desarrollar y comprobar esas piezas.
 
 ## Entorno Python aislado
+
+**Por qué un venv separado y no instalar esto en `geant4_env`:** el entorno
+conda de Geant4 ya tiene versiones fijadas y sensibles (11.4.2, con su propio
+historial de problemas de toolchain documentado en `AGENTS.md`/`README.md`
+raíz). Mezclar ahí las dependencias de mallado (Gmsh, NumPy, y lo que
+requiera Elmer más adelante) arriesga romper esa instalación por conflictos
+de versión, sin ningún beneficio a cambio: `field/` y Geant4 no comparten
+imports de Python en tiempo de ejecución, solo intercambian archivos
+(GDML, mapas de campo) por disco. Aislarlos en un venv propio, con versión
+de Python fijada aparte (3.13.5), evita ese riesgo por completo.
 
 Desde la raíz del repositorio, con Python 3.13 (validado con **3.13.5**):
 
