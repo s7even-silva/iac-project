@@ -39,6 +39,8 @@
 #include "globals.hh"
 #include <map>
 #include <memory>
+#include <vector>
+#include <utility>
 
 class G4VPhysicalVolume;
 class ICRP110PhantomMaterial_Female;
@@ -68,6 +70,7 @@ class ICRP110PhantomConstruction : public G4VUserDetectorConstruction
 
      void SetPhantomSex(G4String);
      void SetPhantomSection(G4String);
+     void AddPassiveLayer(G4String material, G4double thicknessCm);
 
  private:
   void ReadPhantomData(const G4String& sex, const G4String& section);
@@ -81,6 +84,7 @@ class ICRP110PhantomConstruction : public G4VUserDetectorConstruction
   G4double fFieldScale = 1.;
   G4double fWorldHalfSize;
   G4double fHullThickness;
+  std::vector<std::pair<G4String, G4double>> fPassiveLayers;
   std::shared_ptr<const MagneticFieldMap> fFieldMap;
  // std::vector<G4Material*> fMaterials;
   G4VPhysicalVolume* fMotherVolume;

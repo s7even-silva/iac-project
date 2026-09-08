@@ -12,6 +12,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from generate_mesh import generate
+from audit_dh import mesh_volume
 from mesh_to_gdml import boundary, convert, load_config, sha256
 
 
@@ -57,6 +58,7 @@ class ConversionTests(unittest.TestCase):
     def test_materials_curved_shape_mass_and_determinism(self):
         report = self.run_conversion(self.config)
         self.assertEqual(len(report['components']), 2)
+        self.assertAlmostEqual(mesh_volume(self.mesh), sum(c['volume_m3'] for c in report['components']), places=10)
         components = {c['group']: c for c in report['components']}
         self.assertAlmostEqual(components['demo_support']['mass_kg'], .2*1.2*.1*2699, places=7)
         expected = 2*math.pi**2*.4*.07**2

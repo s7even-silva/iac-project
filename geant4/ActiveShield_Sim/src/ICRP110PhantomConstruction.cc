@@ -82,6 +82,10 @@ ICRP110PhantomConstruction::ICRP110PhantomConstruction():
   hull.SetParameterName("thickness", false);
   hull.SetRange("thickness>0 && thickness<100");
   hull.SetStates(G4State_PreInit);
+  fSpacecraftMessenger->DeclareMethod("addPassiveLayerCm",
+      &ICRP110PhantomConstruction::AddPassiveLayer,
+      "Append outside hull, inner to outer: G4_Al|G4_POLYETHYLENE thickness_in_cm")
+      .SetStates(G4State_PreInit);
   fSpacecraftMessenger->DeclareProperty("fieldMap", fFieldMapFile).SetStates(G4State_PreInit);
   fSpacecraftMessenger->DeclareProperty("coilGeometry", fCoilGeometryFile).SetStates(G4State_PreInit);
   auto& scale = fSpacecraftMessenger->DeclareProperty("fieldScale", fFieldScale);
@@ -90,6 +94,17 @@ ICRP110PhantomConstruction::ICRP110PhantomConstruction():
   scale.SetStates(G4State_PreInit);
   // Register field accuracy commands before /run/initialize; setup is thread local.
   G4FieldBuilder::Instance();
+}
+
+void ICRP110PhantomConstruction::AddPassiveLayer(G4String material, G4double thicknessCm)
+{
+  if ((material != "G4_Al" && material != "G4_POLYETHYLENE") ||
+      !std::isfinite(thicknessCm) || thicknessCm <= 0.) {
+    G4Exception("AddPassiveLayer", "InvalidPassiveLayer", FatalErrorInArgument,
+                "Expected G4_Al|G4_POLYETHYLENE positive_thickness_in_cm");
+    return;
+  }
+  fPassiveLayers.emplace_back(material, thicknessCm*cm);
 }
 
 ICRP110PhantomConstruction::~ICRP110PhantomConstruction()
@@ -298,6 +313,38 @@ G4VPhysicalVolume* ICRP110PhantomConstruction::Construct()
   logicHull->SetVisAttributes(new G4VisAttributes(G4Colour(0.7, 0.7, 0.75, 0.15)));
   auto* logicShipInterior = new G4LogicalVolume(cabin, matAir, "ShipInterior");
   new G4PVPlacement(nullptr, {}, logicShipInterior, "ShipInterior", logicEnvelope, false, 0, true);
+
+  // Optional closed shells, ordered from the hull outward. No layers by default.
+  G4double passiveRadius = shipRadius, passiveHalfLength = shipHalfLength;
+  for (std::size_t i = 0; i < fPassiveLayers.size(); ++i) {
+    const auto& [materialName, thickness] = fPassiveLayers[i];
+    auto name = G4String("PassiveLayer_") + std::to_string(i);
+    const G4ThreeVector outerHalf(passiveRadius+thickness, passiveRadius+thickness,
+                                  passiveHalfLength+thickness);
+    for (int axis = 0; axis < 3; ++axis) {
+      if (outerHalf[axis] >= worldHalf[axis]-0.5*m ||
+          (fFieldMap && (fFieldMap->Minimum()[axis] >= -outerHalf[axis] ||
+                         fFieldMap->Maximum()[axis] <= outerHalf[axis])))
+        G4Exception("Construct", "PassiveOutsideDomain", FatalException,
+                    "Enlarge world/map to enclose all passive layers");
+    }
+    auto* inner = new G4Tubs(name+"Inner", 0., passiveRadius, passiveHalfLength, 0., 360.*deg);
+    passiveRadius += thickness;
+    passiveHalfLength += thickness;
+    auto* outer = new G4Tubs(name+"Outer", 0., passiveRadius, passiveHalfLength, 0., 360.*deg);
+    auto* solid = new G4SubtractionSolid(name, outer, inner);
+    auto* material = nist->FindOrBuildMaterial(materialName);
+    auto* logical = new G4LogicalVolume(solid, material, name);
+    auto* placed = new G4PVPlacement(nullptr, {}, logical, name, logicEnvelope, false,
+                                    static_cast<G4int>(i), false);
+    if (placed->CheckOverlaps(10000, 0., true))
+      G4Exception("Construct", "PassiveOverlap", FatalException, "Passive layer overlaps geometry");
+    logical->SetVisAttributes(new G4VisAttributes(G4Colour(0.2, 0.7, 0.3, 0.25)));
+    G4cout << "Passive layer " << i << ": " << materialName
+           << "; thickness [cm]=" << thickness/cm
+           << "; normal areal density [g/cm2]=" << material->GetDensity()*thickness/(g/cm2)
+           << "; mass [kg]=" << logical->GetMass()/kg << G4endl;
+  }
 
   if (!fCoilGeometryFile.empty()) {
     G4GDMLParser parser;

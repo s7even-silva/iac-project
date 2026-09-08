@@ -31,6 +31,11 @@ fuentes y pendientes en
 [decisiones del modelo](geant4/ActiveShield_Sim/docs/modelo_realista.md).
 
 **Implementado:**
+- Piloto `field/generate_dh.py`: Double Helix cerrado y paramétrico, CAD y
+  recorrido de corriente común; cobre circular de ensayo, no cinta YBCO/Geom14.
+  `compute_field.py` genera una referencia Biot–Savart regularizada, no FEM ni
+  campo válido dentro del devanado. `prepare_domain_sweep.py` prepara 2A/4A/8A
+  con costes y macros PreInit. Alcance y criterios en [field/DOMAINS.md](field/DOMAINS.md).
 - Conversión `field/generate_mesh.py` → `.msh` → `field/mesh_to_gdml.py`
   → GDML con componentes y materiales separados. Requiere tetraedros de
   primer orden y grupos físicos con asignación explícita en JSON.
@@ -87,8 +92,9 @@ fuentes y pendientes en
 **Propuestas y pendientes (no decisiones finales):**
 - El usuario indica un plan previo de 12 bobinas. Geom14 de ARSSEM es la
   recomendación inicial; el arreglo exacto, materiales, dimensiones, vueltas,
-  corriente y límites críticos del conductor siguen por definir. Bobinas y
-  mapa físico **todavía no implementados**.
+  corriente y límites críticos del conductor siguen por definir. El circuito DH
+  de ensayo y su mapa de referencia existen; el ensamblaje Geom14 y su campo
+  físico validado **todavía no están implementados**.
 - Comparación pasiva adicional reevaluada: A nave sola, B nave+material de
   bobinas sin campo, C con campo, D nave+capa pasiva, E híbrido opcional.
   No se ha añadido aún la capa ni una interfaz de escenarios.
