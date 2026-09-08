@@ -112,27 +112,25 @@ Si van a dejar el barrido corriendo desatendido en una máquina remota (por ejem
 - **GCR**: el flujo es **más alto en mínimo solar** (menos viento solar blindeando la heliosfera) y más bajo en máximo solar.
 - **SEP**: los eventos grandes son **más frecuentes/severos en máximo solar**, casi no ocurren en mínimo.
 
-Por eso hay que usar la **misma fecha de calendario** en los dos modelos (ambos en SPENVIS: ISO-15390 para GCR, ESP-PSYCHIC para SEP) para cada fase, así el parámetro significa lo mismo en los dos casos:
+Para GCR esto se traduce directo en periodos históricos de mínimo/máximo solar (ver checklist). Para SEP no hay una fase continua que fechar — se usan dos **eventos históricos puntuales** distintos, elegidos por severidad (ver más abajo y el checklist para la comparación de fluencia):
 
-| Fase | Fecha de referencia | Por qué |
+| Fase | GCR (periodo) | SEP (evento histórico) |
 |---|---|---|
-| `min` | **enero 2020** | El mínimo solar del ciclo 24→25 fue en diciembre 2019 (fecha oficial NASA/NOAA); enero 2020 cae justo después. |
-| `max` | **enero 2024** (o cualquier fecha entre 2024 y 2025) | Ventana de máximo del ciclo 25 observada/estimada por NASA/NOAA (aprox. enero 2024 – julio 2025). |
+| `min` | Mínimo solar del ciclo 24→25 (oficial NASA/NOAA: diciembre 2019) | **Febrero 1956, ajuste LaRC** — el más pequeño de los eventos catalogados en OLTARIS con dato comparable |
+| `max` | Ventana de máximo del ciclo 25 (NASA/NOAA: aprox. enero 2024 – julio 2025) | **Octubre 1989** — peor caso estándar en el rango 5-100 MeV |
 
 Con esto, el resultado esperado es que **la dosis de GCR salga mayor en `min` que en `max`, y la dosis de SEP salga mayor en `max` que en `min`** — es física real del ciclo solar, no un error si se da así; coméntenlo en la Discusión del artículo.
 
-Aplicación en cada modelo (**ambos en SPENVIS** — se descartó OLTARIS/Badhwar-O'Neill porque la aprobación de la cuenta quedó pendiente sin tiempo estimado; ver `AGENTS.md`):
-- **ISO-15390 (GCR)**: el formulario pide una fecha específica directamente (SPENVIS la convierte internamente a potencial de modulación solar) — usar las fechas de la tabla de arriba.
-- **ESP-PSYCHIC (SEP)**: la fecha de inicio de misión (o el "offset en el ciclo solar" en modo avanzado) se fija con estas mismas fechas — mantener la misma duración de misión y nivel de confianza entre la corrida `max` y la `min` (ver [`docs/checklist_espectros_reales.md`](geant4/GCR_SEP_Sim/docs/checklist_espectros_reales.md)).
+Aplicación (**ambos modelos vía OLTARIS** desde 2026-09-08, al aprobarse el acceso — reemplaza el plan intermedio con SPENVIS, que queda como plan B):
+- **Badhwar-O'Neill 2020 (GCR)**: OLTARIS ofrece directamente el selector de periodo histórico de mínimo/máximo solar.
+- **Historical SPE (SEP)**: catálogo de eventos puntuales con checkbox + factor de multiplicación (dejar en 1.0) — no un modelo probabilístico como ESP-PSYCHIC. Paso crítico: el toggle "Save external differential flux for space environment?" debe estar en "Sí" (ver [`docs/checklist_espectros_reales.md`](geant4/GCR_SEP_Sim/docs/checklist_espectros_reales.md) para el detalle completo y por qué se descartó usar "sin evento" para el mínimo).
 
-### 0.6. Cambiar de fuente de espectros (SPENVIS ↔ evento histórico Oct-1989 vía OLTARIS, u otra)
+### 0.6. Cambiar de fuente de espectros (OLTARIS ↔ SPENVIS, u otra)
 
-Si más adelante se aprueba OLTARIS y se decide usar el evento histórico de
-octubre de 1989 en vez del "Worst Case Event" probabilístico de ESP-PSYCHIC
-para SEP (son conceptualmente distintos — un evento medido real vs. un
-percentil estadístico sobre la duración de misión; ver `AGENTS.md` para la
-discusión completa de por qué no son intercambiables sin más), el cambio es
-barato porque el pipeline ya está separado en capas:
+El cambio de SPENVIS a OLTARIS del 2026-09-08 ya se hizo (ver arriba); esta
+sección documenta el mecanismo general por si hace falta volver a cambiar
+de fuente más adelante. El cambio es barato porque el pipeline ya está
+separado en capas:
 
 - `SpectrumSampler` (el código C++ que lee el CSV y muestrea energías) es
   **agnóstico a la fuente** — solo espera dos columnas (energía, flujo), sin
@@ -140,18 +138,17 @@ barato porque el pipeline ya está separado en capas:
   No hay que tocar ni una línea de `SpectrumSampler.cc`/`.hh` ni de
   `PrimaryGeneratorAction.cc` para cambiar de fuente.
 - Cada fuente vive en su propia carpeta bajo
-  `geant4/GCR_SEP_Sim/data/sources/<fuente>/` (hoy: `spenvis/`, y
-  `oltaris_oct1989/` preparada con su propio README para cuando se llene).
+  `geant4/GCR_SEP_Sim/data/sources/<fuente>/` (hoy: `oltaris/`, activa desde
+  2026-09-08 — cubre GCR y SEP; `spenvis/` conservada como plan B).
   `data/*.csv` (sin la subcarpeta `sources/`) es solo el **destino activo**
   — no se versiona en git (ver `.gitignore`), se regenera con:
 
       cd geant4/GCR_SEP_Sim
-      python3 scripts/select_spectrum_source.py spenvis            # fuente activa hoy
-      python3 scripts/select_spectrum_source.py oltaris_oct1989     # cuando este lista
+      python3 scripts/select_spectrum_source.py oltaris   # fuente activa hoy
+      python3 scripts/select_spectrum_source.py spenvis   # plan B
 
-  (`--only sep_proton_solarmax.csv sep_proton_solarmin.csv` si solo se
-  quiere cambiar SEP y dejar GCR en SPENVIS — es la combinación más probable
-  dado que Oct-1989 es un evento SEP, no tiene componente GCR).
+  (`--only <archivo...>` si se quiere mezclar fuentes por especie/fase —
+  usar con cuidado, revisar bien Métodos si se hace).
 - Después de cambiar de fuente hay que volver a correr `cmake ..` dentro de
   `build/` (no basta con `make -j`) para que el build recoja los CSV
   nuevos — `CMakeLists.txt` copia `data/` a `build/data/` en la fase de
@@ -160,7 +157,7 @@ barato porque el pipeline ya está separado en capas:
   `RunAction.cc` (pendiente de implementar, ver `AGENTS.md`) y el párrafo
   de Métodos del artículo, que sí cambian de contenido según la fuente
   (aunque la fórmula conceptual para SEP —fluencia de un evento puntual,
-  sin factor de tiempo— es la misma para ESP-PSYCHIC y para Oct-1989).
+  sin factor de tiempo— es la misma para cualquier evento histórico).
 
 ### 1. Correr el barrido asignado
 
