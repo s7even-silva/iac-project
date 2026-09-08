@@ -4,6 +4,18 @@ Las instrucciones y decisiones del proyecto se mantienen en [AGENTS.md](AGENTS.m
 `CLAUDE.md` importa ese archivo mediante `@AGENTS.md` para que Claude Code
 cargue las mismas instrucciones sin duplicar su contenido.
 
+## Estado de producción
+
+`geant4/ActiveShield_Sim` es el proyecto del modelo realista: exterior en vacío,
+casco de referencia Al de 1.5 cm, envolvente para bobinas externas y lector de
+campo global. Las bobinas y el mapa físico aún faltan. **El equipo ya decidió
+simular por bins de energía y reponderar**, no usar el barrido continuo del
+piloto como producción. Véanse [estado e interfaces](geant4/ActiveShield_Sim/README.md)
+y [decisiones y justificación](geant4/ActiveShield_Sim/docs/modelo_realista.md).
+
+El barrido de 140 combinaciones y las instrucciones de reparto que siguen
+corresponden únicamente a `GCR_SEP_Sim`, conservado como piloto de referencia.
+
 ## Entorno de simulación
 
     conda env create -f environment.yml

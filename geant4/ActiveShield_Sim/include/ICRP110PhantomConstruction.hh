@@ -38,11 +38,14 @@
 #include "G4VUserDetectorConstruction.hh"
 #include "globals.hh"
 #include <map>
+#include <memory>
 
 class G4VPhysicalVolume;
 class ICRP110PhantomMaterial_Female;
 class ICRP110PhantomMaterial_Male;
 class G4Material;
+class G4GenericMessenger;
+class MagneticFieldMap;
 
 class ICRP110PhantomConstruction : public G4VUserDetectorConstruction
 {
@@ -50,6 +53,7 @@ class ICRP110PhantomConstruction : public G4VUserDetectorConstruction
      explicit ICRP110PhantomConstruction();
     ~ICRP110PhantomConstruction();
      G4VPhysicalVolume* Construct()override;
+     void ConstructSDandField() override;
 
      G4VPhysicalVolume* GetMotherVolume() {return fMotherVolume;}
      G4VPhysicalVolume* GetPhantumContainer() {return fPhantomContainer;}
@@ -71,6 +75,12 @@ class ICRP110PhantomConstruction : public G4VUserDetectorConstruction
   ICRP110PhantomMaterial_Female* fMaterial_Female;
   ICRP110PhantomMaterial_Male* fMaterial_Male;
   ICRP110PhantomMessenger* fMessenger;
+  G4GenericMessenger* fSpacecraftMessenger;
+  G4String fFieldMapFile;
+  G4double fFieldScale = 1.;
+  G4double fWorldHalfSize;
+  G4double fHullThickness;
+  std::shared_ptr<const MagneticFieldMap> fFieldMap;
  // std::vector<G4Material*> fMaterials;
   G4VPhysicalVolume* fMotherVolume;
   G4VPhysicalVolume* fPhantomContainer;
@@ -93,4 +103,3 @@ class ICRP110PhantomConstruction : public G4VUserDetectorConstruction
   G4String fSection;
 };
 #endif
-

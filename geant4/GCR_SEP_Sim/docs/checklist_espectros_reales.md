@@ -4,7 +4,18 @@ Guía para no tener que volver a correr las herramientas por falta de un dato. C
 
 **Cambio de plan (2026-09-06):** originalmente se iba a usar Badhwar-O'Neill 2020 vía OLTARIS para GCR, pero la cuenta de OLTARIS quedó pendiente de aprobación (sin tiempo estimado) y no hay margen para esperar. Como SPENVIS ya tiene el registro aprobado y activo, **GCR y SEP se sacan ambos de SPENVIS**: GCR con **ISO-15390** (estándar internacional, más moderno que CREME96 — ver conversación previa sobre por qué se descartó CREME96), SEP con **ESP-PSYCHIC** (sin cambios respecto a lo ya definido). Si más adelante se aprueba OLTARIS y quieren agregar Badhwar-O'Neill como comparación adicional, avisen y actualizamos esto — pero no bloqueen el trabajo actual esperándolo.
 
-**Por qué importa anotar todo esto:** vamos a necesitar los mismos datos más adelante para (a) el CSV de `SpectrumSampler`, (b) la normalización a dosis absoluta (Gy/día o Sv/año) en `RunAction.cc`, y (c) la sección de Métodos del artículo — si falta una unidad o un supuesto, hay que volver a entrar a la herramienta.
+**Actualización (2026-09-07):** para `ActiveShield_Sim` el equipo decidió
+bins de energía y reponderación. Estos exports siguen siendo necesarios para
+integrar el peso físico de cada bin y fase; ya no se usarán para sortear
+energías durante el transporte de producción. `SpectrumSampler` permanece
+en el piloto. Registrar unidades y definición angular evita errores en la
+normalización: GCR es flujo, SEP por evento es fluencia. La conversión de Gy
+a dosis equivalente en Sv requiere ponderación adicional. Ver
+[decisiones del modelo realista](../../ActiveShield_Sim/docs/modelo_realista.md).
+
+**Por qué importa anotar todo esto:** los datos respaldan los pesos por bin,
+la normalización absoluta y Métodos; también pueden alimentar el CSV del
+piloto. Sin unidades y supuestos no se puede recuperar el significado físico.
 
 Ambas partes se hacen en la misma herramienta: https://www.spenvis.oma.be/ (registro: https://www.spenvis.oma.be/registration.php)
 
