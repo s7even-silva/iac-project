@@ -8,7 +8,8 @@ cargue las mismas instrucciones sin duplicar su contenido.
 
 `geant4/ActiveShield_Sim` es el proyecto del modelo realista: exterior en vacío,
 casco de referencia Al de 1.5 cm, envolvente para bobinas externas y lector de
-campo global. Las bobinas y el mapa físico aún faltan. **El equipo ya decidió
+campo global. Existe un [piloto Double Helix y campo de referencia](field/README.md);
+el ensamblaje Geom14 y el mapa físico validado aún faltan. **El equipo ya decidió
 simular por bins de energía y reponderar**, no usar el barrido continuo del
 piloto como producción. Véanse [estado e interfaces](geant4/ActiveShield_Sim/README.md)
 y [decisiones y justificación](geant4/ActiveShield_Sim/docs/modelo_realista.md).
