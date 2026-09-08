@@ -86,6 +86,12 @@ fuentes y pendientes en
   escenarios. Los exports físicos siguen siendo necesarios como pesos aunque
   las energías se simulen por bins. El scorer actual no calcula por sí solo
   dosis absoluta o equivalente.
+- **Prioridad de exportación (2026-09-08): primero solo los casos de mayor
+  dosis por especie** — GCR en mínimo solar (flujo GCR más alto) y SEP en
+  Oct 1989 (evento máximo). GCR máximo solar y SEP mínimo (Feb 1956) quedan
+  diferidos, no bloquean la primera corrida de producción; se completan
+  después si hay tiempo. Ver checklist para el detalle de qué 3 archivos
+  (no 6) se exportan primero.
 - Mantener material de devanados, soportes y crióstato en el modelo final:
   la contribución pasiva y los secundarios pueden aumentar o reducir dosis.
 

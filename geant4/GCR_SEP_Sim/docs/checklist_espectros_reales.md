@@ -10,16 +10,18 @@ Herramienta: https://oltaris.larc.nasa.gov/
 
 **Nota sobre el formato ahora que se decidió simular por bins (no muestreo continuo):** pide la tabla **lo más granular posible** (muchos puntos de energía), no una curva suavizada — se va a integrar numéricamente sobre los bordes de bin que se definan después, y cuantos más puntos tenga la tabla original, más precisa sale esa integración.
 
+**⚠️ Cambio de prioridad (2026-09-08): por ahora solo exportar los casos de dosis más alta por especie.** Se prioriza simular primero las condiciones más severas — **GCR en mínimo solar** (ahí el flujo GCR es más alto, ver README.md) y **SEP en el evento máximo (Oct 1989)** — en vez de los 4 casos completos. Eso significa exportar **3 archivos, no 6**: H-mínimo y He-mínimo de GCR, y proton-Oct1989 de SEP. Las secciones de **GCR máximo** y **SEP mínimo (Feb 1956)** quedan marcadas como "diferido" más abajo — se completan después si hay tiempo, no se necesitan para la primera corrida de producción.
+
 ---
 
 ## Parte 1 — GCR (Environment Definition: GCR, Free Space 1AU)
 
+**Prioridad ahora: solo mínimo solar** (flujo GCR más alto, ver README.md sección "Fechas de referencia"). Máximo solar queda diferido — instrucciones idénticas, solo cambia la fecha, ver nota al final de esta parte.
+
 - [ ] GCR Model: **Badhwar-O'Neill 2020**.
-- [ ] **Marcar el checkbox "Select Specific Ion"** — sin esto no se puede pedir H y He por separado (default es algún espectro combinado, no lo que necesitamos). Al marcarlo se abre un selector de ion (Z/A): correr una vez para **H** y otra para **He**, en cada fase → 4 corridas en total.
+- [ ] **Marcar el checkbox "Select Specific Ion"** — sin esto no se puede pedir H y He por separado (default es algún espectro combinado, no lo que necesitamos). Al marcarlo se abre un selector de ion (Z/A): correr una vez para **H** y otra para **He** → 2 corridas para el mínimo (4 si más adelante se agrega el máximo).
 - [ ] Defined by: **Date** (NO "Historical Solar Min/Max" — esa lista de años fijos solo llega hasta 2010 y no incluye el ciclo solar actual/reciente; confirmado que "Date" acepta fechas de 2019-2024 sin problema).
 - [ ] Fecha para **mínimo solar**: una fecha entre **diciembre 2019 y enero 2020** (mínimo oficial NASA/NOAA del ciclo 24→25) — anotar la fecha exacta usada: ______________
-- [ ] Fecha para **máximo solar**: una fecha de **enero 2024** (o cualquiera dentro de la ventana 2024-2025 del ciclo 25) — anotar la fecha exacta usada: ______________
-- [ ] **Importante:** estas fechas se eligen porque son el mínimo/máximo solar real más reciente — **no** tienen que coincidir con las fechas de los eventos SEP (Oct 1989, Feb 1956). GCR y SEP usan criterios de selección distintos: GCR pide "la condición típica de esa fase del ciclo solar" (por eso importa la fecha real), SEP pide "el evento histórico más grande/chico documentado" (por eso importa la magnitud del evento, no cuándo ocurrió ni en qué fase solar de esa época cayó). No hay ninguna relación de calendario que mantener entre los dos.
 - [ ] **"Mission duration in days"**: campo nuevo que no estaba anticipado — viene en `0.0` por defecto. No hay certeza de qué representa exactamente (¿espectro instantáneo en esa fecha vs. algo integrado/promediado en la duración?) — **revisar el link "Help" de esa pantalla antes de correr**; si no aclara, probar primero con `0.0` (el default) y solo cambiar a otro valor (ej. `1`) si el resultado no tiene sentido o da error. Anotar qué valor se terminó usando: ______________
 - [ ] **"Save external differential flux for space environment?" = Sí** (ya viene así en la interfaz — confirmar que sigue en Sí después de tocar los demás campos).
 - [ ] En la pantalla de **Geometry / Response Functions** que sigue: no marcar ninguna "Response Function" (Dose, Dose Equivalent, Effective Dose Equivalent, RIED, LET, etc.) — no las necesitamos (ya se obtiene el espectro crudo con el toggle anterior) y algunas piden campos adicionales (ej. "Age" para RIED) que solo estorban. Cualquier geometría mínima (ej. "Thk Distrib" con "zero sphere", que representa blindaje cero) sirve para dejar correr.
@@ -27,20 +29,24 @@ Herramienta: https://oltaris.larc.nasa.gov/
 - [ ] **Unidades exactas** tal como las muestra OLTARIS (ej. `partículas / (cm² · s · sr · MeV/nucleón)`): ______________
 - [ ] Rango de energía exportado (MeV/nucleón, min–max): ______________
 - [ ] Archivos guardados en `data/sources/oltaris/raw_exports/`, ej.:
-  - `oltaris_BON2020_H_solarmin.csv` / `oltaris_BON2020_H_solarmax.csv`
-  - `oltaris_BON2020_He_solarmin.csv` / `oltaris_BON2020_He_solarmax.csv`
-- [ ] Captura de pantalla de la configuración completa (modelo, ion, periodo, duración de misión, rango de energía) guardada junto a los exports — sin esto no se puede reproducir la corrida si falta un dato.
+  - `oltaris_BON2020_H_solarmin.csv`
+  - `oltaris_BON2020_He_solarmin.csv`
+- [ ] Captura de pantalla de la configuración completa (modelo, ion, fecha, duración de misión, rango de energía) guardada junto a los exports — sin esto no se puede reproducir la corrida si falta un dato.
+
+**Diferido — GCR máximo solar (no hace falta para la primera corrida):** cuando se retome, repetir exactamente los mismos pasos con fecha de **enero 2024** (o cualquiera dentro de 2024-2025) en vez de dic 2019/ene 2020, generando `oltaris_BON2020_H_solarmax.csv` / `oltaris_BON2020_He_solarmax.csv`.
 
 ---
 
 ## Parte 2 — SEP (Environment Definition: SPE, Free Space 1AU)
 
+**Prioridad ahora: solo el evento máximo (Oct 1989)** — es el caso de mayor dosis, ver README.md. El evento mínimo (Feb 1956) queda diferido, ver nota al final de esta parte.
+
 **A diferencia de GCR, aquí no hay un selector "max/min" simétrico** — OLTARIS ofrece un catálogo de eventos históricos puntuales bajo "Historical SPE", cada uno seleccionable con checkbox + factor de multiplicación (dejar en 1.0). Máximo y mínimo son **dos eventos distintos**, no el mismo evento con distinta fase:
 
 | Fase | Evento elegido | Por qué |
 |---|---|---|
-| **Máximo** | **Octubre 1989** (checkbox "Oct 1989") | Peor caso estándar en el rango 5-100 MeV (el mismo que usa CREME-96 como referencia); ~4-19×10⁹ p/cm² >30 MeV según la fuente. |
-| **Mínimo** | **Febrero 1956, ajuste LaRC** (checkbox "Feb 1956 (LaRC)") | El más pequeño de los eventos catalogados en OLTARIS con dato comparable, ~1×10⁹ p/cm² >30 MeV — 5 a 20 veces menor que los demás. Se descartó usar "sin evento" para el mínimo: da dosis ≈0 y anula la comparación de efectividad del campo magnético para ese cuarto de la matriz de escenarios (campo×posición no tendría nada que atenuar). |
+| **Máximo (prioridad ahora)** | **Octubre 1989** (checkbox "Oct 1989") | Peor caso estándar en el rango 5-100 MeV (el mismo que usa CREME-96 como referencia); ~4-19×10⁹ p/cm² >30 MeV según la fuente. |
+| **Mínimo (diferido)** | **Febrero 1956, ajuste LaRC** (checkbox "Feb 1956 (LaRC)") | El más pequeño de los eventos catalogados en OLTARIS con dato comparable, ~1×10⁹ p/cm² >30 MeV — 5 a 20 veces menor que los demás. Se descartó usar "sin evento" para el mínimo: da dosis ≈0 y anula la comparación de efectividad del campo magnético para ese cuarto de la matriz de escenarios (campo×posición no tendría nada que atenuar). |
 
 Notas sobre la elección:
 - Marcar **un solo evento por corrida** (no combinar varios checkboxes) — más simple de citar en Métodos.
@@ -54,24 +60,23 @@ En la pantalla **"Environment Definition: SPE, Free Space 1AU"**, el campo **"Sa
 **No usar** el checkbox "Differential Flux/Fluence" de la siguiente pantalla ("Geometry" / "Response Functions") como fuente del CSV — ese es el flujo **después** de atravesar el blindaje slab/esfera que se configure ahí mismo en OLTARIS. Usarlo aplicaría blindaje dos veces (una vez en OLTARIS, otra en nuestro propio Geant4). En esa pantalla no hace falta marcar nada en particular — cualquier geometría mínima (ej. Slab) alcanza para que el sistema deje correr y exportar.
 
 - [ ] Corrida **"SEP máximo"** (Oct 1989): "Save external differential flux" = **Sí**. Exportado.
-- [ ] Corrida **"SEP mínimo"** (Feb 1956, LaRC): "Save external differential flux" = **Sí**. Exportado.
 - [ ] Especie exportada: confirmar que es **protón** (debería ser lo único disponible para SEP).
 - [ ] **Unidades exactas** del export (ej. `protones/cm²` diferencial vs. energía): ______________
 - [ ] Rango de energía exportado (MeV, min–max): ______________
-- [ ] Archivos guardados en `data/sources/oltaris/raw_exports/`, ej.:
-  - `oltaris_SPE_oct1989_proton.csv`
-  - `oltaris_SPE_feb1956_LaRC_proton.csv`
-- [ ] Captura de pantalla de ambas configuraciones (evento marcado, factor 1.0, toggle en "Sí") guardada junto a los exports.
+- [ ] Archivo guardado en `data/sources/oltaris/raw_exports/`: `oltaris_SPE_oct1989_proton.csv`
+- [ ] Captura de pantalla de la configuración (evento marcado, factor 1.0, toggle en "Sí") guardada junto al export.
+
+**Diferido — SEP mínimo (no hace falta para la primera corrida):** cuando se retome, repetir los mismos pasos marcando **"Feb 1956 (LaRC)"** en vez de "Oct 1989", generando `oltaris_SPE_feb1956_LaRC_proton.csv`.
 
 Con un evento histórico puntual, la interpretación de dosis sigue siendo **dosis aguda de un evento**, sin factor de tiempo — consistente con la fórmula ya anotada en `AGENTS.md`: `dosis_Gy_del_evento = dosis_sim × (fluencia_evento × área_fuente) / N`.
 
 ---
 
-## Al terminar ambas partes
+## Al terminar (por ahora, los 3 archivos prioritarios)
 
-Avísenme cuando tengan todo esto lleno + los archivos en `data/sources/oltaris/raw_exports/`, y yo hago:
+Avísenme cuando tengan **estos 3 archivos** llenos en `data/sources/oltaris/raw_exports/` (GCR mínimo H+He, SEP máximo Oct 1989 — no hace falta esperar a GCR máximo ni SEP mínimo), y yo hago:
 
-1. Reformateo de los exports crudos a los 6 CSV que van en `data/sources/oltaris/` (`gcr_proton_solarmax.csv`, etc. — mismo contrato de `SpectrumSampler` que ya usa `spenvis/`).
+1. Reformateo de los exports crudos a los CSV que van en `data/sources/oltaris/` (mismo contrato de `SpectrumSampler` que ya usa `spenvis/`) — por ahora solo `gcr_proton_solarmin.csv`, `gcr_alpha_solarmin.csv`, `sep_proton_solarmax.csv`.
 2. El cálculo de los pesos por bin (`W[s,i]`) a partir de estos espectros, una vez que se fijen los bordes de bin (puntos 6-7 de la lista de pendientes).
 3. La normalización a dosis absoluta en `RunAction.cc`/el pipeline de `ActiveShield_Sim`, usando las unidades que anotaron arriba.
-4. El párrafo de Métodos describiendo exactamente qué modelo (BON2020, evento Oct 1989, evento Feb 1956 LaRC), qué periodos/eventos, y qué unidades se usaron.
+4. El párrafo de Métodos describiendo exactamente qué modelo (BON2020 en mínimo solar, evento Oct 1989), qué fecha/evento, y qué unidades se usaron — dejando explícito que por ahora se prioriza el caso de mayor dosis por especie, y que GCR máximo/SEP mínimo quedan pendientes de completar.
