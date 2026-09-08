@@ -19,7 +19,7 @@ cambiar de fuente es correrlo con otro nombre, no tocar C++.
 
 Uso:
     python3 select_spectrum_source.py spenvis
-    python3 select_spectrum_source.py oltaris_oct1989
+    python3 select_spectrum_source.py oltaris
     python3 select_spectrum_source.py --list
 """
 import argparse
