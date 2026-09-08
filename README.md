@@ -113,17 +113,19 @@ Si van a dejar el barrido corriendo desatendido en una máquina remota (por ejem
 - **GCR**: el flujo es **más alto en mínimo solar** (menos viento solar blindeando la heliosfera) y más bajo en máximo solar.
 - **SEP**: los eventos grandes son **más frecuentes/severos en máximo solar**, casi no ocurren en mínimo.
 
-Para GCR esto se traduce directo en periodos históricos de mínimo/máximo solar (ver checklist). Para SEP no hay una fase continua que fechar — se usan dos **eventos históricos puntuales** distintos, elegidos por severidad (ver más abajo y el checklist para la comparación de fluencia):
+**GCR y SEP usan criterios de selección distintos — no hace falta (ni tiene sentido) que compartan fecha de calendario:**
 
-| Fase | GCR (periodo) | SEP (evento histórico) |
+| Fase | GCR: condición del ciclo solar | SEP: severidad del evento histórico |
 |---|---|---|
-| `min` | Mínimo solar del ciclo 24→25 (oficial NASA/NOAA: diciembre 2019) | **Febrero 1956, ajuste LaRC** — el más pequeño de los eventos catalogados en OLTARIS con dato comparable |
-| `max` | Ventana de máximo del ciclo 25 (NASA/NOAA: aprox. enero 2024 – julio 2025) | **Octubre 1989** — peor caso estándar en el rango 5-100 MeV |
+| `min` | Mínimo solar real, dic 2019 – ene 2020 (oficial NASA/NOAA, ciclo 24→25) | **Febrero 1956, ajuste LaRC** — el más pequeño de los eventos catalogados en OLTARIS con dato comparable |
+| `max` | Máximo solar real, ventana ene 2024 – jul 2025 (ciclo 25) | **Octubre 1989** — peor caso estándar en el rango 5-100 MeV |
 
-Con esto, el resultado esperado es que **la dosis de GCR salga mayor en `min` que en `max`, y la dosis de SEP salga mayor en `max` que en `min`** — es física real del ciclo solar, no un error si se da así; coméntenlo en la Discusión del artículo.
+Para GCR importa **la fecha real** (se pregunta "¿cómo es el flujo típico en esa fase del ciclo solar?", y las fechas 2019-2020/2024 son el mínimo/máximo real más reciente, más representativo que un ciclo de hace décadas). Para SEP importa **la magnitud del evento**, no cuándo ocurrió — por eso los eventos elegidos caen en años completamente distintos (1989, 1956) sin relación con las fechas de GCR.
+
+Con esto, el resultado esperado es que **la dosis de GCR salga mayor en `min` que en `max`, y la dosis de SEP salga mayor en `max` que en `min`** — es física real del ciclo solar/severidad de evento, no un error si se da así; coméntenlo en la Discusión del artículo.
 
 Aplicación (**ambos modelos vía OLTARIS** desde 2026-09-08, al aprobarse el acceso — reemplaza el plan intermedio con SPENVIS, que queda como plan B):
-- **Badhwar-O'Neill 2020 (GCR)**: OLTARIS ofrece directamente el selector de periodo histórico de mínimo/máximo solar.
+- **Badhwar-O'Neill 2020 (GCR)**: usar "Defined by: **Date**", no "Historical Solar Min/Max" — esa lista de años fijos solo llega hasta 2010, no cubre el ciclo solar actual. "Date" sí acepta las fechas 2019-2020/2024 sin problema.
 - **Historical SPE (SEP)**: catálogo de eventos puntuales con checkbox + factor de multiplicación (dejar en 1.0) — no un modelo probabilístico como ESP-PSYCHIC. Paso crítico: el toggle "Save external differential flux for space environment?" debe estar en "Sí" (ver [`docs/checklist_espectros_reales.md`](geant4/GCR_SEP_Sim/docs/checklist_espectros_reales.md) para el detalle completo y por qué se descartó usar "sin evento" para el mínimo).
 
 ### 0.6. Cambiar de fuente de espectros (OLTARIS ↔ SPENVIS, u otra)

@@ -12,19 +12,24 @@ Herramienta: https://oltaris.larc.nasa.gov/
 
 ---
 
-## Parte 1 — GCR (Free Space, Badhwar-O'Neill 2020)
+## Parte 1 — GCR (Environment Definition: GCR, Free Space 1AU)
 
-- [ ] Ambiente: **Free Space**, modelo GCR = **Badhwar-O'Neill 2020**.
-- [ ] Periodo histórico de **mínimo solar** seleccionado — anotar fechas exactas: ______________
-- [ ] Periodo histórico de **máximo solar** seleccionado — anotar fechas exactas: ______________
-- [ ] Especies exportadas: **H (Z=1)** y **He (Z=2)** por separado (no la suma total).
+- [ ] GCR Model: **Badhwar-O'Neill 2020**.
+- [ ] **Marcar el checkbox "Select Specific Ion"** — sin esto no se puede pedir H y He por separado (default es algún espectro combinado, no lo que necesitamos). Al marcarlo se abre un selector de ion (Z/A): correr una vez para **H** y otra para **He**, en cada fase → 4 corridas en total.
+- [ ] Defined by: **Date** (NO "Historical Solar Min/Max" — esa lista de años fijos solo llega hasta 2010 y no incluye el ciclo solar actual/reciente; confirmado que "Date" acepta fechas de 2019-2024 sin problema).
+- [ ] Fecha para **mínimo solar**: una fecha entre **diciembre 2019 y enero 2020** (mínimo oficial NASA/NOAA del ciclo 24→25) — anotar la fecha exacta usada: ______________
+- [ ] Fecha para **máximo solar**: una fecha de **enero 2024** (o cualquiera dentro de la ventana 2024-2025 del ciclo 25) — anotar la fecha exacta usada: ______________
+- [ ] **Importante:** estas fechas se eligen porque son el mínimo/máximo solar real más reciente — **no** tienen que coincidir con las fechas de los eventos SEP (Oct 1989, Feb 1956). GCR y SEP usan criterios de selección distintos: GCR pide "la condición típica de esa fase del ciclo solar" (por eso importa la fecha real), SEP pide "el evento histórico más grande/chico documentado" (por eso importa la magnitud del evento, no cuándo ocurrió ni en qué fase solar de esa época cayó). No hay ninguna relación de calendario que mantener entre los dos.
+- [ ] **"Mission duration in days"**: campo nuevo que no estaba anticipado — viene en `0.0` por defecto. No hay certeza de qué representa exactamente (¿espectro instantáneo en esa fecha vs. algo integrado/promediado en la duración?) — **revisar el link "Help" de esa pantalla antes de correr**; si no aclara, probar primero con `0.0` (el default) y solo cambiar a otro valor (ej. `1`) si el resultado no tiene sentido o da error. Anotar qué valor se terminó usando: ______________
+- [ ] **"Save external differential flux for space environment?" = Sí** (ya viene así en la interfaz — confirmar que sigue en Sí después de tocar los demás campos).
+- [ ] En la pantalla de **Geometry / Response Functions** que sigue: no marcar ninguna "Response Function" (Dose, Dose Equivalent, Effective Dose Equivalent, RIED, LET, etc.) — no las necesitamos (ya se obtiene el espectro crudo con el toggle anterior) y algunas piden campos adicionales (ej. "Age" para RIED) que solo estorban. Cualquier geometría mínima (ej. "Thk Distrib" con "zero sphere", que representa blindaje cero) sirve para dejar correr.
 - [ ] Cantidad exportada: ¿flujo diferencial (dJ/dE) o integral (J>E)? → anotar cuál: ______________
 - [ ] **Unidades exactas** tal como las muestra OLTARIS (ej. `partículas / (cm² · s · sr · MeV/nucleón)`): ______________
 - [ ] Rango de energía exportado (MeV/nucleón, min–max): ______________
 - [ ] Archivos guardados en `data/sources/oltaris/raw_exports/`, ej.:
   - `oltaris_BON2020_H_solarmin.csv` / `oltaris_BON2020_H_solarmax.csv`
   - `oltaris_BON2020_He_solarmin.csv` / `oltaris_BON2020_He_solarmax.csv`
-- [ ] Captura de pantalla de la configuración (periodo, especies, rango de energía) guardada junto a los exports — sin esto no se puede reproducir la corrida si falta un dato.
+- [ ] Captura de pantalla de la configuración completa (modelo, ion, periodo, duración de misión, rango de energía) guardada junto a los exports — sin esto no se puede reproducir la corrida si falta un dato.
 
 ---
 
