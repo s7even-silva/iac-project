@@ -44,6 +44,11 @@ if(BUILD_TESTING)
   add_executable(test_field_map tests/test_field_map.cc src/TabulatedMagneticField.cc)
   target_link_libraries(test_field_map ${Geant4_LIBRARIES})
   add_test(NAME field_map COMMAND test_field_map)
+  add_test(NAME passive_layers COMMAND ICRP110phantoms ${PROJECT_SOURCE_DIR}/tests/passive_layers.mac)
+  set_tests_properties(passive_layers PROPERTIES
+    WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
+    PASS_REGULAR_EXPRESSION "Passive layer 1: G4_POLYETHYLENE; thickness \\[cm\\]=2"
+    FAIL_REGULAR_EXPRESSION "Overlap is detected;G4Exception;COMMAND NOT FOUND")
 endif()
 
 # Depend on data for runtime

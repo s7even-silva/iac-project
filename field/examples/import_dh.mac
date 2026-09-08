@@ -1,0 +1,15 @@
+# Run from geant4/ActiveShield_Sim/build after the field/README.md sequence.
+# Pilot interface/navigation check; NOT a dose-production configuration.
+/run/numberOfThreads 1
+/spacecraft/coilGeometry ../../../field/generated/dh/dh.gdml
+/spacecraft/fieldMap ../../../field/generated/dh/dh.map
+/spacecraft/fieldScale 1
+/phantom/setPhantomSex male
+/phantom/setPhantomSection head
+/run/initialize
+/gps/particle geantino
+/gps/ene/mono 1 MeV
+/gps/pos/centre 4.35 -0.1 -0.45 m
+/gps/direction 0 1 0
+/tracking/verbose 1
+/run/beamOn 1
