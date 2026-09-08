@@ -1,0 +1,166 @@
+# Mallado y conversión de geometría para Geant4
+
+Estado 2026-09-08: **conversión implementada y probada de extremo a extremo**.
+El ejemplo es un anillo de cobre y un soporte de aluminio situados fuera del
+hábitat. No representa una bobina Double Helix, REBCO, Geom14 ni un diseño
+aceptado del imán. No calcula campo ni prescribe corrientes.
+
+## Entorno Python aislado
+
+Desde la raíz del repositorio, con Python 3.13 (validado con **3.13.5**):
+
+```bash
+python3 field/bootstrap.py
+source field/.venv/bin/activate
+python -m pip check
+```
+
+También se puede usar siempre `field/.venv/bin/python` sin activar el entorno.
+El bootstrap crea `field/.venv`, instala `requirements.txt` y comprueba imports.
+Las versiones fijadas son **Gmsh 4.15.2** y **NumPy 2.3.3**. No modifica el
+entorno conda de Geant4. `.python-version` registra el parche validado para
+herramientas como pyenv; no descarga Python automáticamente. El bootstrap
+acepta Python 3.13.x, pero para repetir exactamente el entorno usado aquí
+instalar 3.13.5. No ejecutar el bootstrap con el Python de conda si es de
+otra versión.
+
+El entorno local y `field/generated/` están excluidos de Git. Se versionan
+scripts, dependencias, geometría fuente, materiales, tests y documentación.
+El equipo recrea su entorno; no copia ni versiona el directorio virtual.
+
+**Alcance de reproducibilidad:** aislar Python y fijar versiones evita cambios
+accidentales de paquetes, pero no garantiza resultados idénticos entre sistemas.
+Gmsh usa bibliotecas nativas, incluida su geometría OpenCASCADE, y en Linux
+puede requerir GLU (`libGLU.so.1`, paquete del sistema). El wheel de Gmsh trae
+su biblioteca propia; estas dependencias del sistema no las instala `venv`.
+Los manifiestos registran plataforma, Python y Gmsh; conservarlos junto con
+los resultados y fijar sistema/contenedor si se necesita identidad entre máquinas.
+**Elmer no forma parte de este venv ni se ha instalado/configurado en este cambio.**
+Su versión, solver y parámetros se fijarán al implementar la solución FEM.
+
+## Ejemplo reproducible
+
+Desde la raíz, sin necesidad de activar el venv:
+
+```bash
+field/.venv/bin/python field/generate_mesh.py \
+  field/examples/conversion_demo.geo field/generated/conversion_demo.msh
+field/.venv/bin/python field/mesh_to_gdml.py \
+  field/generated/conversion_demo.msh field/examples/materials.json \
+  field/generated/conversion_demo.gdml
+field/.venv/bin/python -m unittest discover -s field/tests -v
+```
+
+Salidas regenerables:
+
+- `conversion_demo.msh`: malla Gmsh 4.1 ASCII con tetraedros de primer orden.
+- `conversion_demo.mesh-manifest.json`: hashes de fuentes/generador/malla,
+  versiones y opciones de mallado.
+- `conversion_demo.gdml`: superficies trianguladas cerradas por volumen material.
+- `conversion_demo.manifest.json`: hashes de malla, materiales, conversor y GDML;
+  volumen y masa por componente, cantidad de triángulos y versiones.
+
+`generate_mesh.py` fija un hilo, semilla 1, orden 1, algoritmo 2D=6 y 3D=1,
+y desactiva la lectura de configuración personal de Gmsh. La geometría `.geo`
+controla los tamaños de malla; el ejemplo usa 0.04–0.08 m y refinamiento por
+curvatura. Son parámetros de prueba, no resolución final del devanado.
+
+Para un `.geo` que importe STEP, otros `.geo` o parámetros externos, registrar
+**cada archivo dependiente** con `--dependency ruta` (repetible). El script
+no descubre recursivamente dependencias; registrarlas es responsabilidad del
+generador del diseño. Versionar las fuentes y conservar los manifiestos.
+
+## Contrato de conversión
+
+1. Entrada `.msh` con tetraedros lineales de cuatro nodos (tipo Gmsh 4).
+   No se aceptan prismas, hexaedros ni elementos de orden superior. Para ellos
+   hay que generar una malla de conversión compatible, no borrar nodos a mano.
+2. Cada entidad de volumen debe pertenecer a **un solo Physical Volume con
+   nombre**, y cada grupo debe figurar en el JSON de materiales. Un grupo
+   puede contener varias entidades del mismo material.
+3. Marcar explícitamente con `null` los grupos que se excluyen, por ejemplo
+   el dominio de vacío del FEM. No hay un material por defecto silencioso.
+4. Declarar `length_unit` como `m` o `mm`. Todas las coordenadas finales están
+   en metros y en el sistema global de Geant4, compartido con el mapa magnético.
+5. Definir cada material con densidad en g/cm³ y **fracciones másicas**, que
+   deben sumar uno. Cada elemento requiere Z y masa atómica en g/mol.
+   Los valores del ejemplo son Cu/Al elementales, no composiciones REBCO/CORC.
+
+El conversor extrae las caras exteriores de los tetraedros por entidad,
+elimina caras internas y orienta las normales hacia fuera. Conserva huecos
+si están resueltos por la malla. Comprueba tetraedros degenerados/duplicados,
+caras no manifold, cierre de aristas y coherencia entre volumen superficial
+y tetraédrico. Esas comprobaciones no sustituyen una validación geométrica
+CAD: intersecciones entre entidades se revisan también en Geant4.
+
+Cada componente se exporta como un `G4TessellatedSolid` con su material.
+**No se exporta un tetraedro por volumen Geant4**: solo su superficie exterior,
+lo que reduce el coste de navegación. Capas de materiales distintos necesitan
+entidades distintas; una capa que no existe en la entrada no reaparece al convertir.
+
+Las superficies son una aproximación facetada del CAD. El torus del ejemplo
+produce ~332.392 kg frente a ~346.652 kg para el torus analítico con esos
+parámetros: el ejemplo grueso sirve para probar la interfaz, no para aceptar
+un error de masa del diseño final. Refinar y estudiar convergencia geométrica
+antes de usar bobinas reales. El soporte rectangular reproduce 64.776 kg.
+
+## Importar en ActiveShield_Sim
+
+Se requiere Geant4 compilado con GDML; CMake ahora solicita ese componente
+explícitamente. La instalación conda existente lo incluye.
+
+```bash
+# Con geant4_env activado, desde la raíz:
+cmake -S geant4/ActiveShield_Sim -B geant4/ActiveShield_Sim/build \
+  -DCMAKE_CXX_COMPILER=g++ -DCMAKE_PREFIX_PATH="$CONDA_PREFIX"
+cmake --build geant4/ActiveShield_Sim/build -j2
+cd geant4/ActiveShield_Sim/build
+./ICRP110phantoms ../../../field/examples/import_demo.mac
+```
+
+Para una macro propia, antes de `/run/initialize`:
+
+```text
+/spacecraft/coilGeometry /ruta/absoluta/conversion.gdml
+```
+
+Puede combinarse con `/spacecraft/fieldMap` y `/spacecraft/fieldScale`.
+Omitir `coilGeometry` conserva el modelo sin componentes importados.
+Importar materiales no activa campo; importar campo no genera materiales.
+
+El GDML contiene un mundo de transporte `coil_transport_world` para poder
+leerlo autónomamente. El código **coloca sus piezas directamente bajo
+`MagnetEnvelope`**, conservando sus transformaciones; no coloca ese mundo de
+vacío encima del hábitat. Se admiten componentes planos sin hijos, teselados,
+según el contrato del conversor; no cualquier ensamblaje GDML arbitrario.
+
+La carga comprueba límites de cada pieza, cobertura por el mapa si existe y
+solapamientos con casco/cabina/otras piezas, con 10000 puntos por comprobación.
+Un fallo detiene la inicialización. El chequeo de solapamientos es muestreado,
+no una prueba matemática de ausencia de intersecciones diminutas. Si una pieza
+no cabe, aumentar `worldHalfSize` o corregir su posición/dimensiones; no se
+recorta para ocultar el problema. Si hay mapa, debe cubrir también las piezas.
+Se imprimen material, densidad y masa por componente para contrastar el manifiesto.
+
+## Validación y próximos pasos
+
+Verificado en Linux x86_64, Python 3.13.5, Gmsh 4.15.2, NumPy 2.3.3 y Geant4 11.4.2:
+
+- Nueve pruebas Python: orientación, caras compartidas, degeneración/duplicación,
+  unidades m/mm, exclusión explícita, materiales inválidos, masas y determinismo.
+- Repetir la generación del ejemplo produjo una malla con SHA-256 idéntico
+  en este entorno. Repetir la conversión también produjo GDML idéntico.
+- Compilación de ambos ejecutables Geant4 y CTest del campo aprobados.
+- Importación real de dos piezas con materiales y masas coincidentes, sin
+  solapamientos detectados; un geantino cruza el anillo de cobre y vuelve
+  al vacío. Es una prueba de navegación, no de dosis.
+
+Siguiente trabajo: definir el devanado y materiales reales, generar entidades
+separadas por material, validar resolución geométrica, y preparar la corriente
+y el dominio FEM de Elmer. La malla del FEM, el teselado radiológico y la grilla
+del mapa magnético son discretizaciones distintas; no confundir sus tamaños.
+
+Referencias de las interfaces:
+[Gmsh: API y grupos físicos](https://gmsh.info/doc/texinfo/gmsh.html),
+[Geant4: importación GDML](https://geant4.web.cern.ch/documentation/dev/bfad_html/ForApplicationDevelopers/Detector/Geometry/geomXML.html),
+[Geant4: sólidos teselados](https://geant4.web.cern.ch/documentation/dev/bfad_html/ForApplicationDevelopers/Detector/Geometry/geomSolids.html).

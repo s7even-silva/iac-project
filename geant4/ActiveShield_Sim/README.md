@@ -4,7 +4,7 @@ Simulación Geant4 para estudiar blindaje magnético espacial con fantoma
 ICRP110 y dosis por órgano. Base: ejemplo oficial `ICRP110_HumanPhantoms`,
 conservado en `README_ICRP110_original.md`; datos descargados durante CMake.
 
-## Estado actual y decisiones (2026-09-07)
+## Estado actual y decisiones (2026-09-08)
 
 - Geometría del hábitat: cilindro cerrado, diámetro exterior **5.6 m**, largo
   exterior **10 m**, eje Z. Casco de **G4_Al, 1.5 cm**, tapas planas del mismo
@@ -17,8 +17,10 @@ conservado en `README_ICRP110_original.md`; datos descargados durante CMake.
 - Lector de mapa cartesiano regular con interpolación trilineal y campo
   **global**, también en el exterior. Sin mapa, campo apagado. Mundo mínimo
   de semilado 10 m, ampliado automáticamente si el mapa lo requiere.
-- **Todavía no hay bobinas ni mapa físico de Elmer.** El lector no genera
-  un Halbach ni convierte mallas CAD/FEM en volúmenes con materiales.
+- **Todavía no hay devanado real ni mapa físico de Elmer.** Ya existe una
+  conversión de mallas tetraédricas de Gmsh a componentes GDML con materiales,
+  y su carga mediante `/spacecraft/coilGeometry`. Ejemplo Cu/Al y entorno
+  Python reproducible en [field/README.md](../../field/README.md).
 - El equipo decidió **bins de energía + reponderación**, sustituyendo el
   muestreo continuo para la producción de este proyecto. GPS ya permite
   energías monoenergéticas; faltan el orquestador por bins, su estadística
@@ -69,11 +71,16 @@ estadístico de producción ni representan 1000 corridas independientes.
 ```text
 /spacecraft/hullThickness 1.5 cm
 /spacecraft/worldHalfSize 10 m
+/spacecraft/coilGeometry /ruta/absoluta/componentes.gdml
 /spacecraft/fieldMap /ruta/absoluta/geom14.map
 /spacecraft/fieldScale 1
 ```
 
 - `hullThickness`: positivo y menor de 100 cm, dimensiones exteriores fijas.
+- `coilGeometry`: omitir para no importar piezas. Acepta el contrato GDML
+  de `field/mesh_to_gdml.py` (componentes teselados sin hijos). CMake requiere
+  GDML. Importa materiales y geometría, independientemente del campo; valida
+  límites de envolvente/mapa y solapamientos antes del transporte.
 - `worldHalfSize`: mínimo solicitado, mayor de 6 m; para mapas se amplía
   por eje hasta `max(mínimo, abs(límites del mapa) + 1 m)`.
 - `fieldMap`: omitir para no cargar campo. Un mapa inválido causa error fatal;

@@ -1,7 +1,25 @@
-# Decisiones del modelo realista — 2026-09-07
+# Decisiones del modelo realista — actualizado 2026-09-08
 
 Este documento distingue decisiones acordadas, cambios implementados y propuestas.
-La simulación actual todavía no contiene bobinas ni un mapa físico validado.
+El devanado real y el mapa físico validado siguen pendientes. La conversión
+geométrica y la importación de componentes de prueba ya están implementadas.
+
+## Conversión y entorno implementados (2026-09-08)
+
+`field/` contiene el generador de malla y el conversor a GDML, con un JSON
+explícito de elementos, densidades y fracciones másicas por grupo de volúmenes.
+Se extraen superficies cerradas de tetraedros lineales y se conservan piezas
+de distintos materiales. Geant4 las carga con `/spacecraft/coilGeometry`
+directamente bajo `MagnetEnvelope`, sin superponer el mundo auxiliar del GDML.
+
+Se creó `field/.venv` con Gmsh 4.15.2 y NumPy 2.3.3, separado de conda.
+Versiones, hashes, configuración de mallado y masas quedan en manifiestos.
+El entorno y las salidas son regenerables y están excluidos de Git. Esto
+mejora la reproducibilidad; no garantiza identidad numérica entre plataformas
+distintas ni fija aún el solver Elmer. La prueba usa Cu/Al, no REBCO ni DH.
+
+Procedimiento, límites del formato, validación y siguientes pasos:
+[guía de mallado y conversión](../../../field/README.md).
 
 ## Casco: referencia radiológica y diseño estructural
 

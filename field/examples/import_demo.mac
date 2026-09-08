@@ -1,0 +1,16 @@
+# Run from geant4/ActiveShield_Sim/build. Conversion fixture, not production.
+/run/numberOfThreads 1
+/spacecraft/coilGeometry ../../../field/generated/conversion_demo.gdml
+/phantom/setPhantomSex male
+/phantom/setPhantomSection head
+/run/initialize
+/geometry/test/resolution 1000
+/geometry/test/recursion_depth 4
+/geometry/test/run
+# Non-interacting probe to verify navigation through the copper torus.
+/gps/particle geantino
+/gps/ene/mono 1 MeV
+/gps/pos/centre 4.4 0 -1 m
+/gps/direction 0 0 1
+/tracking/verbose 1
+/run/beamOn 1
