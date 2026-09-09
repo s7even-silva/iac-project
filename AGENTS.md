@@ -43,9 +43,20 @@ fuentes y pendientes en
   (`field/examples/hts_tape_materials.json`) en vez de cobre puro. Detalle,
   dimensiones tomadas de ARSSEM y qué es extrapolación propia en
   [field/GEOM14_STATUS.md](field/GEOM14_STATUS.md).
+- `field/mesh_swept.py`: mallado directo de tetraedros estructurados a lo
+  largo de la curva espinal (sin pasar por triangulación 2D de
+  OpenCASCADE/Gmsh), único método que completa el mallado del arreglo real
+  de Geom14 (60 vueltas) — `generate_mesh.py`/HXT nunca terminaba en esa
+  geometría (se atasca en la etapa 2D, confirmado con timing por etapa).
+  6,24M tetraedros del arreglo completo en 62,5s, ~2,6% de error de volumen.
+  Detalle en [field/README.md](field/README.md) y
+  [field/GEOM14_STATUS.md](field/GEOM14_STATUS.md).
 - Conversión `field/generate_mesh.py` → `.msh` → `field/mesh_to_gdml.py`
   → GDML con componentes y materiales separados. Requiere tetraedros de
   primer orden y grupos físicos con asignación explícita en JSON.
+  `mesh_to_gdml.py` vectorizado con NumPy (2026-09-09): de 10+ minutos sin
+  terminar a 3m16s en el arreglo real (6,24M tetraedros → GDML de 700MB),
+  hash SHA256 idéntico al resultado sin optimizar.
 - Importación `/spacecraft/coilGeometry` (PreInit): coloca piezas teseladas
   directamente en `MagnetEnvelope`, comprueba límites, cobertura del mapa
   y solapamientos. El ejemplo Cu/Al es una prueba de conversión, no el imán real.

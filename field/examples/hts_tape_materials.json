@@ -41,9 +41,9 @@
       "mass_fractions": {"Ni": 0.5567, "Mo": 0.1600, "Cr": 0.1550, "Fe": 0.0550, "W": 0.0375, "Co": 0.0250, "Mn": 0.0100, "Si": 0.0008}
     },
     "ybco": {
-      "_provenance": "YBa2Cu3O7 (x=0), fracciones masicas por estequiometria exacta de la formula. Densidad 6.3 g/cm3 es un valor de literatura general para cristal YBCO -- NO verificado especificamente para pelicula delgada depositada, ver limitaciones en GEOM14_STATUS.md.",
+      "_provenance": "YBa2Cu3O7 (x=0), fracciones masicas por estequiometria exacta de la formula (masas atomicas de la tabla 'elements' de arriba). Las 4 cifras a 6 decimales sumaban 0.999999 (redondeo de representacion, no de calculo) -- el residuo de 1e-6 se sumo a Ba (fraccion mayor) para cerrar exactamente en 1.0, como exige mesh_to_gdml.py. Densidad 6.3 g/cm3 es un valor de literatura general para cristal YBCO -- NO verificado especificamente para pelicula delgada depositada, ver limitaciones en GEOM14_STATUS.md.",
       "density_g_cm3": 6.3,
-      "mass_fractions": {"Y": 0.1335, "Ba": 0.4123, "Cu": 0.2862, "O": 0.1681}
+      "mass_fractions": {"Y": 0.133454, "Ba": 0.412276, "Cu": 0.286161, "O": 0.168109}
     },
     "silver": {
       "_provenance": "Plata pura (capa de recubrimiento/proteccion de la cinta 2G).",
@@ -63,13 +63,21 @@
         "igual de gruesa pero menos densa. Ignora el buffer stack (5 capas",
         "ceramicas submicronicas, composicion no disponible publicamente segun",
         "la investigacion de 2026-09-08 -- su masa es despreciable frente a las",
-        "4 capas modeladas, del orden de <1% del espesor total)."
+        "4 capas modeladas, del orden de <1% del espesor total).",
+        "",
+        "Recalculado 2026-09-08 con precision completa (sin redondear las",
+        "fracciones de las capas base a 4-6 decimales antes de combinarlas):",
+        "el calculo original arrastraba el error de estequiometria de YBCO",
+        "(ver arriba) y quedaba en suma=0.999999, que mesh_to_gdml.py rechaza",
+        "con tolerancia estricta (atol=1e-10) -- correctamente, no es un caso",
+        "para relajar esa validacion. Densidad tambien recalculada desde las",
+        "4 capas (8.89872 g/cm3, redondeada aqui a 8.899 sin cambio real)."
       ],
       "density_g_cm3": 8.899,
       "mass_fractions": {
-        "Cu": 0.432778, "Ni": 0.2958, "Mo": 0.085015, "Cr": 0.082359,
-        "Fe": 0.029224, "Ag": 0.025097, "W": 0.019925, "Co": 0.013284,
-        "Ba": 0.006225, "Mn": 0.005313, "O": 0.002538, "Y": 0.002016,
+        "Cu": 0.432773, "Ni": 0.295827, "Mo": 0.085023, "Cr": 0.082366,
+        "Fe": 0.029227, "Ag": 0.025081, "W": 0.019927, "Co": 0.013285,
+        "Ba": 0.006210, "Mn": 0.005314, "O": 0.002532, "Y": 0.002010,
         "Si": 0.000425
       }
     },

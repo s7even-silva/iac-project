@@ -205,20 +205,21 @@
     },
     "materials": {
       "hts_tape_homogenized": {
+        "_provenance": "Copiado de examples/hts_tape_materials.json (recalculado 2026-09-08 con precision completa -- la version anterior sumaba 0.999999 y mesh_to_gdml.py la rechaza con atol=1e-10, correctamente).",
         "density_g_cm3": 8.899,
         "mass_fractions": {
-          "Cu": 0.432778,
-          "Ni": 0.2958,
-          "Mo": 0.085015,
-          "Cr": 0.082359,
-          "Fe": 0.029224,
-          "Ag": 0.025097,
-          "W": 0.019925,
-          "Co": 0.013284,
-          "Ba": 0.006225,
-          "Mn": 0.005313,
-          "O": 0.002538,
-          "Y": 0.002016,
+          "Cu": 0.432773,
+          "Ni": 0.295827,
+          "Mo": 0.085023,
+          "Cr": 0.082366,
+          "Fe": 0.029227,
+          "Ag": 0.025081,
+          "W": 0.019927,
+          "Co": 0.013285,
+          "Ba": 0.006210,
+          "Mn": 0.005314,
+          "O": 0.002532,
+          "Y": 0.002010,
           "Si": 0.000425
         }
       }

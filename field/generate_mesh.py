@@ -5,6 +5,9 @@ import hashlib
 import json
 from pathlib import Path
 import platform
+import subprocess
+import sys
+import time
 import gmsh
 
 
@@ -25,30 +28,32 @@ def generate(source, output, dependencies=()):
                 'Mesh.MaxNumThreads2D': 1, 'Mesh.MaxNumThreads3D': 1,
                 'Mesh.RandomSeed': 1, 'Mesh.ElementOrder': 1,
                 'Mesh.Algorithm': 6,
-                # Algorithm3D=1 (Delaunay) hangs indefinitely (confirmed:
-                # 90s+ with no progress output past "Splitting solids") on
-                # long, thin, tightly-curved swept solids -- e.g. an 8-turn
-                # Double Helix conductor -- while 7-turn and shorter cases
-                # mesh fine with it. Algorithm3D=10 (HXT) meshes the same
-                # 8-turn geometry in ~8s. HXT is Gmsh's modern default 3D
-                # algorithm and is more robust for high-curvature/high-aspect
-                # swept solids; switch to it rather than trying to route
-                # around Delaunay's failure mode via mesh size or patch count.
+                # Retain the project's HXT choice. A stall in 1D/2D or in
+                # OCC boolean operations is not evidence of an HXT failure.
                 'Mesh.Algorithm3D': 10,
                 'Mesh.MshFileVersion': 4.1, 'Mesh.Binary': 0, 'Mesh.SaveAll': 1}
     gmsh.initialize([], readConfigFiles=False)
+    timings = {}
     try:
+        start = time.monotonic()
+        print(f'[mesh] Reading {source}', flush=True)
         gmsh.open(str(source))
+        timings['read_s'] = time.monotonic()-start
         for name, value in settings.items():
             gmsh.option.setNumber(name, value)
-        gmsh.model.mesh.generate(3)
+        for dim in (1, 2, 3):
+            print(f'[mesh] Starting {dim}D', flush=True)
+            start = time.monotonic()
+            gmsh.model.mesh.generate(dim)
+            timings[f'mesh_{dim}d_s'] = time.monotonic()-start
+            print(f'[mesh] Finished {dim}D in {timings[f"mesh_{dim}d_s"]:.3f} s', flush=True)
         gmsh.write(str(output))
     finally:
         gmsh.finalize()
     report = {'sources_sha256': hashes, 'generator_sha256': digest(Path(__file__)),
               'mesh_sha256': digest(output), 'gmsh': gmsh.__version__,
               'python': platform.python_version(), 'platform': platform.platform(),
-              'settings': settings}
+              'settings': settings, 'timings': timings}
     output.with_suffix('.mesh-manifest.json').write_text(json.dumps(report, indent=2, sort_keys=True)+'\n')
 
 
@@ -58,5 +63,18 @@ if __name__ == '__main__':
     p.add_argument('output', type=Path)
     p.add_argument('--dependency', action='append', type=Path, default=[],
                    help='Record each imported STEP/Include/parameter file (repeat as needed)')
+    p.add_argument('--timeout', type=float, help='Wall-clock limit in seconds, enforced by a parent process')
     a = p.parse_args()
-    generate(a.source, a.output, a.dependency)
+    if a.timeout is None:
+        generate(a.source, a.output, a.dependency)
+    else:
+        if not (0 < a.timeout < float('inf')):
+            p.error('--timeout must be finite and positive')
+        command = [sys.executable, '-u', str(Path(__file__).resolve()), str(a.source), str(a.output)]
+        for dependency in a.dependency:
+            command.extend(['--dependency', str(dependency)])
+        try:
+            result = subprocess.run(command, timeout=a.timeout)
+        except subprocess.TimeoutExpired:
+            p.exit(124, f'[mesh] Stopped after {a.timeout:g} s; see last stage in log. Output is not validated.\n')
+        raise SystemExit(result.returncode)
