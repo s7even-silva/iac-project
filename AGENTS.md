@@ -88,6 +88,16 @@ fuentes y pendientes en
   reinstalaciones ni en el caso de una Miniconda ya instalada antes de
   este fix). El usuario debe abrir una terminal nueva (o volver a abrir la
   actual) después de instalar para que `conda` quede disponible.
+- **Fix (2026-09-09):** `conda env create` fallaba en una máquina nueva
+  con "the following channels have not been accepted" — desde 2025,
+  conda exige aceptar los Términos de Servicio de los canales `defaults`
+  (`pkgs/main`, `pkgs/r`) antes de resolver **cualquier** entorno, incluso
+  uno cuyo `environment.yml` solo lista `conda-forge`: la instalación base
+  trae `defaults` en su configuración global de canales aparte de lo que
+  pida el `.yml` del proyecto. Corregido: el script corre `conda tos
+  accept` para esos dos canales antes de crear `geant4_env`/
+  `py313_bootstrap` (con aviso, no error fatal, si la versión de conda
+  instalada no trae el subcommand `tos`, relativamente nuevo).
 - Elmer FEM instalado (`scripts/install.sh --with-elmer`, brecha 3) y
   corriendo (`CoilSolver` + `WhitneyAVSolver` + `MagnetoDynamicsCalcFields`,
   `field/examples/elmer_pilot.sif`), con dos bugs reales de `.sif`

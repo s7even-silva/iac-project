@@ -129,6 +129,29 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 2.5. Términos de Servicio de Anaconda: desde 2025 conda exige aceptar el
+#      ToS de los canales "defaults" (pkgs/main, pkgs/r) antes de resolver
+#      CUALQUIER entorno, incluso uno cuyo environment.yml solo lista
+#      "conda-forge" -- la instalación base de conda trae "defaults" en su
+#      config global de canales aparte de lo que pida el .yml. Sin aceptar,
+#      "conda env create" falla con "the following channels have not been
+#      accepted" (confirmado: reportado tras probar el script en otra
+#      máquina, con conda 26.5.3 recién instalado). "conda tos" es un
+#      subcomando relativamente nuevo (plugin conda-anaconda-tos, 2025) --
+#      si una Miniconda más vieja no lo trae, se omite con una advertencia
+#      en vez de fallar todo el script.
+# ---------------------------------------------------------------------------
+if conda tos --help >/dev/null 2>&1; then
+  log "Aceptando Términos de Servicio de los canales por defecto de Anaconda"
+  conda tos accept -c https://repo.anaconda.com/pkgs/main -c https://repo.anaconda.com/pkgs/r
+  ok "Términos de Servicio aceptados"
+else
+  warn "Esta versión de conda no tiene 'conda tos' -- si 'conda env create' falla"
+  warn "más abajo por Términos de Servicio no aceptados, actualiza conda o acéptalos"
+  warn "manualmente (ver https://www.anaconda.com/docs/getting-started/tos-plugin)."
+fi
+
+# ---------------------------------------------------------------------------
 # 3. Entorno geant4_env: Geant4 11.4.2 + CMake + gcc/g++ de conda-forge,
 #    exactamente como pide environment.yml (incluye GDML, requerido por
 #    ActiveShield_Sim).
