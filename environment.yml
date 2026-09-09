@@ -6,3 +6,4 @@ dependencies:
   - cmake=4.4.1
   - gcc_linux-64=15.2.0
   - gxx_linux-64=15.2.0
+  - expat

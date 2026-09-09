@@ -98,6 +98,18 @@ fuentes y pendientes en
   accept` para esos dos canales antes de crear `geant4_env`/
   `py313_bootstrap` (con aviso, no error fatal, si la versión de conda
   instalada no trae el subcommand `tos`, relativamente nuevo).
+- **Fix (2026-09-09):** compilar GCR_SEP_Sim/ActiveShield_Sim fallaba en
+  una máquina nueva con `Could NOT find EXPAT (missing: EXPAT_LIBRARY
+  EXPAT_INCLUDE_DIR)` durante `find_package(Geant4)` — `Geant4Config.cmake`
+  exige `EXPAT` (soporte GDML) vía `find_dependency`, y conda-forge separa
+  el paquete `libexpat` (solo la librería de runtime) del paquete `expat`
+  (headers + libs de desarrollo). `geant4=11.4.2` solo arrastra `libexpat`
+  como dependencia transitiva en algunas resoluciones del solver de conda
+  (confirmado: presente en una máquina, ausente en otra con el mismo
+  `environment.yml`) — sin `expat`, CMake no encuentra
+  `EXPAT_INCLUDE_DIR` aunque la librería sí esté. Corregido: `expat`
+  agregado explícitamente a `environment.yml`, sin depender de que la
+  resolución transitiva lo traiga por casualidad.
 - Elmer FEM instalado (`scripts/install.sh --with-elmer`, brecha 3) y
   corriendo (`CoilSolver` + `WhitneyAVSolver` + `MagnetoDynamicsCalcFields`,
   `field/examples/elmer_pilot.sif`), con dos bugs reales de `.sif`
