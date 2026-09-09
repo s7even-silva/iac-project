@@ -117,6 +117,11 @@ def generate(config, directory):
             cad_volume_by_name[name] = occ.getMass(3, tag)
         removed = remove_construction_entities()
         gmsh.write(str(directory / 'array.brep'))
+        # STEP export: see generate_dh.py's generate() for why -- lets a
+        # third-party FEM tool (e.g. Ansys Maxwell) mesh this exact assembly
+        # with its own mesher, avoiding OpenCASCADE/Gmsh's 2D-triangulation
+        # limit on multi-turn swept solids (GEOM14_STATUS.md brecha 3/4).
+        gmsh.write(str(directory / 'array.step'))
         overall_bounds = [
             min(b[i] for b in bounds_per_coil) if i < 3 else max(b[i] for b in bounds_per_coil)
             for i in range(6)
@@ -148,6 +153,7 @@ def generate(config, directory):
               'gmsh': gmsh.__version__, 'numpy': np.__version__,
               'python': platform.python_version(), 'platform': platform.platform(),
               'brep_sha256': digest(directory / 'array.brep'),
+              'step_sha256': digest(directory / 'array.step'),
               'construction_entities_removed': removed,
               'cleanup_sha256': digest(Path(__file__).with_name('cad_cleanup.py')),
               'bounds_m': overall_bounds,
