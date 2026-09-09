@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -34,6 +35,36 @@ class FieldTests(unittest.TestCase):
             self.assertAlmostEqual(audit(directory/'current_path.json', critical_current=200)['current_margin_fraction'], .5)
             with self.assertRaises(ValueError):
                 audit(directory/'current_path.json', critical_current=-1)
+
+    def test_mesh_patch_count_scales_with_turns(self):
+        """Regression test for a real hang found 2026-09-08: generate_dh.py
+        used to cut the swept curve into a FIXED 8 patches regardless of
+        `turns`, so each patch's angular span grew with turns. Once a patch
+        spanned close to or more than one full helix turn (confirmed at 7+
+        turns with dh_pilot.json's geometry), the swept conductor disk
+        self-intersected within that single patch, and OpenCASCADE's
+        fragment/fuse in generate() hung indefinitely instead of raising --
+        6 turns meshed in seconds, 7 turns never completed in 90s+. The fix
+        scales patch count with `turns` (see generate() and _coil_solid()).
+        This test uses 8 turns (above the confirmed break point) with a
+        real subprocess timeout so a regression fails loudly here instead
+        of hanging the whole test suite."""
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            config = json.loads((ROOT/'examples/dh_pilot.json').read_text())
+            config['center_m'] = [0.0, 0.0, 0.0]
+            config['turns'] = 8
+            config['field_segments'] = 1024
+            config_path = directory/'config.json'
+            config_path.write_text(json.dumps(config))
+            generate_dh(config_path, directory/'out')
+            subprocess.run(
+                [sys.executable, str(ROOT/'generate_mesh.py'),
+                 str(directory/'out'/'dh.geo'), str(directory/'out'/'dh.msh'),
+                 '--dependency', str(directory/'out'/'dh.brep'),
+                 '--dependency', str(config_path)],
+                cwd=ROOT, timeout=60, check=True, capture_output=True)
+            self.assertTrue((directory/'out'/'dh.msh').is_file())
 
     def test_loop_axis_and_current_reversal(self):
         t = np.linspace(0, 2*np.pi, 2049)

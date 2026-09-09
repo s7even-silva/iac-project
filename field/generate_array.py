@@ -29,6 +29,7 @@ here as proof the array is geometrically valid.
 """
 import argparse
 import json
+import math
 from pathlib import Path
 import platform
 
@@ -49,7 +50,11 @@ def _coil_solid(occ, coil_config, tag_prefix):
     parameters = np.linspace(float(lo[0]), float(hi[0]), coil_config['field_segments'] + 1)
     path = np.asarray(gmsh.model.getValue(1, curve, parameters)).reshape(-1, 3)
     path[-1] = path[0]
-    cut_parameters = np.linspace(float(lo[0]), float(hi[0]), 9)[1:-1]
+    # See generate_dh.py's generate() for why this must scale with turns:
+    # a fixed 8-patch cut hangs Gmsh's fragment/fuse indefinitely once a
+    # patch spans more than ~1 turn (confirmed empirically at 7+ turns).
+    n_cuts = max(8, math.ceil(coil_config['turns'] / 0.5))
+    cut_parameters = np.linspace(float(lo[0]), float(hi[0]), n_cuts + 1)[1:-1]
     cut_points = np.asarray(gmsh.model.getValue(1, curve, cut_parameters)).reshape(-1, 3)
     cuts = [occ.addPoint(*p) for p in cut_points]
     fragments, _ = occ.fragment([(1, curve)], [(0, p) for p in cuts])

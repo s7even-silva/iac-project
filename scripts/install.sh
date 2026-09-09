@@ -13,6 +13,7 @@
 # Uso:
 #   bash scripts/install.sh
 #   bash scripts/install.sh --skip-system   # omite el paso de sudo/paquetes de distro
+#   bash scripts/install.sh --with-elmer    # compila tambien Elmer FEM (opcional, ~15-30+ min)
 #
 set -euo pipefail
 
@@ -21,10 +22,12 @@ MINICONDA_DIR="${MINICONDA_DIR:-$HOME/miniconda3}"
 GEANT4_ENV_NAME="geant4_env"
 PY313_ENV_NAME="py313_bootstrap"
 SKIP_SYSTEM=0
+WITH_ELMER=0
 
 for arg in "$@"; do
   case "$arg" in
     --skip-system) SKIP_SYSTEM=1 ;;
+    --with-elmer) WITH_ELMER=1 ;;
     *) echo "Argumento desconocido: $arg" >&2; exit 1 ;;
   esac
 done
@@ -152,6 +155,53 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 5.5. Elmer FEM (opcional, --with-elmer): solver del campo magnetico, aun
+#      no integrado al flujo del proyecto (ver field/GEOM14_STATUS.md,
+#      brecha 3) -- se omite por defecto para no alargar la instalacion base
+#      con algo que todavia no se usa. No hay paquete Elmer en conda-forge
+#      (confirmado 2026-09-08); el PPA oficial de Ubuntu
+#      (ppa:elmer-csc-ubuntu/elmer-csc-ppa) solo cubre distros Ubuntu/Debian
+#      especificas, no "cualquier distro" -- se compila desde fuente en su
+#      lugar, mismo criterio que Miniconda en el paso 2 de este script.
+# ---------------------------------------------------------------------------
+ELMER_PREFIX="${ELMER_PREFIX:-$HOME/.local/elmerfem}"
+if [[ "$WITH_ELMER" -eq 1 ]]; then
+  log "Comprobando Elmer FEM en $ELMER_PREFIX"
+  if [[ -x "$ELMER_PREFIX/bin/ElmerSolver" ]]; then
+    ok "Elmer ya está instalado en $ELMER_PREFIX"
+  else
+    if [[ "$SKIP_SYSTEM" -eq 0 ]]; then
+      log "Instalando dependencias de compilación de Elmer (requiere sudo)"
+      if command -v apt-get >/dev/null 2>&1; then
+        sudo apt-get install -y git gfortran libopenmpi-dev libblas-dev liblapack-dev
+      elif command -v dnf >/dev/null 2>&1; then
+        sudo dnf install -y git gcc-gfortran openmpi-devel blas-devel lapack-devel
+      elif command -v pacman >/dev/null 2>&1; then
+        sudo pacman -Sy --noconfirm --needed git gcc-fortran openmpi blas lapack
+      elif command -v zypper >/dev/null 2>&1; then
+        sudo zypper install -y git gcc-fortran openmpi-devel blas-devel lapack-devel
+      else
+        warn "No se reconoce el gestor de paquetes para las dependencias de Elmer."
+        warn "Instala manualmente: git, gfortran, MPI (OpenMPI), BLAS y LAPACK de desarrollo."
+      fi
+    fi
+    log "Compilando Elmer FEM desde fuente en $ELMER_PREFIX (puede tardar 15-30+ min)"
+    ELMER_SRC="$(mktemp -d -t elmerfem-src-XXXXXX)"
+    git clone --depth 1 https://www.github.com/ElmerCSC/elmerfem "$ELMER_SRC"
+    cmake -S "$ELMER_SRC" -B "$ELMER_SRC/build" \
+      -DCMAKE_INSTALL_PREFIX="$ELMER_PREFIX" \
+      -DWITH_MPI:BOOLEAN=TRUE -DWITH_OpenMP:BOOLEAN=TRUE
+    cmake --build "$ELMER_SRC/build" -j"$(nproc)"
+    cmake --install "$ELMER_SRC/build"
+    rm -rf "$ELMER_SRC"
+    ok "Elmer instalado en $ELMER_PREFIX"
+  fi
+  echo "$ELMER_PREFIX/bin" > "$REPO_ROOT/field/.elmer-prefix"
+else
+  log "Omitido: Elmer FEM (pasar --with-elmer para instalarlo; no bloquea el resto)"
+fi
+
+# ---------------------------------------------------------------------------
 # 6. Verificación final: compila ambos proyectos Geant4 y corre los tests
 #    Python de field/, igual que se validó manualmente en sesiones previas
 #    (ver AGENTS.md, "Verificación de este cambio").
@@ -201,8 +251,22 @@ Para trabajar en cada parte del proyecto:
   Pipeline de mallado/campo (field/):
     field/.venv/bin/python field/generate_dh.py ...
     (no hace falta activar nada; también puedes 'source field/.venv/bin/activate')
-
-Nota: Elmer (el solver FEM del campo magnético) NO se instala con este
-script -- todavía no está integrado al flujo del proyecto (ver AGENTS.md
-y field/GEOM14_STATUS.md).
 EOF
+
+if [[ "$WITH_ELMER" -eq 1 ]]; then
+cat <<EOF
+
+  Elmer FEM (compilado desde fuente):
+    export PATH="$ELMER_PREFIX/bin:\$PATH"
+    ElmerSolver ...   (ver field/GEOM14_STATUS.md, brecha 3, para el
+                        siguiente paso: acoplarlo al ejemplo mgdyn_steady_coils)
+EOF
+else
+cat <<EOF
+
+Nota: Elmer (el solver FEM del campo magnético) NO se instaló -- pasa
+--with-elmer para compilarlo desde fuente (no está en conda-forge ni hay
+un paquete portable entre distros; 15-30+ min). Todavía no está integrado
+al flujo del proyecto (ver AGENTS.md y field/GEOM14_STATUS.md, brecha 3).
+EOF
+fi
