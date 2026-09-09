@@ -139,6 +139,13 @@ def generate(config, directory):
         bounds = gmsh.model.getBoundingBox(3, solids[0])
         removed = remove_construction_entities()
         gmsh.write(str(directory/'dh.brep'))
+        # STEP export: for importing this exact solid into third-party CAD/FEM
+        # tools (e.g. Ansys Maxwell) that have their own mature 3D mesher and
+        # do not share OpenCASCADE/Gmsh's 2D-triangulation hang on multi-turn
+        # swept solids (see field/GEOM14_STATUS.md brecha 3/4). STEP is the
+        # universal exchange format such tools import natively; .brep is
+        # OpenCASCADE-specific and not portable outside Gmsh/OCC-based tools.
+        gmsh.write(str(directory/'dh.step'))
     finally:
         gmsh.finalize()
     # Export only the solid and its boundaries, not the construction spine.
@@ -154,6 +161,7 @@ def generate(config, directory):
               'gmsh': gmsh.__version__, 'numpy': np.__version__,
               'python': platform.python_version(), 'platform': platform.platform(),
               'brep_sha256': digest(directory/'dh.brep'),
+              'step_sha256': digest(directory/'dh.step'),
               'construction_entities_removed': removed,
               'cleanup_sha256': digest(Path(__file__).with_name('cad_cleanup.py')),
               'current_A': c['current_A'], 'conductor_radius_m': c['conductor_radius_m'],

@@ -327,6 +327,65 @@ de investigación bibliográfica adicional.
      Biot-Savart regularizado (`compute_field.py`), que es la vía activa
      documentada — ver `geant4/ActiveShield_Sim/tests/dh_pilot.mac`.
 
+   - **Vía alternativa investigada (2026-09-09): exportar a Ansys Maxwell.**
+     Maxwell tiene su propio mallador 3D maduro (motor ACIS/Parasolid +
+     generador adaptativo propio), distinto de OpenCASCADE/Gmsh — no
+     comparte la limitación de triangulación 2D que bloquea el mallado
+     directo de geometrías de muchas vueltas (la razón de ser de
+     `mesh_swept.py`/`mesh_swept_air.py`). Confirmado por documentación
+     oficial de Ansys: importa STEP nativamente (traductor dedicado desde
+     AEDT 2024 R2) y admite conductor sólido de sección variable a lo
+     largo del camino ("current path can have varying cross-section"),
+     que es justo nuestro caso (cinta rectangular, brecha 2). La
+     excitación de corriente ("Coil Terminal") se asigna sobre una
+     **superficie de corte transversal** del sólido, no sobre el volumen
+     completo ni sobre una curva ("Terminals cannot be assigned to
+     volume; a surface must be created to assign terminals") — quien use
+     Maxwell deberá cortar el sólido importado en un punto de la
+     trayectoria para generar esa superficie antes de excitar corriente;
+     es un paso estándar de su flujo, no una limitación de nuestra
+     exportación.
+
+     **Implementado**: `generate_dh.py` y `generate_array.py` ahora
+     también escriben `dh.step`/`array.step` (formato universal de
+     intercambio CAD) junto al `.brep` existente, con su hash
+     (`step_sha256`) en `current_path.json`/`array_current_paths.json`
+     para trazabilidad — mismo sólido ya validado (mismo volumen/masa que
+     usa el GDML), sin tocar el pipeline de mallado de producción. Se
+     evaluó también exportar solo la trayectoria (`path_m`, ya disponible
+     en el reporte) para que Maxwell la use con su herramienta nativa de
+     "Sweep Along Path" — descartado como camino principal: obligaría a
+     reconstruir manualmente en Maxwell el mismo barrido que Python ya
+     hizo, con más trabajo y riesgo de discrepancia geométrica que
+     simplemente importar el sólido ya construido.
+
+     **La versión gratuita Ansys Student NO alcanza para nuestra
+     geometría real (confirmado 2026-09-09).** Límite oficial de Maxwell
+     Student: **64.000 elementos de malla 3D** (documentación oficial de
+     Ansys, `MaxwellStudentLimitations.htm`). El piloto de una sola bobina
+     (3 vueltas) ya generó 76.176 tetraedros con nuestro propio mallador
+     — por encima del límite (el mallador nativo de Maxwell podría dar un
+     número algo distinto sobre el mismo sólido STEP, pero el orden de
+     magnitud es el mismo tipo de geometría). Confirmado también por un
+     caso reportado en el foro oficial de Ansys: un usuario modelando solo
+     **dos bobinas** con acoplamiento mutuo llegó a 75.818 elementos y fue
+     rechazado por el mismo límite — mismo orden de magnitud que nuestro
+     piloto de una bobina. El arreglo de producción completo (60 vueltas)
+     generó 6,24M tetraedros, muy por encima de cualquier posibilidad con
+     Student. Import STEP sí está soportado en Student ("Import of DXF
+     and STEP files only"), así que el archivo `.step` exportado es
+     compatible — el bloqueo es únicamente de tamaño de malla al mallar
+     el sólido importado, no de formato de entrada.
+
+     Además, los términos de uso de Ansys Student excluyen explícitamente
+     investigación ("not intended for research, commercial, professional
+     or production") — una restricción de uso, no solo técnica, relevante
+     si este proyecto de curso reporta resultados formalmente. La UNMSM,
+     como universidad, puede tener acceso a una licencia académica
+     institucional de Ansys (sin el límite de 64k y sin esa restricción de
+     uso) — verificar con la facultad/departamento antes de asumir que la
+     versión Student es la única opción disponible.
+
 4. **Validar el campo Elmer contra Biot-Savart** lejos del conductor (donde
    Biot-Savart es válido sin regularización), antes de confiar en el mapa
    FEM. El flujo de auditoría ya existe en miniatura (`audit_dh.py` calcula

@@ -79,6 +79,18 @@ fuentes y pendientes en
   GEOM14_STATUS.md brecha 3/4 para el detalle completo de por qué. No
   bloquea el proyecto: el piloto de Geant4 usa Biot-Savart
   (`compute_field.py`), ya validado y en uso.
+- Exportación STEP (2026-09-09): `generate_dh.py`/`generate_array.py`
+  escriben también `dh.step`/`array.step` (con `step_sha256` en el
+  reporte) junto al `.brep` existente — mismo sólido ya validado, para
+  importar en herramientas de terceros con mallador propio (p. ej. Ansys
+  Maxwell, que no comparte el límite de triangulación 2D de
+  OpenCASCADE/Gmsh en geometrías de muchas vueltas). Detalle de por qué
+  esta vía y no exportar solo la trayectoria en GEOM14_STATUS.md brecha 3.
+  **La versión gratuita Ansys Student no alcanza para nuestra geometría**:
+  límite oficial de 64.000 elementos de malla 3D, superado ya por el
+  piloto de una sola bobina (76.176 tetraedros con nuestro mallador) y
+  muchísimo más por el arreglo de producción (6,24M) — ver GEOM14_STATUS.md
+  brecha 3 para el detalle y la alternativa de licencia académica.
 - Conversión `field/generate_mesh.py` → `.msh` → `field/mesh_to_gdml.py`
   → GDML con componentes y materiales separados. Requiere tetraedros de
   primer orden y grupos físicos con asignación explícita en JSON.
