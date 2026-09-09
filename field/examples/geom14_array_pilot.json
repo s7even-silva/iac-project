@@ -1,0 +1,219 @@
+{
+  "schema_version": 1,
+  "status": "computational_pilot_array_not_geom14",
+  "_provenance": [
+    "Primer arreglo de validacion para Geom14: UNA bobina de barrel + UNA",
+    "bobina de endcap a cada extremo (3 bobinas totales), no las 12 completas",
+    "del arreglo Halbach real -- sigue field/DOMAINS.md y field/GEOM14_STATUS.md",
+    "brecha 5 al pie de la letra: validar una bobina (y aqui, adicionalmente,",
+    "la interaccion barrel/endcap) antes de replicar al arreglo completo.",
+    "",
+    "DECISION EXPLICITA DEL EQUIPO (2026-09-08, no un parametro de ARSSEM):",
+    "se asume que Geom14 tiene endcaps, igual que Geom12 y Geom13 (misma",
+    "familia Double Helix) -- el paper NUNCA confirma esto para Geom14",
+    "especificamente (ver field/GEOM14_STATUS.md, 'Qu\u00e9 est\u00e1 y qu\u00e9 no est\u00e1",
+    "expl\u00edcitamente bajo el r\u00f3tulo Geom14'). Es la extrapolaci\u00f3n mejor",
+    "sustentada disponible, no un hecho publicado.",
+    "",
+    "Dimensiones confirmadas por ARSSEM (fig. 5.4, Geom13 -- Geom14 comparte",
+    "el mismo barrel de 204cm de diametro segun S4.3): barrel diametro 204cm,",
+    "longitud 18m (S4.3; ARSSEM fig 5.4 solo da 772cm=7.72m para EL TUBO DE",
+    "ALUMINIO de blindaje pasivo simulado, que es mas corto que la bobina",
+    "electromagnetica de 18m -- no confundir ambos). Endcap: diametro 135cm,",
+    "longitud 200cm (fig. 5.4, Geom13). Extrapolado a Geom14 por compartir",
+    "familia de diseno -- ver nota de arriba.",
+    "",
+    "Vueltas, paso e inclinacion de cada bobina: NO confirmados por ARSSEM",
+    "para ningun Geom especifico -- son parametros de desarrollo elegidos",
+    "para producir una geometria valida (ver controls() en generate_dh.py",
+    "para las restricciones que deben cumplir), pendientes de reemplazar",
+    "cuando/si el equipo obtenga un devanado real (ver GEOM14_STATUS.md,",
+    "brecha 1). Corriente: 100A de ensayo (igual que dh_pilot.json), NO la",
+    "corriente de operacion real de Geom14 -- ver brecha 1 y advertencia de",
+    "corriente critica en field/audit_dh.py.",
+    "",
+    "Seccion del conductor: CIRCULAR con radio equivalente de area a la cinta",
+    "HTS real (50mm x 94um homogeneizado, ver examples/hts_tape_materials.json)",
+    "-- el generador todavia NO soporta seccion rectangular real (ver",
+    "field/GEOM14_STATUS.md, brecha 2, paso pendiente en generate_dh.py/",
+    "generate_array.py). Este placeholder conserva el AREA real de la cinta,",
+    "no su forma, para que la masa de conductor sea correcta aunque la forma",
+    "del campo cercano al devanado no lo sea todavia (ver limitacion analoga",
+    "ya documentada para compute_field.py: nucleo regularizado, no valido",
+    "cerca/dentro del conductor de todos modos, asi que la forma exacta de",
+    "la seccion no cambia la validez de ese mapa de referencia).",
+    "",
+    "mesh_size_m/mesh_min_size_m = radio_conductor/2 (0.00061155m), NO el",
+    "0.006m del piloto original de una sola bobina -- dh_pilot.json usa un",
+    "conductor 10x mas grueso (radio 12mm), asi que su 0.006m ya era la mitad",
+    "de SU radio. Copiar ese mismo valor absoluto sin escalarlo al conductor",
+    "10x mas delgado de esta cinta HTS (radio 1.22mm) produjo una malla mas",
+    "grande que el propio conductor y Gmsh se quedo colgado mas de 5 minutos",
+    "sin terminar (confirmado 2026-09-08) -- siempre escalar mesh_size_m con",
+    "conductor_radius_m, nunca copiar un valor absoluto entre configs con",
+    "radios de conductor distintos."
+  ],
+  "coils": [
+    {
+      "name": "geom14_barrel_pilot",
+      "role": "barrel",
+      "material": "hts_tape_homogenized",
+      "config": {
+        "schema_version": 1,
+        "status": "computational_pilot_not_geom14",
+        "center_m": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "radii_m": [
+          1.01,
+          1.03
+        ],
+        "turns": 60,
+        "pitch_m": 0.3,
+        "tilt_deg": 45.0,
+        "conductor_radius_m": 0.0012231,
+        "current_A": 100.0,
+        "control_points_per_turn": 32,
+        "field_segments": 4096,
+        "mesh_size_m": 0.0012231,
+        "mesh_min_size_m": 0.0012231,
+        "mesh_points_per_circle": 16
+      }
+    },
+    {
+      "name": "geom14_endcap_pilot_plus_z",
+      "role": "endcap",
+      "material": "hts_tape_homogenized",
+      "config": {
+        "schema_version": 1,
+        "status": "computational_pilot_not_geom14",
+        "center_m": [
+          0.0,
+          0.0,
+          10.0
+        ],
+        "radii_m": [
+          0.665,
+          0.685
+        ],
+        "turns": 20,
+        "pitch_m": 0.1,
+        "tilt_deg": 45.0,
+        "conductor_radius_m": 0.0012231,
+        "current_A": 100.0,
+        "control_points_per_turn": 32,
+        "field_segments": 2048,
+        "mesh_size_m": 0.0012231,
+        "mesh_min_size_m": 0.0012231,
+        "mesh_points_per_circle": 16
+      }
+    },
+    {
+      "name": "geom14_endcap_pilot_minus_z",
+      "role": "endcap",
+      "material": "hts_tape_homogenized",
+      "config": {
+        "schema_version": 1,
+        "status": "computational_pilot_not_geom14",
+        "center_m": [
+          0.0,
+          0.0,
+          -10.0
+        ],
+        "radii_m": [
+          0.665,
+          0.685
+        ],
+        "turns": 20,
+        "pitch_m": 0.1,
+        "tilt_deg": 45.0,
+        "conductor_radius_m": 0.0012231,
+        "current_A": 100.0,
+        "control_points_per_turn": 32,
+        "field_segments": 2048,
+        "mesh_size_m": 0.0012231,
+        "mesh_min_size_m": 0.0012231,
+        "mesh_points_per_circle": 16
+      }
+    }
+  ],
+  "materials_library": {
+    "_provenance": "Copiado de examples/hts_tape_materials.json -- mantener ambos archivos en sincronia si se actualiza la composicion.",
+    "elements": {
+      "Cu": {
+        "Z": 29,
+        "A": 63.546
+      },
+      "Ni": {
+        "Z": 28,
+        "A": 58.6934
+      },
+      "Mo": {
+        "Z": 42,
+        "A": 95.95
+      },
+      "Cr": {
+        "Z": 24,
+        "A": 51.9961
+      },
+      "Fe": {
+        "Z": 26,
+        "A": 55.845
+      },
+      "Ag": {
+        "Z": 47,
+        "A": 107.8682
+      },
+      "W": {
+        "Z": 74,
+        "A": 183.84
+      },
+      "Co": {
+        "Z": 27,
+        "A": 58.933194
+      },
+      "Ba": {
+        "Z": 56,
+        "A": 137.327
+      },
+      "Mn": {
+        "Z": 25,
+        "A": 54.938044
+      },
+      "O": {
+        "Z": 8,
+        "A": 15.999
+      },
+      "Y": {
+        "Z": 39,
+        "A": 88.90585
+      },
+      "Si": {
+        "Z": 14,
+        "A": 28.085
+      }
+    },
+    "materials": {
+      "hts_tape_homogenized": {
+        "density_g_cm3": 8.899,
+        "mass_fractions": {
+          "Cu": 0.432778,
+          "Ni": 0.2958,
+          "Mo": 0.085015,
+          "Cr": 0.082359,
+          "Fe": 0.029224,
+          "Ag": 0.025097,
+          "W": 0.019925,
+          "Co": 0.013284,
+          "Ba": 0.006225,
+          "Mn": 0.005313,
+          "O": 0.002538,
+          "Y": 0.002016,
+          "Si": 0.000425
+        }
+      }
+    }
+  }
+}
