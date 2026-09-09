@@ -71,6 +71,120 @@ de nuevo al vacío. Ejecutarla desde `geant4/ActiveShield_Sim/build` con
 de esta secuencia. Faltan dominio exterior FEM, J volumétrica, solver y exportador
 de su solución; el mapa de referencia permite desarrollar y comprobar esas piezas.
 
+## Ensamblaje multi-bobina: barrel + endcaps (Geom14)
+
+Extiende la secuencia de una sola bobina a un arreglo (barrel + endcaps),
+sin repetir su geometría: reutiliza `controls()` de `generate_dh.py` sin
+modificarla, una vez por bobina del arreglo. Ver
+[field/GEOM14_STATUS.md](GEOM14_STATUS.md) para las dimensiones exactas
+tomadas de ARSSEM (y cuáles son extrapolación, no dato publicado) y el
+material homogeneizado del conductor HTS.
+
+```bash
+# 1. JSON con N bobinas (barrel + endcaps) → un solo CAD/GDML ensamblado.
+field/.venv/bin/python field/generate_array.py \
+  field/examples/geom14_array_pilot.json field/generated/geom14_array
+
+# 2. CAD → malla tetraédrica (una malla para las N bobinas juntas).
+field/.venv/bin/python field/generate_mesh.py \
+  field/generated/geom14_array/array.geo field/generated/geom14_array/array.msh \
+  --dependency field/generated/geom14_array/array.brep \
+  --dependency field/examples/geom14_array_pilot.json
+
+# 3. Malla + materiales → GDML con un Physical Volume por bobina.
+field/.venv/bin/python field/mesh_to_gdml.py \
+  field/generated/geom14_array/array.msh field/generated/geom14_array/materials.json \
+  field/generated/geom14_array/array.gdml
+
+# 4. Mapa de campo por superposición (suma Biot-Savart de cada bobina).
+field/.venv/bin/python field/compute_field_array.py \
+  field/generated/geom14_array/array_current_paths.json field/generated/geom14_array/array.map \
+  --half-size 15 --spacing 0.5
+```
+
+`field/examples/geom14_array_pilot.json` es el primer arreglo de validación:
+**una** bobina de barrel + **una** de endcap a cada extremo (3 bobinas, no
+las 12 del arreglo Halbach completo) — sigue la brecha 5 de
+`GEOM14_STATUS.md` al pie de la letra: validar la interacción entre tipos de
+bobina antes de replicar al arreglo completo. El paso 1, con los parámetros
+de ese JSON (60 vueltas en el barrel), tardó varios minutos en esta máquina
+— las operaciones booleanas de OpenCASCADE escalan mal con el número de
+vueltas; para iterar rápido en desarrollo, bajar `turns`/`field_segments`
+temporalmente (probado con `turns: 3` y una malla más gruesa, termina en
+menos de un minuto) y solo usar los valores reales para la corrida final.
+
+**Causa raíz encontrada y corregida (2026-09-08): dos bugs distintos, ninguno
+era `mesh_size_m`.** El colgado del mallado con geometrías de muchas vueltas
+se investigó a fondo variando `turns` de forma aislada y controlada (no
+solo probando valores de `mesh_size_m` a ciegas), lo que llevó a dos
+hallazgos reales:
+
+1. **`generate_dh.py`/`generate_array.py` cortaban la curva helicoidal en un
+   número FIJO de 8 tramos, sin importar cuántas vueltas tuviera la bobina**
+   (`np.linspace(..., 9)` hardcodeado). Con pocas vueltas cada tramo cubre
+   menos de una vuelta y el disco barrido (`addPipe`) no se autointersecta
+   dentro de su propio tramo; con más vueltas (confirmado en 7+, con la
+   geometría del piloto de una sola bobina) cada tramo cubre una vuelta
+   completa o más, el disco barrido se autointersecta dentro del tramo, y
+   la fusión booleana de OpenCASCADE (`occ.fuse`) nunca converge — no
+   lanza error, simplemente no termina. **Corregido:** el número de cortes
+   ahora escala con `turns` (`max(8, ceil(turns/0.5))`), manteniendo cada
+   tramo por debajo de ~0,5 vueltas sin importar cuántas tenga la bobina
+   completa.
+2. **El algoritmo de mallado 3D de Gmsh usado por `generate_mesh.py`
+   (`Mesh.Algorithm3D = 1`, Delaunay) se cuelga indefinidamente en sólidos
+   barridos largos, delgados y muy curvados** — confirmado aislando el
+   problema: con 7 vueltas mallaba en segundos, con 8 vueltas (mismos
+   demás parámetros, incluido el fix del punto 1) nunca terminaba pese a
+   más de 90s de espera sin ningún mensaje de progreso. Cambiar a
+   `Mesh.Algorithm3D = 10` (HXT, el algoritmo 3D moderno de Gmsh, más
+   robusto para este tipo de geometría) malló la misma geometría de 8
+   vueltas en ~8 segundos. **Corregido:** `generate_mesh.py` ahora usa HXT.
+
+Ninguno de los tres valores de `mesh_size_m` que se probaron antes de este
+diagnóstico (6 mm sin escalar, `conductor_radius_m/2`, `conductor_radius_m`)
+era la causa real — cada uno tocaba una variable irrelevante al problema
+verdadero. La lección: cuando un proceso se cuelga sin error (no lanza
+excepción, no hay mensaje), variar un solo parámetro a la vez con casos
+mínimos reproducibles (aquí, aislar `turns` en el pilot de una sola bobina
+en vez de depurar directamente sobre el arreglo de 3) encuentra la causa
+mucho más rápido que ajustar por intuición el primer parámetro sospechoso.
+
+Con ambos fixes, geometrías de tamaño intermedio (confirmado hasta 8 vueltas,
+~25 m de conductor, HXT en ~8 s) mallan sin colgarse — ver
+`field/tests/test_field.py::test_mesh_patch_count_scales_with_turns` para la
+prueba de regresión, con timeout real de subprocess para que un regreso de
+cualquiera de los dos bugs falle el test en vez de colgar la suite.
+
+**Límite de escala nuevo, distinto de los dos bugs de arriba (2026-09-08):**
+mallar el arreglo real de Geom14 (barrel de 60 vueltas, ~934 m de longitud
+total de conductor) con HXT y `mesh_size_m=conductor_radius_m/2` (0,61 mm)
+no terminó en más de 6 minutos, con CPU al 100 % pero memoria estancada los
+últimos ~100 s — a diferencia del colgado de Delaunay (memoria y CPU sin
+avanzar desde el inicio), aquí sí hubo progreso real (memoria subió de forma
+sostenida hasta 1,4 GB) antes de estancarse, lo que sugiere una fase interna
+distinta (probablemente optimización de calidad de malla) con su propio
+límite práctico, no necesariamente otro bug de la misma familia. Con esa
+combinación de radio de conductor (1,22 mm) y longitud total (934 m), un
+`mesh_size_m` comparable al conductor genera un número de elementos poco
+práctico para esta escala — 8 vueltas (~25 m) ya daba ~950 000 elementos;
+60 vueltas (37× más largo) escala hacia decenas de millones. **No confirmado
+si esto termina dado suficiente tiempo/memoria, o si es un tercer caso
+patológico** — pendiente de investigar con más presupuesto de tiempo:
+opciones a probar son una malla más gruesa (aceptando más error geométrico,
+documentado) solo para el arreglo de producción, o revisar si HXT tiene sus
+propios parámetros de escala (p. ej. paralelismo, `Mesh.Optimize`) que
+ayuden en geometrías de esta longitud. No bloquea seguir con las brechas 3-4
+(Elmer), que no dependen de esta malla de conversión a GDML.
+
+**No confundir un ensamblaje mallado con éxito con un arreglo geométricamente
+válido**: `generate_array.py` no comprueba solapamientos entre bobinas
+distintas (solo dentro de cada bobina, igual que `generate_dh.py`) — ese
+chequeo lo hace Geant4 al importar (`CheckOverlaps` en
+`ICRP110PhantomConstruction.cc`), que ya itera automáticamente sobre todas
+las piezas hijas del GDML, sin haber requerido ningún cambio de C++ para
+soportar múltiples bobinas en vez de una.
+
 ## Entorno Python aislado
 
 **Por qué un venv separado y no instalar esto en `geant4_env`:** el entorno
@@ -111,8 +225,16 @@ puede requerir GLU (`libGLU.so.1`, paquete del sistema). El wheel de Gmsh trae
 su biblioteca propia; estas dependencias del sistema no las instala `venv`.
 Los manifiestos registran plataforma, Python y Gmsh; conservarlos junto con
 los resultados y fijar sistema/contenedor si se necesita identidad entre máquinas.
-**Elmer no forma parte de este venv ni se ha instalado/configurado en este cambio.**
-Su versión, solver y parámetros se fijarán al implementar la solución FEM.
+**Elmer no forma parte de este venv.** `scripts/install.sh --with-elmer`
+(desde la raíz del repo) lo compila desde fuente en `~/.local/elmerfem`
+(configurable con `ELMER_PREFIX`) — no hay paquete Elmer en conda-forge, y
+el PPA oficial solo cubre versiones específicas de Ubuntu/Debian, no
+"cualquier distro" como el resto de este instalador. Es un paso opcional
+(15-30+ min de compilación) porque Elmer todavía no está integrado al flujo
+del proyecto — ver `GEOM14_STATUS.md`, brecha 3, para el siguiente paso
+(acoplar el ejemplo oficial `mgdyn_steady_coils` a la curva de corriente que
+ya genera `generate_array.py`). Su versión, solver y parámetros de
+producción se fijarán al implementar esa solución FEM.
 
 ## Ejemplo reproducible
 

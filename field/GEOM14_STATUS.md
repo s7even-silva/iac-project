@@ -169,7 +169,30 @@ de investigación bibliográfica adicional.
    transformación geométrica del mismo generador una vez validados los
    pasos 1-4, no una reescritura. Replicar antes de validar multiplicaría
    el costo de mallado/Elmer y propagaría cualquier error de diseño doce
-   veces en vez de una.
+   veces en vez de una. **Estado 2026-09-08:** `generate_array.py` y
+   `audit_array.py` generan y auditan el arreglo de 3 bobinas (barrel + 2
+   endcaps) con datos numéricos reales — CAD, volumen, masa por material, NI
+   por bobina. El mallado (CAD → `.msh`/GDML) tenía dos bugs reales que
+   colgaban el proceso indefinidamente en geometrías de muchas vueltas
+   (ninguno era el tamaño de malla, que fue el primer sospechoso): (1) el
+   número de cortes de la curva antes del barrido/fusión estaba fijo en 8
+   sin importar cuántas vueltas tuviera la bobina, causando que el disco
+   barrido se autointersecara dentro de un mismo tramo a partir de 7+
+   vueltas y la fusión booleana de OpenCASCADE nunca convergiera; (2) el
+   algoritmo de mallado 3D de Gmsh (Delaunay) se cuelga en sólidos barridos
+   largos y muy curvados incluso con (1) ya corregido — cambiar al
+   algoritmo HXT resolvió esto para geometrías de tamaño intermedio
+   (confirmado hasta 8 vueltas / ~25 m). **Ambos corregidos**
+   (`generate_dh.py`/`generate_array.py`: cortes escalados con `turns`;
+   `generate_mesh.py`: `Mesh.Algorithm3D` Delaunay→HXT), con prueba de
+   regresión en `field/tests/test_field.py::test_mesh_patch_count_scales_with_turns`.
+   **Pendiente, distinto de los dos bugs anteriores:** el arreglo de
+   producción real (barrel de 60 vueltas, ~934 m de conductor) no terminó
+   de mallar en 6+ minutos con HXT — hubo progreso real (memoria subiendo
+   hasta 1,4 GB) antes de estancarse, a diferencia del colgado inmediato de
+   Delaunay, lo que sugiere un límite práctico de escala (número de
+   elementos) más que un tercer bug de la misma familia — no confirmado.
+   Detalle completo y próximas ideas a probar en `field/README.md`.
 
 El lado de Geant4 (importar GDML + leer un mapa de campo tabulado) ya está
 completo y probado (`/spacecraft/coilGeometry`, `TabulatedMagneticField`) —
@@ -272,6 +295,92 @@ térmica, con masas justificadas. No modelar toda una cinta como YBCO puro.
 El concepto criogénico del informe no se traduce automáticamente en un recipiente
 convencional alrededor de cada bobina: hay que escoger qué envolventes, MLI,
 refrigerante y equipos entran en la geometría y justificar exclusiones.
+
+### Material homogeneizado del conductor HTS (implementado 2026-09-08)
+
+`field/examples/hts_tape_materials.json` deja de modelar el conductor como
+cobre puro: es un compuesto homogeneizado de 4 capas de una cinta HTS 2G
+comercial tipo SCS4050 (SuperPower Inc.), ponderado por **masa por unidad de
+área** (densidad × espesor de cada capa, no por espesor simple — una capa
+más densa aporta más fracción másica que una capa igual de gruesa pero menos
+densa):
+
+| Capa | Espesor | Densidad | Fuente |
+|---|---|---|---|
+| Hastelloy C276 (sustrato) | 50 µm | 8,89 g/cm³ | Ficha SuperPower confirma el rango (30/50 µm); composición y densidad de proveedores metalúrgicos (Xometry, NeoNickel) |
+| YBCO (película activa) | 2 µm | 6,3 g/cm³ | ARSSEM §4.3 (más trazable a nuestra fuente primaria que el ~1 µm de literatura secundaria de SCS4050); densidad de literatura general, **no verificada para película delgada** |
+| Ag (recubrimiento) | 2 µm | 10,49 g/cm³ | Literatura secundaria (SuperPower no publica este espesor) |
+| Cu (estabilizador, config. SCS) | 20 µm × 2 lados = 40 µm | 8,96 g/cm³ | Dentro del rango oficial SuperPower (5–55 µm/lado) |
+
+Espesor total homogeneizado: **94 µm** — no confundir con los "0,2 mm × 8
+capas" del devanado DH conceptual de ARSSEM §4.3, que describe el apilado
+completo de 8 cintas de la bobina, no el espesor de una sola cinta 2G real.
+
+**Resultado:** densidad compuesta 8,899 g/cm³, dominado por Cu (43,3%) y Ni
+del Hastelloy (29,6%) — coherente con que el sustrato estructural y el
+estabilizador de cobre son, en masa, la mayor parte de una cinta HTS real;
+el YBCO activo es apenas 1,5% de la masa total pese a ser la razón de ser
+del conductor. Composición elemental completa en el JSON, con `_provenance`
+por material.
+
+**Limitaciones explícitas de esta aproximación** (documentar en Métodos si
+se usa para resultados):
+- El **buffer stack** (5 capas cerámicas de óxidos, sub-micrónico) se omite
+  por completo — su composición exacta no está disponible en ninguna fuente
+  pública consultada, y su masa es despreciable frente a las 4 capas
+  modeladas.
+- La densidad de YBCO usada (6,3 g/cm³) es un valor de literatura general
+  para cristal, no verificado específicamente contra una ficha de película
+  delgada depositada por los métodos que usa SuperPower.
+- Los porcentajes de Hastelloy C276 usan el **punto medio** de los rangos
+  publicados por proveedores (Mo 15–17%, Cr 14,5–16,5%, etc.), no una
+  colada certificada específica.
+- **La sección transversal sigue siendo circular en el generador**, no la
+  cinta rectangular real (50 mm × 94 µm) — se usa un radio equivalente de
+  área (conserva la masa de conductor correctamente, no la forma del campo
+  cercano al devanado). Sustituir el disco por un rectángulo orientado en
+  `generate_dh.py`/`generate_array.py` sigue pendiente; no cambia la validez
+  del mapa Biot-Savart de referencia, que de todos modos no es válido cerca
+  del conductor con ningún radio (ver núcleo regularizado más abajo).
+
+## Ensamblaje multi-bobina: barrel + endcaps (implementado 2026-09-08)
+
+`field/generate_array.py` extiende `generate_dh.py` (reutilizando `controls()`
+sin modificarla) para ensamblar **varias** bobinas DH en un solo GDML, cada
+una con su propio `Physical Volume` y material — necesario porque Geom14
+probablemente no es una sola bobina replicada, sino un arreglo de barrel +
+endcaps (ver más abajo). El código Geant4 de importación (`/spacecraft/
+coilGeometry` en `ICRP110PhantomConstruction.cc`) ya iteraba sobre **todas**
+las piezas hijas del GDML importado, no una sola — no requirió ningún cambio
+de C++ para soportar múltiples bobinas, solo que el GDML las contuviera.
+
+**Decisión explícita del equipo, no un dato de ARSSEM:** se asume que Geom14
+tiene endcaps, igual que Geom12 y Geom13 (misma familia de diseño Double
+Helix) — el paper **nunca confirma esto para Geom14 específicamente** (ver
+sección de arriba, "Qué está y qué no está explícitamente bajo el rótulo
+Geom14"). Es la extrapolación mejor sustentada disponible dentro de la
+familia de diseños publicada, no un hecho verificado — debe citarse así en
+Métodos, no como si viniera directamente del paper.
+
+`field/examples/geom14_array_pilot.json` es el primer arreglo de validación:
+**una** bobina de barrel + **una** de endcap a cada extremo (3 bobinas
+totales, no las 12 del arreglo Halbach completo) — sigue la brecha 5 al pie
+de la letra: validar la interacción barrel/endcap antes de replicar al
+arreglo completo. Dimensiones geométricas (diámetro de barrel 204 cm,
+diámetro de endcap 135 cm, longitud de endcap 200 cm) tomadas de la Figura
+5.4 de ARSSEM para Geom13, que comparte el mismo barrel de 204 cm que Geom14
+según §4.3 — extrapolación directa, no dato propio de Geom14. Vueltas, paso
+e inclinación de cada bobina, y la corriente (100 A), siguen siendo
+parámetros de desarrollo sin confirmar contra ARSSEM (brecha 1 sigue
+abierta en cuanto a devanado real y corriente de operación).
+
+`field/compute_field_array.py` extiende el cálculo de referencia
+Biot-Savart por superposición: el campo total en un punto es la suma de la
+contribución independiente de cada bobina (`field_at()` de
+`compute_field.py`, reutilizada sin cambios, una vez por bobina). Esto es
+exacto para corrientes prescritas en un medio con µr≈1 (la magnetostática es
+lineal) — la misma aproximación de "corrientes prescritas" ya documentada
+como punto de partida operativo más arriba, no una física nueva.
 
 ## Physics list y blindaje pasivo
 
