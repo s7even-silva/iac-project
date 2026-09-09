@@ -156,26 +156,47 @@ Con ambos fixes, geometrías de tamaño intermedio (confirmado hasta 8 vueltas,
 prueba de regresión, con timeout real de subprocess para que un regreso de
 cualquiera de los dos bugs falle el test en vez de colgar la suite.
 
-**Límite de escala nuevo, distinto de los dos bugs de arriba (2026-09-08):**
-mallar el arreglo real de Geom14 (barrel de 60 vueltas, ~934 m de longitud
-total de conductor) con HXT y `mesh_size_m=conductor_radius_m/2` (0,61 mm)
-no terminó en más de 6 minutos, con CPU al 100 % pero memoria estancada los
-últimos ~100 s — a diferencia del colgado de Delaunay (memoria y CPU sin
-avanzar desde el inicio), aquí sí hubo progreso real (memoria subió de forma
-sostenida hasta 1,4 GB) antes de estancarse, lo que sugiere una fase interna
-distinta (probablemente optimización de calidad de malla) con su propio
-límite práctico, no necesariamente otro bug de la misma familia. Con esa
-combinación de radio de conductor (1,22 mm) y longitud total (934 m), un
-`mesh_size_m` comparable al conductor genera un número de elementos poco
-práctico para esta escala — 8 vueltas (~25 m) ya daba ~950 000 elementos;
-60 vueltas (37× más largo) escala hacia decenas de millones. **No confirmado
-si esto termina dado suficiente tiempo/memoria, o si es un tercer caso
-patológico** — pendiente de investigar con más presupuesto de tiempo:
-opciones a probar son una malla más gruesa (aceptando más error geométrico,
-documentado) solo para el arreglo de producción, o revisar si HXT tiene sus
-propios parámetros de escala (p. ej. paralelismo, `Mesh.Optimize`) que
-ayuden en geometrías de esta longitud. No bloquea seguir con las brechas 3-4
-(Elmer), que no dependen de esta malla de conversión a GDML.
+**Límite de escala real con HXT (2026-09-08, abandonado a favor de una vía
+distinta):** mallar el arreglo real de Geom14 (barrel de 60 vueltas, ~934 m
+de conductor) con HXT nunca terminó en varios intentos (6+ minutos sin
+converger, con progreso real de memoria pero sin llegar a completar la
+etapa 2D de Gmsh, confirmado con timing por etapa 1D/2D/3D) — el aislamiento
+posterior mostró que ni un algoritmo 2D distinto, ni tramos más cortos, ni
+seccionar el conductor en cuatro arcos resolvían el atasco: el propio paso
+de triangulación 2D de OpenCASCADE es el límite, no un parámetro ajustable.
+
+**Solución adoptada: `field/mesh_swept.py`, mallado directo por tetraedros
+estructurados, sin pasar por OpenCASCADE/Gmsh 2D en absoluto.** En vez de
+construir un sólido CAD y triangular su superficie, muestrea la curva
+espinal con refinamiento adaptativo (control de sagita), calcula marcos de
+rotación mínima a lo largo de la curva (evita torsión acumulada en un lazo
+cerrado), genera anillos de nodos alrededor de cada sección transversal
+circular, y triangula cada prisma en 3 tetraedros con verificación de
+orientación (determinante positivo) y de volumen. El arreglo completo de
+Geom14 (barrel 60 vueltas + 2 endcaps, 3 bobinas) generó **6,24 millones de
+tetraedros en 62,5 segundos**, con error de volumen de ~2,6% respecto al CAD
+analítico (dentro del guardrail de 5% del propio script, y comparable al
+3,06% ya aceptado como tolerancia de ensayo en el pipeline original). Test
+de regresión con un toro analítico (volumen exacto conocido) en
+`field/tests/test_swept.py`.
+
+**Conversión a GDML (`mesh_to_gdml.py`) también optimizada (2026-09-09):**
+la función `boundary()` (extraer la superficie exterior de los tetraedros)
+estaba en Python puro (diccionario + `sorted()` por cara) y tomaba 10+
+minutos sin terminar sobre los ~25M caras del arreglo completo. Vectorizada
+con NumPy: comparar filas completas con `np.unique(..., axis=0, ...)`
+seguía siendo ~15× más lento que codificar cada terna de vértices ordenada
+como una sola clave entera (base > máximo id de nodo, codificación
+biyectiva) y usar `np.unique` en 1D (benchmarked: 106s → 6,5s en 25M filas).
+Mismas correcciones aplicadas al resto de `convert()` (deduplicación de
+nodos usados, verificación de finitud de coordenadas) que también hacían
+listas/comprensiones Python sobre ~1,4M nodos. Resultado: de 10+ minutos sin
+terminar a **3m16s** para el GDML completo (700 MB, ~4,2M triángulos de
+superficie) — el resto del tiempo es I/O real (escribir y luego volver a
+leer un archivo de 700MB para su hash SHA256), no cómputo Python. Validado
+con hash SHA256 idéntico entre corridas sucesivas antes/después de cada
+optimización (mismo resultado exacto, solo más rápido). No bloquea seguir
+con las brechas 3-4 (Elmer), que no dependen de esta conversión a GDML.
 
 **No confundir un ensamblaje mallado con éxito con un arreglo geométricamente
 válido**: `generate_array.py` no comprueba solapamientos entre bobinas

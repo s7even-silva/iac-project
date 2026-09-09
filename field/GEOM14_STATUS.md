@@ -186,13 +186,24 @@ de investigación bibliográfica adicional.
    (`generate_dh.py`/`generate_array.py`: cortes escalados con `turns`;
    `generate_mesh.py`: `Mesh.Algorithm3D` Delaunay→HXT), con prueba de
    regresión en `field/tests/test_field.py::test_mesh_patch_count_scales_with_turns`.
-   **Pendiente, distinto de los dos bugs anteriores:** el arreglo de
-   producción real (barrel de 60 vueltas, ~934 m de conductor) no terminó
-   de mallar en 6+ minutos con HXT — hubo progreso real (memoria subiendo
-   hasta 1,4 GB) antes de estancarse, a diferencia del colgado inmediato de
-   Delaunay, lo que sugiere un límite práctico de escala (número de
-   elementos) más que un tercer bug de la misma familia — no confirmado.
-   Detalle completo y próximas ideas a probar en `field/README.md`.
+   **Resuelto de raíz (2026-09-09), no era un tercer bug de la familia de
+   HXT/Delaunay sino un límite real del mallado 2D de OpenCASCADE:** el
+   arreglo de producción (60 vueltas, ~934 m de conductor) nunca completaba
+   con HXT — timing por etapa confirmó que se atasca en la triangulación
+   **2D** de Gmsh, antes siquiera de llegar a la etapa 3D (HXT). Ni cambiar
+   de algoritmo 2D, ni acortar tramos, ni seccionar el conductor en cuatro
+   arcos lo resolvió. **Solución: `field/mesh_swept.py`**, que abandona
+   OpenCASCADE/Gmsh 2D por completo — genera directamente tetraedros
+   estructurados a lo largo de la curva espinal (marcos de rotación mínima
+   + anillos de sección circular), sin construir ni triangular un sólido
+   CAD. El arreglo completo (barrel + 2 endcaps) generó 6,24M tetraedros en
+   **62,5 segundos**, con ~2,6% de error de volumen respecto al CAD
+   analítico (dentro del guardrail de 5% del script). La conversión a GDML
+   (`mesh_to_gdml.py`) también se optimizó (vectorización con NumPy de la
+   extracción de superficie, antes en Python puro): de 10+ minutos sin
+   terminar a 3m16s para el GDML completo (700 MB, ~4,2M triángulos),
+   validado con hash SHA256 idéntico al resultado sin optimizar. Detalle
+   técnico completo en `field/README.md`.
 
 El lado de Geant4 (importar GDML + leer un mapa de campo tabulado) ya está
 completo y probado (`/spacecraft/coilGeometry`, `TabulatedMagneticField`) —

@@ -38,6 +38,7 @@ import numpy as np
 
 from generate_dh import controls
 from generate_mesh import digest
+from cad_cleanup import remove_construction_entities
 
 
 def _coil_solid(occ, coil_config, tag_prefix):
@@ -115,6 +116,7 @@ def generate(config, directory):
         for name, tag in solids:
             volumes_by_name[name] = tag
             cad_volume_by_name[name] = occ.getMass(3, tag)
+        removed = remove_construction_entities()
         gmsh.write(str(directory / 'array.brep'))
         overall_bounds = [
             min(b[i] for b in bounds_per_coil) if i < 3 else max(b[i] for b in bounds_per_coil)
@@ -147,6 +149,8 @@ def generate(config, directory):
               'gmsh': gmsh.__version__, 'numpy': np.__version__,
               'python': platform.python_version(), 'platform': platform.platform(),
               'brep_sha256': digest(directory / 'array.brep'),
+              'construction_entities_removed': removed,
+              'cleanup_sha256': digest(Path(__file__).with_name('cad_cleanup.py')),
               'bounds_m': overall_bounds,
               'coils': [
                   {'name': coil['name'], 'role': coil['role'],

@@ -9,6 +9,7 @@ import platform
 import gmsh
 import numpy as np
 from generate_mesh import digest
+from cad_cleanup import remove_construction_entities
 
 
 def controls(c):
@@ -82,10 +83,11 @@ def generate(config, directory):
             raise ValueError('Expected one closed swept conductor')
         cad_volume = occ.getMass(3, solids[0])
         bounds = gmsh.model.getBoundingBox(3, solids[0])
+        removed = remove_construction_entities()
         gmsh.write(str(directory/'dh.brep'))
     finally:
         gmsh.finalize()
-    # BREP may also contain construction curves, but only the solid is meshed.
+    # Export only the solid and its boundaries, not the construction spine.
     geo = 'SetFactory("OpenCASCADE");\nMerge "dh.brep";\nPhysical Volume("dh_winding") = Volume{:};\n'
     geo += f'Mesh.MeshSizeMin = {c["mesh_min_size_m"]};\nMesh.MeshSizeMax = {c["mesh_size_m"]};\nMesh.MeshSizeFromCurvature = {c["mesh_points_per_circle"]};\n'
     (directory/'dh.geo').write_text(geo)
@@ -98,6 +100,8 @@ def generate(config, directory):
               'gmsh': gmsh.__version__, 'numpy': np.__version__,
               'python': platform.python_version(), 'platform': platform.platform(),
               'brep_sha256': digest(directory/'dh.brep'),
+              'construction_entities_removed': removed,
+              'cleanup_sha256': digest(Path(__file__).with_name('cad_cleanup.py')),
               'current_A': c['current_A'], 'conductor_radius_m': c['conductor_radius_m'],
               'cad_volume_m3': cad_volume, 'bounds_m': bounds,
               'path_m': path.tolist()}
