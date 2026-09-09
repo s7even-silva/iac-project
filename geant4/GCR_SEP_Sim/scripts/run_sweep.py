@@ -17,9 +17,21 @@ Uso:
     python3 run_sweep.py                                # barrido completo (140 combos x 1 repeticion)
     python3 run_sweep.py --n-events 100 --limit 4        # piloto rapido
     python3 run_sweep.py --only-model GCR --repeats 5    # trabajo repartido en equipo, con estadistica
+    python3 run_sweep.py --priority-only --repeats 5     # solo GCR-min + SEP-max (70 combos), los unicos
+                                                          # con espectro real de OLTARIS listo por ahora
+                                                          # (ver docs/checklist_espectros_reales.md)
+    python3 run_sweep.py --priority-only --only-model GCR --repeats 5  # reparto en equipo + prioridad
     python3 run_sweep.py --build-dir ../build            # si el build no esta en ../build
     python3 run_sweep.py --only-model GCR --repeats 5            # resume esta activado por defecto
     python3 run_sweep.py --only-model GCR --repeats 5 --no-resume  # forzar rehacer todo desde cero
+
+--priority-only restringe el barrido a las combinaciones (GCR, min) y
+(SEP, max) -- las dos que ya tienen espectro real exportado de OLTARIS
+(gcr_proton_solarmin.csv, gcr_alpha_solarmin.csv, sep_proton_solarmax.csv).
+(GCR, max) y (SEP, min) siguen sin datos reales (diferido, ver checklist);
+si se corren sin --priority-only y sin haber completado esos 2 archivos,
+`select_spectrum_source.py oltaris` fallaria al activar la fuente, o el
+binario leeria un CSV inexistente/placeholder segun como se haya activado.
 
 Resume esta activado por defecto: si el proceso se corta a la mitad (Ctrl+C,
 corte de luz, se cierra la sesion SSH sin tmux, etc.), las corridas ya
@@ -51,6 +63,11 @@ import sweep_config  # noqa: E402 -- constantes compartidas entre proyectos, ver
 MODEL_PHASES = [("GCR", "max"), ("GCR", "min"), ("SEP", "max"), ("SEP", "min")]
 FIELD_VALUES_T = [7.0, 7.5, 8.0, 8.5, 9.0, 9.5, 10.0]
 POSITIONS_M = [0.0, 0.7, 1.4, 2.1, 2.8]
+
+# Combinaciones modelo/fase con espectro real de OLTARIS listo (2026-09-08):
+# GCR en minimo solar (flujo mas alto) y SEP en el evento maximo (Oct 1989).
+# (GCR, max) y (SEP, min) siguen diferidos -- ver docs/checklist_espectros_reales.md.
+PRIORITY_MODEL_PHASES = {("GCR", "min"), ("SEP", "max")}
 
 BASE_SEED = sweep_config.BASE_SEED_GCR_SEP_SIM
 
@@ -93,6 +110,11 @@ def main():
                               "estadistica de produccion del articulo, ver geant4/sweep_config.py)")
     parser.add_argument("--only-model", choices=["GCR", "SEP"], default=None,
                          help="Solo correr las 70 combinaciones de este modelo (para repartir el barrido en equipo)")
+    parser.add_argument("--priority-only", action="store_true",
+                         help="Solo correr (GCR,min) y (SEP,max) -- 70 combinaciones -- las unicas con "
+                              "espectro real de OLTARIS listo por ahora (ver docs/checklist_espectros_reales.md). "
+                              "Combinar con --only-model para repartir en equipo (ej. --priority-only "
+                              "--only-model GCR corre solo las 35 de GCR-minimo).")
     parser.add_argument("--limit", type=int, default=None,
                          help="Solo correr las primeras N combinaciones ya filtradas (para pilotos rapidos)")
     parser.add_argument("--no-resume", dest="resume", action="store_false", default=True,
@@ -113,6 +135,8 @@ def main():
     logs_dir.mkdir(parents=True, exist_ok=True)
 
     combos = build_combinations()
+    if args.priority_only:
+        combos = [c for c in combos if (c["model"], c["phase"]) in PRIORITY_MODEL_PHASES]
     if args.only_model is not None:
         combos = [c for c in combos if c["model"] == args.only_model]
     if args.limit is not None:

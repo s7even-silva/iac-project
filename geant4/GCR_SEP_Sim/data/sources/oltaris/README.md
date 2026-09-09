@@ -1,5 +1,15 @@
 # Fuente activa: OLTARIS (2026-09-08)
 
+**Estado (2026-09-08): 3 de 6 archivos listos** — `gcr_proton_solarmin.csv`,
+`gcr_alpha_solarmin.csv` y `sep_proton_solarmax.csv` ya están reformateados
+y verificados en esta carpeta (fecha GCR: 31/12/2019-01/01/2020; evento SEP:
+Oct 1989). Los 3 restantes (`gcr_proton_solarmax.csv`, `gcr_alpha_solarmax.csv`,
+`sep_proton_solarmin.csv`) siguen diferidos — ver
+`../../docs/checklist_espectros_reales.md`. Mientras falten, activar esta
+fuente con `select_spectrum_source.py oltaris` (sin `--only`) fallará; usar
+`--only gcr_proton_solarmin.csv gcr_alpha_solarmin.csv sep_proton_solarmax.csv`
+para correr solo el subconjunto de mayor dosis por especie.
+
 Reemplaza a `spenvis/` (ISO-15390 + ESP-PSYCHIC) como fuente de GCR y SEP,
 al aprobarse el acceso a la cuenta de OLTARIS. `spenvis/` se conserva como
 plan B, no se borra.

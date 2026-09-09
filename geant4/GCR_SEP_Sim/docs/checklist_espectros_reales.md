@@ -18,20 +18,28 @@ Herramienta: https://oltaris.larc.nasa.gov/
 
 **Prioridad ahora: solo mínimo solar** (flujo GCR más alto, ver README.md sección "Fechas de referencia"). Máximo solar queda diferido — instrucciones idénticas, solo cambia la fecha, ver nota al final de esta parte.
 
-- [ ] GCR Model: **Badhwar-O'Neill 2020**.
-- [ ] **Marcar el checkbox "Select Specific Ion"** — sin esto no se puede pedir H y He por separado (default es algún espectro combinado, no lo que necesitamos). Al marcarlo se abre un selector de ion (Z/A): correr una vez para **H** y otra para **He** → 2 corridas para el mínimo (4 si más adelante se agrega el máximo).
-- [ ] Defined by: **Date** (NO "Historical Solar Min/Max" — esa lista de años fijos solo llega hasta 2010 y no incluye el ciclo solar actual/reciente; confirmado que "Date" acepta fechas de 2019-2024 sin problema).
-- [ ] Fecha para **mínimo solar**: una fecha entre **diciembre 2019 y enero 2020** (mínimo oficial NASA/NOAA del ciclo 24→25) — anotar la fecha exacta usada: ______________
-- [ ] **"Mission duration in days"**: campo nuevo que no estaba anticipado — viene en `0.0` por defecto. No hay certeza de qué representa exactamente (¿espectro instantáneo en esa fecha vs. algo integrado/promediado en la duración?) — **revisar el link "Help" de esa pantalla antes de correr**; si no aclara, probar primero con `0.0` (el default) y solo cambiar a otro valor (ej. `1`) si el resultado no tiene sentido o da error. Anotar qué valor se terminó usando: ______________
-- [ ] **"Save external differential flux for space environment?" = Sí** (ya viene así en la interfaz — confirmar que sigue en Sí después de tocar los demás campos).
-- [ ] En la pantalla de **Geometry / Response Functions** que sigue: no marcar ninguna "Response Function" (Dose, Dose Equivalent, Effective Dose Equivalent, RIED, LET, etc.) — no las necesitamos (ya se obtiene el espectro crudo con el toggle anterior) y algunas piden campos adicionales (ej. "Age" para RIED) que solo estorban. Cualquier geometría mínima (ej. "Thk Distrib" con "zero sphere", que representa blindaje cero) sirve para dejar correr.
-- [ ] Cantidad exportada: ¿flujo diferencial (dJ/dE) o integral (J>E)? → anotar cuál: ______________
-- [ ] **Unidades exactas** tal como las muestra OLTARIS (ej. `partículas / (cm² · s · sr · MeV/nucleón)`): ______________
-- [ ] Rango de energía exportado (MeV/nucleón, min–max): ______________
-- [ ] Archivos guardados en `data/sources/oltaris/raw_exports/`, ej.:
-  - `oltaris_BON2020_H_solarmin.csv`
-  - `oltaris_BON2020_He_solarmin.csv`
-- [ ] Captura de pantalla de la configuración completa (modelo, ion, fecha, duración de misión, rango de energía) guardada junto a los exports — sin esto no se puede reproducir la corrida si falta un dato.
+**✅ Completado (2026-09-08).** Verificado parseando los `.dat` crudos (el
+export siempre trae la plantilla genérica de 59 especies, pero el dato real
+de la corrida cae en el índice = Z del ion pedido con "Select Specific Ion"
+— confirmado con captura de pantalla del selector "Select Nucleus [Z]"):
+
+- [x] GCR Model: **Badhwar-O'Neill 2020**.
+- [x] **"Select Specific Ion"** marcado — una corrida para **H** (Z=1, dato real en índice 1 "proton") y otra para **He** (Z=2, dato real en índice 2 — la plantilla lo etiqueta "deuteron" pero es Helio real, ver nota de índice-por-Z arriba).
+- [x] Defined by: **Date** (no "Historical Solar Min/Max").
+- [x] Fecha para **mínimo solar**: **31/12/2019 – 01/01/2020**.
+- [x] **"Mission duration in days" = 1**. Resuelto: no cambia este export — el `.dat` de He con duración 1 día salió idéntico, cifra por cifra, al export anterior con otra duración. Consistente con que la unidad ya es un *flujo por día* (no una fluencia acumulada de la misión) — el campo probablemente solo afecta outputs de dosis/fluencia acumulada que no usamos aquí.
+- [x] **"Save external differential flux for space environment?" = Sí**.
+- [x] Pantalla de Geometry/Response Functions: sin marcar ninguna Response Function, geometría mínima para dejar correr.
+- [x] Cantidad exportada: **flujo diferencial** (`Boundary Flux`, no integral).
+- [x] **Unidades**: `particles/((EU*-day-cm2))`, EU* = MeV/amu (H y He no son fotón/electrón/positrón).
+- [x] Rango de energía exportado: **1.000000E-02 a 1.000000E+06 MeV/amu**, 125 puntos.
+- [x] Archivos reformateados en `data/sources/oltaris/`:
+  - `gcr_proton_solarmin.csv`
+  - `gcr_alpha_solarmin.csv`
+  - Crudos (con nota de dónde está el detalle completo) en `data/sources/oltaris/raw_exports/oltaris_BON2020_{H,He}_solarmin_raw.txt`.
+- [x] Captura de pantalla de la configuración (resumen de proyecto de OLTARIS, más confiable que la pantalla de input porque es lo que OLTARIS registró como corrido). Transcrito aquí para no depender de la imagen:
+  - Proyecto H: `GCR, Free Space 1AU · GCR Model: BO-20 · Dates: December 31, 2019 to January 1, 2020 · Mission Duration: 1.0 days · Specific ion: Hydrogen [Z=1] · Geometry: zero sphere (42 rays, density-based) · Responses: none`.
+  - Proyecto He: idéntico al de H salvo `Specific ion: Helium [Z=2]`.
 
 **Diferido — GCR máximo solar (no hace falta para la primera corrida):** cuando se retome, repetir exactamente los mismos pasos con fecha de **enero 2024** (o cualquiera dentro de 2024-2025) en vez de dic 2019/ene 2020, generando `oltaris_BON2020_H_solarmax.csv` / `oltaris_BON2020_He_solarmax.csv`.
 
@@ -59,12 +67,14 @@ En la pantalla **"Environment Definition: SPE, Free Space 1AU"**, el campo **"Sa
 
 **No usar** el checkbox "Differential Flux/Fluence" de la siguiente pantalla ("Geometry" / "Response Functions") como fuente del CSV — ese es el flujo **después** de atravesar el blindaje slab/esfera que se configure ahí mismo en OLTARIS. Usarlo aplicaría blindaje dos veces (una vez en OLTARIS, otra en nuestro propio Geant4). En esa pantalla no hace falta marcar nada en particular — cualquier geometría mínima (ej. Slab) alcanza para que el sistema deje correr y exportar.
 
-- [ ] Corrida **"SEP máximo"** (Oct 1989): "Save external differential flux" = **Sí**. Exportado.
-- [ ] Especie exportada: confirmar que es **protón** (debería ser lo único disponible para SEP).
-- [ ] **Unidades exactas** del export (ej. `protones/cm²` diferencial vs. energía): ______________
-- [ ] Rango de energía exportado (MeV, min–max): ______________
-- [ ] Archivo guardado en `data/sources/oltaris/raw_exports/`: `oltaris_SPE_oct1989_proton.csv`
-- [ ] Captura de pantalla de la configuración (evento marcado, factor 1.0, toggle en "Sí") guardada junto al export.
+**✅ Completado (2026-09-08).**
+
+- [x] Corrida **"SEP máximo"** (Oct 1989): "Save external differential flux" = **Sí**. Exportado.
+- [x] Especie exportada: **protón** confirmado — es la única con datos reales (índice 1 del `.dat`); neutron/deuteron/triton/helion/alpha vienen todos en `1e-20` (sin dato).
+- [x] **Unidades**: `Boundary Fluence`, `particles/((EU*-cm2))`, EU*=MeV (protón) — es una **fluencia** de evento puntual, no un flujo por tiempo (consistente con la fórmula de dosis SEP sin factor de tiempo).
+- [x] Rango de energía exportado: **1.000000E-02 a 2.500000E+03 MeV**, 100 puntos.
+- [x] Archivo reformateado en `data/sources/oltaris/sep_proton_solarmax.csv`; crudo (con nota de dónde está el detalle completo) en `data/sources/oltaris/raw_exports/oltaris_SPE_oct1989_proton_raw.txt`.
+- [x] Captura de pantalla de la configuración (resumen de proyecto de OLTARIS). Transcrito: `SPE, Free Space 1AU · SPE: Oct 1989 multiplier=1.0 · Geometry: zero sphere (42 rays, density-based) · Responses: none` (Proyecto "SEP_max_1989").
 
 **Diferido — SEP mínimo (no hace falta para la primera corrida):** cuando se retome, repetir los mismos pasos marcando **"Feb 1956 (LaRC)"** en vez de "Oct 1989", generando `oltaris_SPE_feb1956_LaRC_proton.csv`.
 
@@ -74,9 +84,14 @@ Con un evento histórico puntual, la interpretación de dosis sigue siendo **dos
 
 ## Al terminar (por ahora, los 3 archivos prioritarios)
 
-Avísenme cuando tengan **estos 3 archivos** llenos en `data/sources/oltaris/raw_exports/` (GCR mínimo H+He, SEP máximo Oct 1989 — no hace falta esperar a GCR máximo ni SEP mínimo), y yo hago:
+**✅ Los 3 archivos prioritarios ya están reformateados y en el repo** (2026-09-08):
+`data/sources/oltaris/gcr_proton_solarmin.csv`, `gcr_alpha_solarmin.csv`,
+`sep_proton_solarmax.csv` (crudos correspondientes en `raw_exports/`).
+Pendiente aún:
 
-1. Reformateo de los exports crudos a los CSV que van en `data/sources/oltaris/` (mismo contrato de `SpectrumSampler` que ya usa `spenvis/`) — por ahora solo `gcr_proton_solarmin.csv`, `gcr_alpha_solarmin.csv`, `sep_proton_solarmax.csv`.
+1. ~~Reformateo de los exports crudos a CSV~~ — hecho.
 2. El cálculo de los pesos por bin (`W[s,i]`) a partir de estos espectros, una vez que se fijen los bordes de bin (puntos 6-7 de la lista de pendientes).
-3. La normalización a dosis absoluta en `RunAction.cc`/el pipeline de `ActiveShield_Sim`, usando las unidades que anotaron arriba.
-4. El párrafo de Métodos describiendo exactamente qué modelo (BON2020 en mínimo solar, evento Oct 1989), qué fecha/evento, y qué unidades se usaron — dejando explícito que por ahora se prioriza el caso de mayor dosis por especie, y que GCR máximo/SEP mínimo quedan pendientes de completar.
+3. La normalización a dosis absoluta en `RunAction.cc`/el pipeline de `ActiveShield_Sim`, usando las unidades ya confirmadas arriba (flujo/día para GCR, fluencia de evento para SEP).
+4. El párrafo de Métodos describiendo exactamente qué modelo (BON2020, fecha 31/12/2019-01/01/2020 de mínimo solar; evento Oct 1989 de SEP), y qué unidades se usaron — dejando explícito que por ahora se prioriza el caso de mayor dosis por especie, y que GCR máximo/SEP mínimo quedan pendientes de completar.
+5. ~~Capturas de pantalla de la configuración de OLTARIS~~ — hecho (resumen de proyecto transcrito en cada parte de este checklist).
+6. Decidir si `run_sweep.py`/`select_spectrum_source.py` corren solo el subconjunto GCR-mínimo + SEP-máximo (70 combinaciones) o si se completan los 3 archivos "diferidos" (GCR máximo, SEP mínimo) antes de correr el barrido completo de 140 — hoy `select_spectrum_source.py oltaris` sin `--only` fallaría porque esos 3 archivos aún no existen en `data/sources/oltaris/`.
