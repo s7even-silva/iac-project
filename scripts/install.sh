@@ -93,6 +93,13 @@ else
   INSTALLER="$(mktemp -t miniconda-installer-XXXXXX.sh)"
   trap 'rm -f "$INSTALLER"' EXIT
   curl -fsSL "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-${MINICONDA_ARCH}.sh" -o "$INSTALLER"
+  # -b (modo batch) instala sin tocar el shell del usuario -- necesario para
+  # correr este script sin interacción, pero deja "conda"/"conda activate"
+  # inutilizables en cualquier terminal nueva, incluso tras reiniciarla
+  # (confirmado: usuario reportó exactamente esto en otra maquina). El
+  # instalador interactivo (sin -b) sí ofrece y corre "conda init" por su
+  # cuenta; replicamos ese paso aquí explícitamente para el shell de login
+  # del usuario (no necesariamente bash, que es el que corre este script).
   bash "$INSTALLER" -b -p "$MINICONDA_DIR"
   rm -f "$INSTALLER"
   trap - EXIT
@@ -101,6 +108,25 @@ fi
 
 # shellcheck disable=SC1091
 source "$MINICONDA_DIR/etc/profile.d/conda.sh"
+
+# conda init es idempotente (actualiza su propio bloque marcado en el rc
+# file, no lo duplica) -- se corre siempre, no solo en la instalación
+# nueva de arriba, para cubrir tambien el caso de una Miniconda ya
+# instalada (por este script en una version anterior, o manualmente) cuyo
+# shell de login nunca recibió "conda init".
+USER_SHELL="$(basename "${SHELL:-bash}")"
+case "$USER_SHELL" in
+  bash|zsh) : ;;
+  *) warn "Shell de login '$USER_SHELL' no reconocido para 'conda init'; usando bash." ; USER_SHELL=bash ;;
+esac
+RC_FILE="$HOME/.$([ "$USER_SHELL" = zsh ] && echo zshrc || echo bashrc)"
+if [[ -f "$RC_FILE" ]] && grep -q ">>> conda initialize >>>" "$RC_FILE" 2>/dev/null; then
+  ok "'conda init $USER_SHELL' ya aplicado en $RC_FILE"
+else
+  log "Ejecutando 'conda init $USER_SHELL' (necesario para usar 'conda' en terminales nuevas)"
+  "$MINICONDA_DIR/bin/conda" init "$USER_SHELL" >/dev/null
+  ok "conda init aplicado a $USER_SHELL -- abre una terminal nueva (o reinicia esta) para que 'conda' quede disponible"
+fi
 
 # ---------------------------------------------------------------------------
 # 3. Entorno geant4_env: Geant4 11.4.2 + CMake + gcc/g++ de conda-forge,
@@ -188,11 +214,22 @@ if [[ "$WITH_ELMER" -eq 1 ]]; then
     log "Compilando Elmer FEM desde fuente en $ELMER_PREFIX (puede tardar 15-30+ min)"
     ELMER_SRC="$(mktemp -d -t elmerfem-src-XXXXXX)"
     git clone --depth 1 https://www.github.com/ElmerCSC/elmerfem "$ELMER_SRC"
+    # cmake vive en geant4_env (declarado en environment.yml), no se instala
+    # por separado en el sistema -- sin activar el entorno aqui, este paso
+    # fallaba con "cmake: command not found" en una distro sin cmake de
+    # sistema (p. ej. --skip-system, o un gestor de paquetes que no lo trae
+    # por defecto). Mismo patron que la verificacion final mas abajo.
+    set +u
+    conda activate "$GEANT4_ENV_NAME"
+    set -u
     cmake -S "$ELMER_SRC" -B "$ELMER_SRC/build" \
       -DCMAKE_INSTALL_PREFIX="$ELMER_PREFIX" \
       -DWITH_MPI:BOOLEAN=TRUE -DWITH_OpenMP:BOOLEAN=TRUE
     cmake --build "$ELMER_SRC/build" -j"$(nproc)"
     cmake --install "$ELMER_SRC/build"
+    set +u
+    conda deactivate
+    set -u
     rm -rf "$ELMER_SRC"
     ok "Elmer instalado en $ELMER_PREFIX"
   fi
