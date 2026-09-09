@@ -1,0 +1,63 @@
+C	Boundary Flux (particles/((EU*-day-cm2)) vs. Energy (EU*) vs. Isotope
+C	Energy unit (EU*) is MeV for photon, electron, and positron; EU* is MeV/amu for all other particles.
+
+C	Created on Tue Sep  8 19:10:41 2026
+C	Job Name: He_min
+C	TARIS FORTRAN code version 5.01
+C	Fecha usada en OLTARIS (Defined by: Date): 31/12/2019 - 01/01/2020 (minimo solar), duracion de mision: 1 dia
+
+C	 axis name= Energy unit= EU*
+C	 Energy unit (EU*) is MeV for photon, electron, and positron; EU* is MeV/amu for all other particles.
+C	 Energy array dimensions and data
+       1     125
+   1.000000E-02   1.160155E-02   1.345960E-02   1.561523E-02   1.811609E-02
+   2.101748E-02   2.438354E-02   2.828869E-02   3.281928E-02   3.807546E-02
+   4.417345E-02   5.124806E-02   5.945571E-02   6.897785E-02   8.002502E-02
+   9.284145E-02   1.077105E-01   1.249609E-01   1.449741E-01   1.681924E-01
+   1.951293E-01   2.263803E-01   2.626364E-01   3.046990E-01   3.534981E-01
+   4.101127E-01   4.757944E-01   5.519954E-01   6.404004E-01   7.429640E-01
+   8.619536E-01   1.000000E+00   1.160155E+00   1.345960E+00   1.561523E+00
+   1.811609E+00   2.101748E+00   2.438354E+00   2.828869E+00   3.281928E+00
+   3.807546E+00   4.417345E+00   5.124806E+00   5.945571E+00   6.897785E+00
+   8.002502E+00   9.284145E+00   1.077105E+01   1.249609E+01   1.449741E+01
+   1.681924E+01   1.951293E+01   2.263803E+01   2.626364E+01   3.046990E+01
+   3.534981E+01   4.101127E+01   4.757944E+01   5.519954E+01   6.404004E+01
+   7.429640E+01   8.619536E+01   1.000000E+02   1.160155E+02   1.345960E+02
+   1.561523E+02   1.811609E+02   2.101748E+02   2.438354E+02   2.828869E+02
+   3.281928E+02   3.807546E+02   4.417345E+02   5.124806E+02   5.945571E+02
+   6.897785E+02   8.002502E+02   9.284145E+02   1.077105E+03   1.249609E+03
+   1.449741E+03   1.681924E+03   1.951293E+03   2.263803E+03   2.626364E+03
+   3.046990E+03   3.534981E+03   4.101127E+03   4.757944E+03   5.519954E+03
+   6.404004E+03   7.429640E+03   8.619536E+03   1.000000E+04   1.160155E+04
+   1.345960E+04   1.561523E+04   1.811609E+04   2.101748E+04   2.438354E+04
+   2.828869E+04   3.281928E+04   3.807546E+04   4.417345E+04   5.124806E+04
+   5.945571E+04   6.897785E+04   8.002502E+04   9.284145E+04   1.077105E+05
+   1.249609E+05   1.449741E+05   1.681924E+05   1.951293E+05   2.263803E+05
+   2.626364E+05   3.046990E+05   3.534981E+05   4.101127E+05   4.757944E+05
+   5.519954E+05   6.404004E+05   7.429640E+05   8.619536E+05   1.000000E+06
+
+C	 axis name= Particle
+C	 Particle array dimensions and data
+       1      59
+        neutron         proton       deuteron         triton         helion
+          alpha            Li6            Li7            Be8            Be9
+            B10            B11            C12            C13            N14
+            N15            O16            O17            F18            F19
+           Ne20           Ne21           Ne22           Na23           Mg24
+           Mg25           Mg26           Al27           Si28            P29
+            S30            S31            S32           Cl33           Ar34
+           Cl35           Ar36            K37           Ar38            K39
+           Ca40           Ca41           Ca42           Sc43           Ti44
+           Ti45           Ti46           Ti47            V48            V49
+           Cr50           Cr51           Cr52           Mn53           Mn54
+           Fe55           Fe56           Co57           Ni58
+
+NOTA: el bloque completo de 59 x 125 valores (mayormente ceros, con los datos
+reales de He/alpha en el bloque de indice 2, filas 51-75) se omite aqui por
+brevedad -- son identicos, cifra por cifra, a los que ya se validaron y
+convirtieron en ../gcr_alpha_solarmin.csv (ver ese archivo para los 125
+pares energia,flujo). Mismo contenido de datos que el GCR_He.txt original de
+esta sesion (verificado con captura de pantalla de "Select Nucleus [Z]" con
+Helio[Z=2] seleccionado); la duracion de mision de 1 dia no cambio el
+resultado respecto a la corrida anterior, consistente con que la unidad ya
+es un flujo por dia (no una fluencia acumulada).
