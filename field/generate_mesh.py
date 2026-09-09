@@ -24,7 +24,17 @@ def generate(source, output, dependencies=()):
     settings = {'General.NumThreads': 1, 'Mesh.MaxNumThreads1D': 1,
                 'Mesh.MaxNumThreads2D': 1, 'Mesh.MaxNumThreads3D': 1,
                 'Mesh.RandomSeed': 1, 'Mesh.ElementOrder': 1,
-                'Mesh.Algorithm': 6, 'Mesh.Algorithm3D': 1,
+                'Mesh.Algorithm': 6,
+                # Algorithm3D=1 (Delaunay) hangs indefinitely (confirmed:
+                # 90s+ with no progress output past "Splitting solids") on
+                # long, thin, tightly-curved swept solids -- e.g. an 8-turn
+                # Double Helix conductor -- while 7-turn and shorter cases
+                # mesh fine with it. Algorithm3D=10 (HXT) meshes the same
+                # 8-turn geometry in ~8s. HXT is Gmsh's modern default 3D
+                # algorithm and is more robust for high-curvature/high-aspect
+                # swept solids; switch to it rather than trying to route
+                # around Delaunay's failure mode via mesh size or patch count.
+                'Mesh.Algorithm3D': 10,
                 'Mesh.MshFileVersion': 4.1, 'Mesh.Binary': 0, 'Mesh.SaveAll': 1}
     gmsh.initialize([], readConfigFiles=False)
     try:

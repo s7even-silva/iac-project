@@ -2,6 +2,7 @@
 """Build a closed, smoothed Double Helix pilot; SI units, not a Geom14 design."""
 import argparse
 import json
+import math
 from pathlib import Path
 import platform
 
@@ -47,7 +48,18 @@ def generate(config, directory):
         path = np.asarray(gmsh.model.getValue(1, curve, parameters)).reshape(-1, 3)
         path[-1] = path[0]
         # Sweep and fuse patches individually to avoid a single periodic face.
-        cut_parameters = np.linspace(float(lo[0]), float(hi[0]), 9)[1:-1]
+        # Each patch must span LESS THAN one full helix turn, or the swept
+        # conductor disk self-intersects within that single patch before the
+        # per-patch fuse step -- OpenCASCADE's fragment/fuse then hangs
+        # indefinitely instead of erroring (confirmed empirically: 6 turns
+        # with 8 fixed patches -- 0.75 turn/patch -- meshes in seconds; 7
+        # turns -- 0.875 turn/patch -- already hangs; the pilot's 60-turn
+        # coils, at 7.5 turns/patch with the old fixed count, never
+        # terminated in three attempts). Scale patch count with turns so
+        # each patch stays under ~0.5 turn regardless of the coil's total
+        # winding count; keep the original 8-patch minimum for short coils.
+        n_cuts = max(8, math.ceil(c['turns'] / 0.5))
+        cut_parameters = np.linspace(float(lo[0]), float(hi[0]), n_cuts + 1)[1:-1]
         cut_points = np.asarray(gmsh.model.getValue(1, curve, cut_parameters)).reshape(-1, 3)
         cuts = [occ.addPoint(*p) for p in cut_points]
         fragments, _ = occ.fragment([(1, curve)], [(0, p) for p in cuts])

@@ -36,6 +36,13 @@ fuentes y pendientes en
   `compute_field.py` genera una referencia Biot–Savart regularizada, no FEM ni
   campo válido dentro del devanado. `prepare_domain_sweep.py` prepara 2A/4A/8A
   con costes y macros PreInit. Alcance y criterios en [field/DOMAINS.md](field/DOMAINS.md).
+- `field/generate_array.py`, `compute_field_array.py`, `audit_array.py`:
+  ensamblan varias bobinas DH (barrel + endcaps) en un solo GDML/mapa de
+  campo por superposición, reutilizando `generate_dh.py`/`compute_field.py`
+  sin modificarlos. Material del conductor HTS homogeneizado y trazable
+  (`field/examples/hts_tape_materials.json`) en vez de cobre puro. Detalle,
+  dimensiones tomadas de ARSSEM y qué es extrapolación propia en
+  [field/GEOM14_STATUS.md](field/GEOM14_STATUS.md).
 - Conversión `field/generate_mesh.py` → `.msh` → `field/mesh_to_gdml.py`
   → GDML con componentes y materiales separados. Requiere tetraedros de
   primer orden y grupos físicos con asignación explícita en JSON.
@@ -97,10 +104,23 @@ fuentes y pendientes en
 
 **Propuestas y pendientes (no decisiones finales):**
 - El usuario indica un plan previo de 12 bobinas. Geom14 de ARSSEM es la
-  recomendación inicial; el arreglo exacto, materiales, dimensiones, vueltas,
-  corriente y límites críticos del conductor siguen por definir. El circuito DH
-  de ensayo y su mapa de referencia existen; el ensamblaje Geom14 y su campo
-  físico validado **todavía no están implementados**.
+  recomendación inicial; vueltas, paso, corriente de operación y límites
+  críticos del conductor siguen sin confirmar contra ARSSEM (ver
+  `field/GEOM14_STATUS.md`, brechas 1 y 4). **Implementado 2026-09-08:**
+  `field/generate_array.py` ensambla varias bobinas DH (reutilizando
+  `generate_dh.py` sin modificarlo) en un solo GDML con material por bobina;
+  `field/examples/geom14_array_pilot.json` es un primer arreglo de
+  validación (1 barrel + 2 endcaps, no las 12 bobinas completas) con
+  dimensiones de barrel/endcap tomadas de ARSSEM fig. 5.4 (Geom13, que
+  comparte barrel con Geom14 según §4.3) — **se asume que Geom14 tiene
+  endcaps por analogía con Geom12/13, el paper nunca lo confirma para
+  Geom14 específicamente**. El conductor usa un material HTS homogeneizado
+  trazable (`field/examples/hts_tape_materials.json`, sustrato Hastelloy +
+  YBCO + Ag + Cu de una cinta 2G comercial tipo SCS4050), reemplazando el
+  cobre puro del piloto de una sola bobina — sigue con sección circular
+  (área equivalente a la cinta real), no la cinta rectangular real. El
+  ensamblaje Geom14 completo (12 bobinas) y su campo físico validado
+  (Elmer) **todavía no están implementados**.
 - Comparación pasiva adicional reevaluada: A nave sola, B nave+material de
   bobinas sin campo, C con campo, D nave+capa pasiva, E híbrido opcional.
   No se ha añadido aún la capa ni una interfaz de escenarios.
