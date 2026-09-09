@@ -80,3 +80,7 @@ venv/
 # Regenerable FEM/CAD conversion outputs; source geometries and material JSON stay tracked.
 /field/generated/
 /field/wheelhouse/
+
+# Pointer file written by scripts/install.sh --with-elmer (local machine path,
+# not portable/versionable -- Elmer itself installs outside the repo).
+/field/.elmer-prefix

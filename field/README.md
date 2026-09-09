@@ -113,37 +113,69 @@ vueltas; para iterar rápido en desarrollo, bajar `turns`/`field_segments`
 temporalmente (probado con `turns: 3` y una malla más gruesa, termina en
 menos de un minuto) y solo usar los valores reales para la corrida final.
 
-**`mesh_size_m`/`mesh_min_size_m` deben escalar con `conductor_radius_m`,
-pero encontrar el valor correcto no fue inmediato (confirmado 2026-09-08,
-ver `_provenance` del JSON) — dos fallos distintos, no uno:**
-- Copiar el `0.006` (6 mm) de `dh_pilot.json` sin escalar, con el radio de
-  conductor 10× más delgado de la cinta HTS (1,22 mm equivalente), dejó la
-  malla más grande que el propio conductor: el paso 2 (mallado) se quedó
-  colgado más de 5 minutos sin terminar.
-- Escalar a `conductor_radius_m/2` (0,61 mm) evitó ese colgado, pero produjo
-  un error distinto de Gmsh (`Identical points in triangulation`) — la malla
-  quedó demasiado fina *relativa al tamaño global de la bobina* (radio 1 m),
-  no al conductor: 0,06% del radio de bobina, frente a 1,2% en el piloto
-  original que sí funciona.
-- Con `mesh_size_m = conductor_radius_m` (1,22 mm, sin dividir entre 2) el
-  mallado del arreglo de 3 bobinas (barrel de 934 m de longitud de
-  conductor + 2 endcaps) **tampoco terminó** — se dejó correr casi 5
-  minutos sin señal de progreso ni error, mismo patrón que el primer
-  intento colgado, y se mató manualmente. **El mismo valor sí funciona**
-  para el arreglo de 2 bobinas simples (3 vueltas cada una) del test
-  automatizado `field/tests/test_array.py` — la variable que cambia no es
-  solo `conductor_radius_m`, sino también cuántas vueltas/longitud total
-  tiene la curva a mallar.
-- **Estado real al 2026-09-08: no hay un `mesh_size_m` confirmado que
-  funcione para el arreglo completo de Geom14 (60 vueltas en el barrel).**
-  `generate_array.py` (CAD) y `audit_array.py` (consistencia numérica) sí
-  están validados con esta geometría real — el mallado a `.msh`/GDML del
-  arreglo de producción sigue pendiente de resolver, probablemente
-  necesite reducir `turns`/`field_segments` del barrel real, o investigar
-  parámetros de Gmsh más allá de `mesh_size_m` (algoritmo de malla,
-  tolerancias de OpenCASCADE). No tratar esto como bloqueante de las
-  brechas 3-4 (Elmer, ver `GEOM14_STATUS.md`), que no dependen de esta
-  malla de conversión a GDML.
+**Causa raíz encontrada y corregida (2026-09-08): dos bugs distintos, ninguno
+era `mesh_size_m`.** El colgado del mallado con geometrías de muchas vueltas
+se investigó a fondo variando `turns` de forma aislada y controlada (no
+solo probando valores de `mesh_size_m` a ciegas), lo que llevó a dos
+hallazgos reales:
+
+1. **`generate_dh.py`/`generate_array.py` cortaban la curva helicoidal en un
+   número FIJO de 8 tramos, sin importar cuántas vueltas tuviera la bobina**
+   (`np.linspace(..., 9)` hardcodeado). Con pocas vueltas cada tramo cubre
+   menos de una vuelta y el disco barrido (`addPipe`) no se autointersecta
+   dentro de su propio tramo; con más vueltas (confirmado en 7+, con la
+   geometría del piloto de una sola bobina) cada tramo cubre una vuelta
+   completa o más, el disco barrido se autointersecta dentro del tramo, y
+   la fusión booleana de OpenCASCADE (`occ.fuse`) nunca converge — no
+   lanza error, simplemente no termina. **Corregido:** el número de cortes
+   ahora escala con `turns` (`max(8, ceil(turns/0.5))`), manteniendo cada
+   tramo por debajo de ~0,5 vueltas sin importar cuántas tenga la bobina
+   completa.
+2. **El algoritmo de mallado 3D de Gmsh usado por `generate_mesh.py`
+   (`Mesh.Algorithm3D = 1`, Delaunay) se cuelga indefinidamente en sólidos
+   barridos largos, delgados y muy curvados** — confirmado aislando el
+   problema: con 7 vueltas mallaba en segundos, con 8 vueltas (mismos
+   demás parámetros, incluido el fix del punto 1) nunca terminaba pese a
+   más de 90s de espera sin ningún mensaje de progreso. Cambiar a
+   `Mesh.Algorithm3D = 10` (HXT, el algoritmo 3D moderno de Gmsh, más
+   robusto para este tipo de geometría) malló la misma geometría de 8
+   vueltas en ~8 segundos. **Corregido:** `generate_mesh.py` ahora usa HXT.
+
+Ninguno de los tres valores de `mesh_size_m` que se probaron antes de este
+diagnóstico (6 mm sin escalar, `conductor_radius_m/2`, `conductor_radius_m`)
+era la causa real — cada uno tocaba una variable irrelevante al problema
+verdadero. La lección: cuando un proceso se cuelga sin error (no lanza
+excepción, no hay mensaje), variar un solo parámetro a la vez con casos
+mínimos reproducibles (aquí, aislar `turns` en el pilot de una sola bobina
+en vez de depurar directamente sobre el arreglo de 3) encuentra la causa
+mucho más rápido que ajustar por intuición el primer parámetro sospechoso.
+
+Con ambos fixes, geometrías de tamaño intermedio (confirmado hasta 8 vueltas,
+~25 m de conductor, HXT en ~8 s) mallan sin colgarse — ver
+`field/tests/test_field.py::test_mesh_patch_count_scales_with_turns` para la
+prueba de regresión, con timeout real de subprocess para que un regreso de
+cualquiera de los dos bugs falle el test en vez de colgar la suite.
+
+**Límite de escala nuevo, distinto de los dos bugs de arriba (2026-09-08):**
+mallar el arreglo real de Geom14 (barrel de 60 vueltas, ~934 m de longitud
+total de conductor) con HXT y `mesh_size_m=conductor_radius_m/2` (0,61 mm)
+no terminó en más de 6 minutos, con CPU al 100 % pero memoria estancada los
+últimos ~100 s — a diferencia del colgado de Delaunay (memoria y CPU sin
+avanzar desde el inicio), aquí sí hubo progreso real (memoria subió de forma
+sostenida hasta 1,4 GB) antes de estancarse, lo que sugiere una fase interna
+distinta (probablemente optimización de calidad de malla) con su propio
+límite práctico, no necesariamente otro bug de la misma familia. Con esa
+combinación de radio de conductor (1,22 mm) y longitud total (934 m), un
+`mesh_size_m` comparable al conductor genera un número de elementos poco
+práctico para esta escala — 8 vueltas (~25 m) ya daba ~950 000 elementos;
+60 vueltas (37× más largo) escala hacia decenas de millones. **No confirmado
+si esto termina dado suficiente tiempo/memoria, o si es un tercer caso
+patológico** — pendiente de investigar con más presupuesto de tiempo:
+opciones a probar son una malla más gruesa (aceptando más error geométrico,
+documentado) solo para el arreglo de producción, o revisar si HXT tiene sus
+propios parámetros de escala (p. ej. paralelismo, `Mesh.Optimize`) que
+ayuden en geometrías de esta longitud. No bloquea seguir con las brechas 3-4
+(Elmer), que no dependen de esta malla de conversión a GDML.
 
 **No confundir un ensamblaje mallado con éxito con un arreglo geométricamente
 válido**: `generate_array.py` no comprueba solapamientos entre bobinas
@@ -193,8 +225,16 @@ puede requerir GLU (`libGLU.so.1`, paquete del sistema). El wheel de Gmsh trae
 su biblioteca propia; estas dependencias del sistema no las instala `venv`.
 Los manifiestos registran plataforma, Python y Gmsh; conservarlos junto con
 los resultados y fijar sistema/contenedor si se necesita identidad entre máquinas.
-**Elmer no forma parte de este venv ni se ha instalado/configurado en este cambio.**
-Su versión, solver y parámetros se fijarán al implementar la solución FEM.
+**Elmer no forma parte de este venv.** `scripts/install.sh --with-elmer`
+(desde la raíz del repo) lo compila desde fuente en `~/.local/elmerfem`
+(configurable con `ELMER_PREFIX`) — no hay paquete Elmer en conda-forge, y
+el PPA oficial solo cubre versiones específicas de Ubuntu/Debian, no
+"cualquier distro" como el resto de este instalador. Es un paso opcional
+(15-30+ min de compilación) porque Elmer todavía no está integrado al flujo
+del proyecto — ver `GEOM14_STATUS.md`, brecha 3, para el siguiente paso
+(acoplar el ejemplo oficial `mgdyn_steady_coils` a la curva de corriente que
+ya genera `generate_array.py`). Su versión, solver y parámetros de
+producción se fijarán al implementar esa solución FEM.
 
 ## Ejemplo reproducible
 

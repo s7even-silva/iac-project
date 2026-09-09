@@ -170,21 +170,29 @@ de investigación bibliográfica adicional.
    pasos 1-4, no una reescritura. Replicar antes de validar multiplicaría
    el costo de mallado/Elmer y propagaría cualquier error de diseño doce
    veces en vez de una. **Estado 2026-09-08:** `generate_array.py` y
-   `audit_array.py` ya generan y auditan el primer arreglo de 3 bobinas
-   (barrel + 2 endcaps, ver más abajo) con datos numéricos reales — CAD,
-   volumen, masa por material, NI por bobina. **El paso de mallado (CAD →
-   `.msh`) del arreglo real (60 vueltas en el barrel) NO se logró completar
-   en tres intentos** con distintos `mesh_size_m` (uno se colgó por malla
-   más grande que el conductor, otro produjo puntos duplicados por malla
-   demasiado fina respecto al tamaño global de la bobina, el tercero volvió
-   a colgarse sin error) — no hay todavía un valor confirmado que funcione
-   para esta geometría específica; sí funciona para arreglos de prueba más
-   simples (menos vueltas, ver `field/tests/test_array.py`), lo que sugiere
-   que el número de vueltas/longitud de curva importa tanto como el radio
-   del conductor. Detalle completo de los tres intentos en
-   `field/README.md`. No bloquea seguir con las brechas 3-4 (Elmer), que
-   operan sobre la geometría/corriente, no sobre la malla de conversión a
-   GDML.
+   `audit_array.py` generan y auditan el arreglo de 3 bobinas (barrel + 2
+   endcaps) con datos numéricos reales — CAD, volumen, masa por material, NI
+   por bobina. El mallado (CAD → `.msh`/GDML) tenía dos bugs reales que
+   colgaban el proceso indefinidamente en geometrías de muchas vueltas
+   (ninguno era el tamaño de malla, que fue el primer sospechoso): (1) el
+   número de cortes de la curva antes del barrido/fusión estaba fijo en 8
+   sin importar cuántas vueltas tuviera la bobina, causando que el disco
+   barrido se autointersecara dentro de un mismo tramo a partir de 7+
+   vueltas y la fusión booleana de OpenCASCADE nunca convergiera; (2) el
+   algoritmo de mallado 3D de Gmsh (Delaunay) se cuelga en sólidos barridos
+   largos y muy curvados incluso con (1) ya corregido — cambiar al
+   algoritmo HXT resolvió esto para geometrías de tamaño intermedio
+   (confirmado hasta 8 vueltas / ~25 m). **Ambos corregidos**
+   (`generate_dh.py`/`generate_array.py`: cortes escalados con `turns`;
+   `generate_mesh.py`: `Mesh.Algorithm3D` Delaunay→HXT), con prueba de
+   regresión en `field/tests/test_field.py::test_mesh_patch_count_scales_with_turns`.
+   **Pendiente, distinto de los dos bugs anteriores:** el arreglo de
+   producción real (barrel de 60 vueltas, ~934 m de conductor) no terminó
+   de mallar en 6+ minutos con HXT — hubo progreso real (memoria subiendo
+   hasta 1,4 GB) antes de estancarse, a diferencia del colgado inmediato de
+   Delaunay, lo que sugiere un límite práctico de escala (número de
+   elementos) más que un tercer bug de la misma familia — no confirmado.
+   Detalle completo y próximas ideas a probar en `field/README.md`.
 
 El lado de Geant4 (importar GDML + leer un mapa de campo tabulado) ya está
 completo y probado (`/spacecraft/coilGeometry`, `TabulatedMagneticField`) —

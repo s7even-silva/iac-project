@@ -43,15 +43,23 @@
     "cerca/dentro del conductor de todos modos, asi que la forma exacta de",
     "la seccion no cambia la validez de ese mapa de referencia).",
     "",
-    "mesh_size_m/mesh_min_size_m = radio_conductor/2 (0.00061155m), NO el",
-    "0.006m del piloto original de una sola bobina -- dh_pilot.json usa un",
-    "conductor 10x mas grueso (radio 12mm), asi que su 0.006m ya era la mitad",
-    "de SU radio. Copiar ese mismo valor absoluto sin escalarlo al conductor",
-    "10x mas delgado de esta cinta HTS (radio 1.22mm) produjo una malla mas",
-    "grande que el propio conductor y Gmsh se quedo colgado mas de 5 minutos",
-    "sin terminar (confirmado 2026-09-08) -- siempre escalar mesh_size_m con",
-    "conductor_radius_m, nunca copiar un valor absoluto entre configs con",
-    "radios de conductor distintos."
+    "mesh_size_m/mesh_min_size_m = radio_conductor/2 (0.00061155m) -- misma",
+    "proporcion que dh_pilot.json (6mm sobre un conductor de 12mm de radio),",
+    "escalada al conductor 10x mas delgado de esta cinta HTS (radio 1.22mm).",
+    "",
+    "CORRECCION 2026-09-08: el mallado de esta geometria parecia colgarse con",
+    "este mismo valor de mesh_size_m; una investigacion mas profunda encontro",
+    "que la causa real NO era mesh_size_m sino dos bugs distintos en el",
+    "generador y el mallador: (1) generate_dh.py/generate_array.py cortaban",
+    "la curva en un numero FIJO de 8 tramos sin importar cuantas vueltas",
+    "tuviera la bobina, causando que el disco barrido se autointersectara",
+    "dentro de un tramo a partir de 7+ vueltas; (2) el algoritmo de mallado",
+    "3D de Gmsh (Delaunay) se cuelga en solidos barridos largos y curvados",
+    "incluso con (1) ya corregido. Ambos corregidos (ver generate_dh.py y",
+    "generate_mesh.py); este mesh_size_m=radio/2 SI funciona una vez",
+    "corregidos ambos bugs -- ver field/README.md para el diagnostico",
+    "completo y field/tests/test_field.py::test_mesh_patch_count_scales_with_turns",
+    "para la prueba de regresion."
   ],
   "coils": [
     {
@@ -77,8 +85,8 @@
         "current_A": 100.0,
         "control_points_per_turn": 32,
         "field_segments": 4096,
-        "mesh_size_m": 0.0012231,
-        "mesh_min_size_m": 0.0012231,
+        "mesh_size_m": 0.00061155,
+        "mesh_min_size_m": 0.00061155,
         "mesh_points_per_circle": 16
       }
     },
@@ -105,8 +113,8 @@
         "current_A": 100.0,
         "control_points_per_turn": 32,
         "field_segments": 2048,
-        "mesh_size_m": 0.0012231,
-        "mesh_min_size_m": 0.0012231,
+        "mesh_size_m": 0.00061155,
+        "mesh_min_size_m": 0.00061155,
         "mesh_points_per_circle": 16
       }
     },
@@ -133,8 +141,8 @@
         "current_A": 100.0,
         "control_points_per_turn": 32,
         "field_segments": 2048,
-        "mesh_size_m": 0.0012231,
-        "mesh_min_size_m": 0.0012231,
+        "mesh_size_m": 0.00061155,
+        "mesh_min_size_m": 0.00061155,
         "mesh_points_per_circle": 16
       }
     }
