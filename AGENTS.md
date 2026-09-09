@@ -66,6 +66,28 @@ fuentes y pendientes en
   trabajo de la brecha 1 (coordinar los ~10 parámetros del devanado), no
   algo que se resuelve solo en el generador. Detalle completo en
   [field/GEOM14_STATUS.md](field/GEOM14_STATUS.md), brecha 2.
+- **Fix (2026-09-09):** `scripts/install.sh --with-elmer` invocaba `cmake`
+  para compilar Elmer sin activar `geant4_env` primero — `cmake` viene de
+  `environment.yml` (conda-forge), no se instala aparte en el sistema, así
+  que este paso podía fallar con "cmake: command not found" en una distro
+  sin `cmake` de sistema (p. ej. con `--skip-system`). Corregido para
+  activar/desactivar `geant4_env` alrededor de la compilación de Elmer,
+  igual que ya hacía la verificación final del script para los otros dos
+  proyectos Geant4.
+- **Fix (2026-09-09):** `scripts/install.sh` instalaba Miniconda con
+  `-b` (modo batch, necesario para correr sin interacción), que instala el
+  binario pero **no** ejecuta `conda init` — deja `conda`/`conda activate`
+  inutilizables en cualquier terminal nueva del usuario, incluso después
+  de reiniciarla (confirmado: reportado tras probar el script en otra
+  máquina). El resto del script no lo sufría porque hace su propio
+  `source .../conda.sh` explícito, pero eso solo dura la ejecución del
+  script, no queda para sesiones futuras del usuario. Corregido: el script
+  ahora corre `conda init <bash|zsh>` (detectado por `$SHELL`) tras
+  instalar, de forma idempotente (comprueba primero si el bloque de conda
+  ya está en `.bashrc`/`.zshrc`, para no reportarlo de más en
+  reinstalaciones ni en el caso de una Miniconda ya instalada antes de
+  este fix). El usuario debe abrir una terminal nueva (o volver a abrir la
+  actual) después de instalar para que `conda` quede disponible.
 - Elmer FEM instalado (`scripts/install.sh --with-elmer`, brecha 3) y
   corriendo (`CoilSolver` + `WhitneyAVSolver` + `MagnetoDynamicsCalcFields`,
   `field/examples/elmer_pilot.sif`), con dos bugs reales de `.sif`
