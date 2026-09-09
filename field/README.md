@@ -71,6 +71,88 @@ de nuevo al vacío. Ejecutarla desde `geant4/ActiveShield_Sim/build` con
 de esta secuencia. Faltan dominio exterior FEM, J volumétrica, solver y exportador
 de su solución; el mapa de referencia permite desarrollar y comprobar esas piezas.
 
+## Ensamblaje multi-bobina: barrel + endcaps (Geom14)
+
+Extiende la secuencia de una sola bobina a un arreglo (barrel + endcaps),
+sin repetir su geometría: reutiliza `controls()` de `generate_dh.py` sin
+modificarla, una vez por bobina del arreglo. Ver
+[field/GEOM14_STATUS.md](GEOM14_STATUS.md) para las dimensiones exactas
+tomadas de ARSSEM (y cuáles son extrapolación, no dato publicado) y el
+material homogeneizado del conductor HTS.
+
+```bash
+# 1. JSON con N bobinas (barrel + endcaps) → un solo CAD/GDML ensamblado.
+field/.venv/bin/python field/generate_array.py \
+  field/examples/geom14_array_pilot.json field/generated/geom14_array
+
+# 2. CAD → malla tetraédrica (una malla para las N bobinas juntas).
+field/.venv/bin/python field/generate_mesh.py \
+  field/generated/geom14_array/array.geo field/generated/geom14_array/array.msh \
+  --dependency field/generated/geom14_array/array.brep \
+  --dependency field/examples/geom14_array_pilot.json
+
+# 3. Malla + materiales → GDML con un Physical Volume por bobina.
+field/.venv/bin/python field/mesh_to_gdml.py \
+  field/generated/geom14_array/array.msh field/generated/geom14_array/materials.json \
+  field/generated/geom14_array/array.gdml
+
+# 4. Mapa de campo por superposición (suma Biot-Savart de cada bobina).
+field/.venv/bin/python field/compute_field_array.py \
+  field/generated/geom14_array/array_current_paths.json field/generated/geom14_array/array.map \
+  --half-size 15 --spacing 0.5
+```
+
+`field/examples/geom14_array_pilot.json` es el primer arreglo de validación:
+**una** bobina de barrel + **una** de endcap a cada extremo (3 bobinas, no
+las 12 del arreglo Halbach completo) — sigue la brecha 5 de
+`GEOM14_STATUS.md` al pie de la letra: validar la interacción entre tipos de
+bobina antes de replicar al arreglo completo. El paso 1, con los parámetros
+de ese JSON (60 vueltas en el barrel), tardó varios minutos en esta máquina
+— las operaciones booleanas de OpenCASCADE escalan mal con el número de
+vueltas; para iterar rápido en desarrollo, bajar `turns`/`field_segments`
+temporalmente (probado con `turns: 3` y una malla más gruesa, termina en
+menos de un minuto) y solo usar los valores reales para la corrida final.
+
+**`mesh_size_m`/`mesh_min_size_m` deben escalar con `conductor_radius_m`,
+pero encontrar el valor correcto no fue inmediato (confirmado 2026-09-08,
+ver `_provenance` del JSON) — dos fallos distintos, no uno:**
+- Copiar el `0.006` (6 mm) de `dh_pilot.json` sin escalar, con el radio de
+  conductor 10× más delgado de la cinta HTS (1,22 mm equivalente), dejó la
+  malla más grande que el propio conductor: el paso 2 (mallado) se quedó
+  colgado más de 5 minutos sin terminar.
+- Escalar a `conductor_radius_m/2` (0,61 mm) evitó ese colgado, pero produjo
+  un error distinto de Gmsh (`Identical points in triangulation`) — la malla
+  quedó demasiado fina *relativa al tamaño global de la bobina* (radio 1 m),
+  no al conductor: 0,06% del radio de bobina, frente a 1,2% en el piloto
+  original que sí funciona.
+- Con `mesh_size_m = conductor_radius_m` (1,22 mm, sin dividir entre 2) el
+  mallado del arreglo de 3 bobinas (barrel de 934 m de longitud de
+  conductor + 2 endcaps) **tampoco terminó** — se dejó correr casi 5
+  minutos sin señal de progreso ni error, mismo patrón que el primer
+  intento colgado, y se mató manualmente. **El mismo valor sí funciona**
+  para el arreglo de 2 bobinas simples (3 vueltas cada una) del test
+  automatizado `field/tests/test_array.py` — la variable que cambia no es
+  solo `conductor_radius_m`, sino también cuántas vueltas/longitud total
+  tiene la curva a mallar.
+- **Estado real al 2026-09-08: no hay un `mesh_size_m` confirmado que
+  funcione para el arreglo completo de Geom14 (60 vueltas en el barrel).**
+  `generate_array.py` (CAD) y `audit_array.py` (consistencia numérica) sí
+  están validados con esta geometría real — el mallado a `.msh`/GDML del
+  arreglo de producción sigue pendiente de resolver, probablemente
+  necesite reducir `turns`/`field_segments` del barrel real, o investigar
+  parámetros de Gmsh más allá de `mesh_size_m` (algoritmo de malla,
+  tolerancias de OpenCASCADE). No tratar esto como bloqueante de las
+  brechas 3-4 (Elmer, ver `GEOM14_STATUS.md`), que no dependen de esta
+  malla de conversión a GDML.
+
+**No confundir un ensamblaje mallado con éxito con un arreglo geométricamente
+válido**: `generate_array.py` no comprueba solapamientos entre bobinas
+distintas (solo dentro de cada bobina, igual que `generate_dh.py`) — ese
+chequeo lo hace Geant4 al importar (`CheckOverlaps` en
+`ICRP110PhantomConstruction.cc`), que ya itera automáticamente sobre todas
+las piezas hijas del GDML, sin haber requerido ningún cambio de C++ para
+soportar múltiples bobinas en vez de una.
+
 ## Entorno Python aislado
 
 **Por qué un venv separado y no instalar esto en `geant4_env`:** el entorno

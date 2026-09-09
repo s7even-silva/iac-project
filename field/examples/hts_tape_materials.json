@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "length_unit": "m",
+  "_provenance": [
+    "Composicion homogeneizada de una cinta HTS 2G tipo SCS4050 (SuperPower Inc.),",
+    "calculada 2026-09-08 para field/GEOM14_STATUS.md brecha 2. NO es una ficha",
+    "de fabricante citada directamente -- es un compuesto derivado, con cada",
+    "numero trazado a su fuente. Ver field/GEOM14_STATUS.md, seccion 'Material",
+    "homogeneizado del conductor HTS', para el detalle completo y las",
+    "limitaciones explicitas (buffer stack ignorado, densidad de YBCO en",
+    "pelicula delgada no verificada, rangos de Hastelloy usados en su punto",
+    "medio). Espesores de capa: Hastelloy 50um (sustrato, SCS4050), YBCO 2um",
+    "(pelicula activa, ARSSEM S4.3 -- mas trazable a nuestra fuente primaria",
+    "que el ~1um de literatura secundaria de SCS4050), Ag 2um (recubrimiento),",
+    "Cu 20um POR LADO x2 lados = 40um (estabilizador tipo SCS, dentro del",
+    "rango oficial SuperPower 5-55um/lado). Espesor total homogeneizado:",
+    "94 um -- NO confundir con los 0.2mm/capa x 8 capas del devanado DH",
+    "conceptual de ARSSEM S4.3, que describe el apilado de 8 cintas del",
+    "diseno de bobina completo, no el espesor de una sola cinta 2G real."
+  ],
+  "elements": {
+    "Cu": {"Z": 29, "A": 63.546},
+    "Ni": {"Z": 28, "A": 58.6934},
+    "Mo": {"Z": 42, "A": 95.95},
+    "Cr": {"Z": 24, "A": 51.9961},
+    "Fe": {"Z": 26, "A": 55.845},
+    "Ag": {"Z": 47, "A": 107.8682},
+    "W":  {"Z": 74, "A": 183.84},
+    "Co": {"Z": 27, "A": 58.933194},
+    "Ba": {"Z": 56, "A": 137.327},
+    "Mn": {"Z": 25, "A": 54.938044},
+    "O":  {"Z": 8,  "A": 15.999},
+    "Y":  {"Z": 39, "A": 88.90585},
+    "Si": {"Z": 14, "A": 28.085},
+    "Al": {"Z": 13, "A": 26.9815385}
+  },
+  "materials": {
+    "hastelloy_c276": {
+      "_provenance": "Xometry/NeoNickel proveedores metalurgicos, punto medio de rangos publicados (Ni=balance, Mo 15-17%, Cr 14.5-16.5%, Fe 4-7%, W 3-4.5%, Co<=2.5%, Mn<=1%, Si<=0.08%); densidad 8.89 g/cm3 confirmada por las mismas fuentes.",
+      "density_g_cm3": 8.89,
+      "mass_fractions": {"Ni": 0.5567, "Mo": 0.1600, "Cr": 0.1550, "Fe": 0.0550, "W": 0.0375, "Co": 0.0250, "Mn": 0.0100, "Si": 0.0008}
+    },
+    "ybco": {
+      "_provenance": "YBa2Cu3O7 (x=0), fracciones masicas por estequiometria exacta de la formula. Densidad 6.3 g/cm3 es un valor de literatura general para cristal YBCO -- NO verificado especificamente para pelicula delgada depositada, ver limitaciones en GEOM14_STATUS.md.",
+      "density_g_cm3": 6.3,
+      "mass_fractions": {"Y": 0.1335, "Ba": 0.4123, "Cu": 0.2862, "O": 0.1681}
+    },
+    "silver": {
+      "_provenance": "Plata pura (capa de recubrimiento/proteccion de la cinta 2G).",
+      "density_g_cm3": 10.49,
+      "mass_fractions": {"Ag": 1.0}
+    },
+    "copper": {
+      "_provenance": "Cobre puro (estabilizador electrodepositado, configuracion SCS de SuperPower).",
+      "density_g_cm3": 8.96,
+      "mass_fractions": {"Cu": 1.0}
+    },
+    "hts_tape_homogenized": {
+      "_provenance": [
+        "Compuesto homogeneizado de las 4 capas de arriba, ponderado por masa",
+        "por unidad de area (densidad x espesor de cada capa), NO por espesor",
+        "simple -- una capa mas densa aporta mas fraccion masica que una capa",
+        "igual de gruesa pero menos densa. Ignora el buffer stack (5 capas",
+        "ceramicas submicronicas, composicion no disponible publicamente segun",
+        "la investigacion de 2026-09-08 -- su masa es despreciable frente a las",
+        "4 capas modeladas, del orden de <1% del espesor total)."
+      ],
+      "density_g_cm3": 8.899,
+      "mass_fractions": {
+        "Cu": 0.432778, "Ni": 0.2958, "Mo": 0.085015, "Cr": 0.082359,
+        "Fe": 0.029224, "Ag": 0.025097, "W": 0.019925, "Co": 0.013284,
+        "Ba": 0.006225, "Mn": 0.005313, "O": 0.002538, "Y": 0.002016,
+        "Si": 0.000425
+      }
+    },
+    "structural_aluminium": {
+      "_provenance": "Al elemental, ya usado en ActiveShield_Sim para el casco (referencia radiologica, no aleacion validada) -- mismo criterio para soporte estructural de las bobinas por ahora.",
+      "density_g_cm3": 2.699,
+      "mass_fractions": {"Al": 1.0}
+    }
+  }
+}
