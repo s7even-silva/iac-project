@@ -1,0 +1,48 @@
+# Interactive/visual version of dh_pilot.mac: same coil geometry and field
+# map, but opens a viewer to actually see the imported coil instead of
+# running headless. Run with:
+#   ./ICRP110phantoms --vis ../tests/dh_pilot_vis.mac
+# (running ICRP110phantoms with NO arguments loads vis.mac instead, which
+# never issues /spacecraft/coilGeometry -- that is why the coil does not
+# appear when run that way: the phantom-only default macro is shown, not
+# this one. Running with just a macro argument, no --vis, executes it in
+# batch mode with no viewer instead -- see README.md, "Visualizar una
+# geometría/campo importado".)
+#
+# Regenerate field/generated/geant4_pilot/{dh.gdml,dh.map} and edit the
+# paths below to your checkout before running -- see dh_pilot.mac for the
+# exact commands (field/generated/ is gitignored, not versioned).
+
+# PreInit commands: must come before /run/initialize.
+/spacecraft/coilGeometry /ABSOLUTE/PATH/TO/iac-project/field/generated/geant4_pilot/dh.gdml
+/spacecraft/fieldMap /ABSOLUTE/PATH/TO/iac-project/field/generated/geant4_pilot/dh.map
+/spacecraft/fieldScale 1
+/spacecraft/worldHalfSize 10 m
+
+/phantom/setPhantomSection full
+
+/run/initialize
+
+/vis/open
+/vis/viewer/set/autoRefresh false
+/vis/verbose errors
+/vis/viewer/set/specialMeshRendering
+/vis/drawVolume
+/vis/viewer/set/viewpointThetaPhi 85 -75 deg
+/vis/viewer/set/rotationStyle freeRotation
+/vis/viewer/set/hiddenMarker true
+/vis/scene/add/axes
+/vis/scene/add/trajectories
+/vis/modeling/trajectories/create/drawByCharge
+/vis/modeling/trajectories/drawByCharge-0/default/setDrawStepPts true
+/vis/modeling/trajectories/drawByCharge-0/default/setStepPtsSize 2
+/vis/scene/endOfEventAction accumulate
+/vis/viewer/set/autoRefresh true
+/vis/verbose warnings
+
+# Same test beam as dh_pilot.mac, aimed through the coil.
+/gps/particle geantino
+/gps/ene/mono 1 MeV
+/gps/pos/centre -6 0 0 m
+/gps/direction 1 0 0
+/run/beamOn 10

@@ -36,7 +36,7 @@ import platform
 import gmsh
 import numpy as np
 
-from generate_dh import controls
+from generate_dh import controls, _conductor_profile
 from generate_mesh import digest
 from cad_cleanup import remove_construction_entities
 
@@ -68,10 +68,9 @@ def _coil_solid(occ, coil_config, tag_prefix):
         start = gmsh.model.getValue(1, tag, [float(low[0])])
         tangent = gmsh.model.getDerivative(1, tag, [float(low[0])])
         wire = occ.addWire([tag])
-        disk = occ.addDisk(*start, coil_config['conductor_radius_m'], coil_config['conductor_radius_m'],
-                            zAxis=tangent)
-        pieces.extend(occ.addPipe([(2, disk)], wire, 'DiscreteTrihedron'))
-        occ.remove([(2, disk)], recursive=False)
+        profile = _conductor_profile(occ, coil_config, start, tangent, coil_config['center_m'], [0, 0, 1])
+        pieces.extend(occ.addPipe([(2, profile)], wire, 'DiscreteTrihedron'))
+        occ.remove([(2, profile)], recursive=False)
     volumes, _ = occ.fuse(pieces[:1], pieces[1:])
     occ.synchronize()
     solids = [tag for dim, tag in volumes if dim == 3]

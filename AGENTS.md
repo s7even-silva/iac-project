@@ -51,6 +51,34 @@ fuentes y pendientes en
   6,24M tetraedros del arreglo completo en 62,5s, ~2,6% de error de volumen.
   Detalle en [field/README.md](field/README.md) y
   [field/GEOM14_STATUS.md](field/GEOM14_STATUS.md).
+- Sección transversal rectangular real de la cinta HTS (brecha 2,
+  implementado 2026-09-09): `tape_width_m`/`tape_thickness_m` opcionales en
+  el JSON de una bobina activan un rectángulo orientado radialmente en vez
+  del disco circular equivalente, tanto en CAD (`generate_dh.py`/
+  `generate_array.py`) como en el mallado swept de producción
+  (`mesh_swept.py:ribbon_tetrahedra`) — retrocompatible, sin cambios para
+  cualquier config sin esas claves. `conductor_radius_m` se sigue exigiendo
+  siempre porque alimenta el núcleo regularizado de Biot-Savart, aparte de
+  la forma CAD/malla. Validado con el toro analítico y con la espina real
+  del barrel de producción (2,55M tetraedros, 0,004% de error de volumen).
+  **No activado en `geom14_array_pilot.json`:** la cinta de 50mm no cabe en
+  la separación radial actual del piloto (20mm) — redimensionarla es
+  trabajo de la brecha 1 (coordinar los ~10 parámetros del devanado), no
+  algo que se resuelve solo en el generador. Detalle completo en
+  [field/GEOM14_STATUS.md](field/GEOM14_STATUS.md), brecha 2.
+- Elmer FEM instalado (`scripts/install.sh --with-elmer`, brecha 3) y
+  corriendo (`CoilSolver` + `WhitneyAVSolver` + `MagnetoDynamicsCalcFields`,
+  `field/examples/elmer_pilot.sif`), con dos bugs reales de `.sif`
+  corregidos (`Normalize Coil Current`, `Relative Permeability` — ver
+  GEOM14_STATUS.md). `field/generate_elmer_domain.py` y
+  `field/mesh_swept_air.py` (nuevo) generan el dominio aire+conductor por
+  dos caminos distintos (CAD/OpenCASCADE vs. tetraedros estructurados sin
+  Gmsh 2D); `field/elmer_to_map.py` (nuevo) remuestrea el resultado a la
+  grilla que Geant4 lee. **Sin validar todavía contra Biot-Savart en la
+  geometría real de la doble hélice** por ninguno de los dos caminos — ver
+  GEOM14_STATUS.md brecha 3/4 para el detalle completo de por qué. No
+  bloquea el proyecto: el piloto de Geant4 usa Biot-Savart
+  (`compute_field.py`), ya validado y en uso.
 - Conversión `field/generate_mesh.py` → `.msh` → `field/mesh_to_gdml.py`
   → GDML con componentes y materiales separados. Requiere tetraedros de
   primer orden y grupos físicos con asignación explícita en JSON.
@@ -128,10 +156,13 @@ fuentes y pendientes en
   Geom14 específicamente**. El conductor usa un material HTS homogeneizado
   trazable (`field/examples/hts_tape_materials.json`, sustrato Hastelloy +
   YBCO + Ag + Cu de una cinta 2G comercial tipo SCS4050), reemplazando el
-  cobre puro del piloto de una sola bobina — sigue con sección circular
-  (área equivalente a la cinta real), no la cinta rectangular real. El
-  ensamblaje Geom14 completo (12 bobinas) y su campo físico validado
-  (Elmer) **todavía no están implementados**.
+  cobre puro del piloto de una sola bobina — este arreglo de validación
+  sigue con sección circular (área equivalente a la cinta real), no la
+  cinta rectangular real: el generador ya soporta la sección rectangular
+  real (ver más arriba, brecha 2), pero activarla aquí exige antes
+  redimensionar la separación radial del piloto (brecha 1, ver
+  `field/GEOM14_STATUS.md`). El ensamblaje Geom14 completo (12 bobinas) y
+  su campo físico validado (Elmer) **todavía no están implementados**.
 - Comparación pasiva adicional reevaluada: A nave sola, B nave+material de
   bobinas sin campo, C con campo, D nave+capa pasiva, E híbrido opcional.
   No se ha añadido aún la capa ni una interfaz de escenarios.
