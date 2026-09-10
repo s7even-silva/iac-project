@@ -335,6 +335,21 @@ fuentes y pendientes en
 - Elegir física de producción (`QGSP_BIC_HP` actual vs `Shielding` del piloto).
 - La posible novedad del artículo requiere revisión bibliográfica; calcular B
   dentro o fuera de Geant4 no demuestra por sí mismo una contribución novedosa.
+- **Alternativa a Geom14 evaluada (2026-09-10): CREW HaT.** Búsqueda de una
+  configuración de bobina 100% reproducible que evite extrapolar los vacíos
+  de ARSSEM; verificado leyendo el reporte NASA NIAC Phase I completo
+  (D'Onghia, NTRS 20250002403) y la tesis de maestría 2024 (Ziyang Hang,
+  MINDS@UW 1793/85233), no solo el abstract. CREW HaT (Halbach Torus de 8
+  bobinas elípticas) fija más parámetros sin ambigüedad que Geom14 —
+  dimensiones de conjunto, campo pico ~10 T, temperatura 40 K, curva Ic del
+  conductor — pero deja abierta una elección de conductor sin resolver
+  (cinta YBCO, ~125.000 vueltas, vs. cable CORC, ~2.632 vueltas). Detalle
+  completo, cifras exactas y comparación con Geom14 en
+  [`field/ELMER_VALIDATION.md`](field/ELMER_VALIDATION.md) y
+  [`field/GEOM14_STATUS.md`](field/GEOM14_STATUS.md). **Propuesta, no
+  decisión**: migrar de Geom14 a CREW HaT como geometría de referencia es
+  un cambio de alcance (topología distinta) que el equipo debe decidir
+  explícitamente.
 
 ## Estructura de `geant4/GCR_SEP_Sim/`
 
