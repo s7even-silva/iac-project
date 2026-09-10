@@ -26,6 +26,20 @@ public:
   G4String GetDirMode() const   { return fDirMode; }
   G4String GetPhase() const     { return fPhase; }
 
+  // Especie del ultimo primario generado ("GCR_H", "GCR_He" o "SEP_p") --
+  // RunAction la usa para acumular energia depositada por especie, ya que
+  // cada una necesita su propio peso fisico (flujo real distinto). Valido
+  // desde GeneratePrimaries() hasta la siguiente llamada; en modo Serial
+  // (unico RunManager que usa este proyecto, ver main.cc) EventAction lee
+  // esto al terminar el mismo evento que lo genero, antes de que corra el
+  // siguiente, asi que no hay condicion de carrera.
+  G4String GetLastSpecies() const { return fLastSpecies; }
+
+  // Flujo/fluencia integrado (ver SpectrumSampler::GetIntegratedFlux) para
+  // la especie dada, en la fase solar actual (fPhase). species debe ser uno
+  // de "GCR_H", "GCR_He", "SEP_p" -- cualquier otro valor devuelve 0.
+  G4double GetIntegratedFlux(const G4String& species) const;
+
 private:
   void SampleIsotropicPosition(G4ThreeVector& pos, G4ThreeVector& dir, G4double radius) const;
   void SampleFixedDirection(G4ThreeVector& pos, G4ThreeVector& dir, G4double radius) const;
@@ -34,6 +48,7 @@ private:
   G4String fModel   = "GCR";
   G4String fDirMode = "isotropic";
   G4String fPhase   = "max";
+  G4String fLastSpecies = "";
 
   std::vector<std::tuple<G4String,G4int,G4int,G4double>> fGCRSpecies;
 
