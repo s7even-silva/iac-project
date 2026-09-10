@@ -99,17 +99,28 @@ fuentes y pendientes en
   `py313_bootstrap` (con aviso, no error fatal, si la versión de conda
   instalada no trae el subcommand `tos`, relativamente nuevo).
 - **Fix (2026-09-09):** compilar GCR_SEP_Sim/ActiveShield_Sim fallaba en
-  una máquina nueva con `Could NOT find EXPAT (missing: EXPAT_LIBRARY
-  EXPAT_INCLUDE_DIR)` durante `find_package(Geant4)` — `Geant4Config.cmake`
-  exige `EXPAT` (soporte GDML) vía `find_dependency`, y conda-forge separa
-  el paquete `libexpat` (solo la librería de runtime) del paquete `expat`
-  (headers + libs de desarrollo). `geant4=11.4.2` solo arrastra `libexpat`
-  como dependencia transitiva en algunas resoluciones del solver de conda
-  (confirmado: presente en una máquina, ausente en otra con el mismo
-  `environment.yml`) — sin `expat`, CMake no encuentra
-  `EXPAT_INCLUDE_DIR` aunque la librería sí esté. Corregido: `expat`
-  agregado explícitamente a `environment.yml`, sin depender de que la
-  resolución transitiva lo traiga por casualidad.
+  una máquina nueva con `Could NOT find EXPAT`, y tras agregar `expat`,
+  luego con `Could NOT find ZLIB` — mismo patrón, no un caso aislado.
+  Causa raíz real: conda-forge publica **7 variantes de build distintas**
+  de `geant4=11.4.2` (`noqt_*`, `qt_*`, y `py310`…`py314` con bindings de
+  Python), y `environment.yml` no fijaba cuál — el solver de conda elige
+  libremente según la máquina. Cada variante trae un juego distinto de
+  dependencias transitivas: las variantes `py3xx` declaran `expat`/`zlib`/
+  `freetype` (paquetes de desarrollo completos) directamente, mientras que
+  `noqt_*`/`qt_*` solo declaran las libs de runtime (`libexpat`/`libzlib`)
+  — sin los headers, `Geant4Config.cmake` (que llama `find_dependency` a
+  `CLHEP`, `EXPAT`, `ZLIB`, `XercesC`, `Freetype`, `HDF5` de forma
+  incondicional en esta build, y también `X11`/`Qt6`/`OpenGL` porque
+  `vis_raytracer_x11`/`qt`/`vis_opengl_x11` están `ON`) falla en cascada,
+  un paquete a la vez, según cuál falte primero. Confirmado leyendo
+  directamente el `Geant4Config.cmake` instalado. Corregido: todas esas
+  dependencias de desarrollo (`expat`, `zlib`, `clhep=2.4.7.2` — versión
+  exacta que exige `find_dependency(CLHEP 2.4.7.2 EXACT CONFIG)` —,
+  `xerces-c=3.3.0`, `freetype`, `hdf5`, `xorg-libx11`, `qt6-main`)
+  agregadas explícitamente a `environment.yml`, en vez de depender de qué
+  variante de `geant4` resuelva el solver o de agregar paquetes uno a uno
+  cada vez que aparezca un error nuevo. Verificado con `conda create
+  --dry-run` que resuelve sin conflictos.
 - Elmer FEM instalado (`scripts/install.sh --with-elmer`, brecha 3) y
   corriendo (`CoilSolver` + `WhitneyAVSolver` + `MagnetoDynamicsCalcFields`,
   `field/examples/elmer_pilot.sif`), con dos bugs reales de `.sif`
