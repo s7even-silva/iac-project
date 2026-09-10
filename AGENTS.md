@@ -416,12 +416,24 @@ fuentes y pendientes en
   aplicarse como fórmula estándar de ingeniería de imanes, no como dato de
   la fuente).
 
-  **Estado de implementación**: aún no existe generador CAD/malla para la
-  bobina elíptica (`field/generate_dh.py` es específico de Double Helix,
-  no reutilizable para esta topología); es el siguiente paso. Detalle
-  completo, cifras exactas con cita de página y comparación con Geom14 en
-  [`field/ELMER_VALIDATION.md`](field/ELMER_VALIDATION.md) y
-  [`field/GEOM14_STATUS.md`](field/GEOM14_STATUS.md).
+  **Implementado 2026-09-10:** `field/generate_ellipse.py`, una sola
+  bobina elíptica cerrada con sección transversal cuadrada homogeneizada
+  (representa el winding pack completo, no un conductor individual —
+  ninguna vuelta se traza por separado, a diferencia de la Double Helix).
+  Reutiliza `_conductor_profile()` de `generate_dh.py` sin modificarlo
+  (mismo principio que `generate_array.py`). Genera ambas variantes de
+  conductor con las cifras reales verificadas (winding pack de 1,43 m para
+  cinta 12mm, 0,67 m para CORC) — volumen CAD validado contra la
+  estimación analítica perímetro×área en <0,1% para ambas
+  (`field/tests/test_ellipse.py`). El arreglo de las 8 bobinas, el mallado
+  swept, Elmer y el material HTS real **todavía no existen** — ver
+  [`field/CREWHAT_STATUS.md`](field/CREWHAT_STATUS.md) para el detalle
+  completo de brechas y las decisiones de modelado propias marcadas
+  explícitamente (sección cuadrada sin segunda dimensión de la fuente,
+  radio de regularización de Biot-Savart sin validar, margen de curvatura
+  de la elipse). Cifras exactas con cita de página en
+  [`field/ELMER_VALIDATION.md`](field/ELMER_VALIDATION.md) y comparación
+  con Geom14 en [`field/GEOM14_STATUS.md`](field/GEOM14_STATUS.md).
 
 ## Estructura de `geant4/GCR_SEP_Sim/`
 
