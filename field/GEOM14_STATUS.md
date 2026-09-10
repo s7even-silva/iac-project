@@ -5,6 +5,39 @@ geometría completa ya implementada ni una ficha constructiva cerrada.**
 El JSON `examples/dh_pilot.json` se identifica expresamente como
 `computational_pilot_not_geom14`. El generador solo admite ese estado.
 
+## Actualización Elmer (2026-09-09): dominio global y selección de cortes
+
+La bitácora de las brechas 3/4 más abajo describe los intentos anteriores.
+Se añade una vía funcional: `mesh_exterior.py` conserva los tetraedros swept
+y genera aire en una caja independiente, con interfaz conforme. El límite de
+radio del tubo de aire deja de limitar esta nueva vía. También se corrigieron
+IDs duplicados en la exportación del tubo histórico.
+
+Se encontró que el coloreado de cortes de CoilSolver incluía tetraedros del
+aire. El módulo local `CoilSolverRestricted`, compilado reproduciblemente por
+`build_coilsolver.py`, restringe la búsqueda a los elementos activos del
+conductor. Usar `Single Coil Cut=True`, corriente total de 100 A y normalización
+puntual desactivada en el piloto. Esto sustituye la recomendación anterior de
+activar la normalización puntual como solución definitiva. Con el mismo
+conductor y aire global, el cociente de magnitudes FEM/BS central pasó de 0,184
+a 0,951; quedan errores espaciales y falta convergencia. El `.sif` piloto ahora
+requiere el módulo local y aborta ante falta de convergencia lineal.
+
+[Secuencia reproducible, diagnóstico y alcance](ELMER_VALIDATION.md).
+Biot–Savart filamentario se compara lejos de la **sección del conductor**,
+no necesariamente lejos de toda la bobina. El nuevo auditor registra esa
+separación y la sensibilidad a regularización. El campo máximo dentro de la
+cinta y la solución completa Geom14 todavía no están validados.
+
+**Primer estudio de convergencia (2026-09-09):** con el mismo conductor,
+combinar dominio más grande (`--padding 2.0`) y malla de aire más fina
+(`--air-size 0.10`) simultáneamente da el mejor resultado de los cuatro
+probados en los 6 puntos de diagnóstico (error vectorial 1,3–5,8 %, mejor
+que cualquiera de los dos ajustes por separado) — ver el detalle completo
+en `ELMER_VALIDATION.md`. Sigue sin ser una convergencia formal (solo dos
+niveles por eje); es la configuración recomendada hoy para repetir o
+extender este piloto, no un valor de producción cerrado.
+
 ## Cambiar el physics list de ActiveShield_Sim (Shielding vs. QGSP_BIC_HP)
 
 Mecánicamente es un cambio de pocas líneas en `ICRP110phantoms.cc`: reemplazar

@@ -31,6 +31,22 @@ fuentes y pendientes en
 [decisiones del modelo](geant4/ActiveShield_Sim/docs/modelo_realista.md).
 
 **Implementado:**
+- **Elmer (2026-09-09), actualización que sustituye las limitaciones históricas
+  del piloto descritas más abajo:** `field/mesh_exterior.py` genera aire global
+  a partir de las superficies del conductor swept, conservando sus tetraedros
+  y comprobando interfaz/volumen. `field/build_coilsolver.py` compila un módulo
+  local desde fuente Elmer fijado por revisión y SHA256: restringe la selección
+  y coloreado de cortes a elementos activos del conductor, excluyendo aire.
+  `examples/elmer_pilot.sif` requiere `CoilSolverRestricted.so`, prescribe
+  corriente total (100 A), `Single Coil Cut=True`, normalización puntual False
+  y aborto si el sistema lineal no converge. El instalador no compila este
+  módulo automáticamente. Comparación de tres vueltas: FEM/BS central de
+  0,184 a 0,951; no certifica convergencia ni Geom14 completo.
+  `compare_elmer.py` audita puntos exteriores al hilo, con distancia explícita
+  y sensibilidad a regularización. Regenerar mallas de `mesh_swept_air.py`
+  anteriores al fix de IDs globalmente únicos. Instrucciones/evidencia en
+  [validación Elmer](field/ELMER_VALIDATION.md).
+
 - Piloto `field/generate_dh.py`: Double Helix cerrado y paramétrico, CAD y
   recorrido de corriente común; cobre circular de ensayo, no cinta YBCO/Geom14.
   `compute_field.py` genera una referencia Biot–Savart regularizada, no FEM ni
@@ -234,8 +250,9 @@ fuentes y pendientes en
   incertidumbre por órgano. No portar muestreo continuo como plan de producción.
 - **Gmsh + Elmer + Python** para calcular y exportar el campo. No implementar
   un Halbach uniforme ficticio; no inventar dimensiones/corrientes de bobinas.
-  Elmer todavía no está instalado/configurado por este flujo: el venv cubre
-  mallado y conversión, no la solución FEM ni sus dependencias nativas.
+  Elmer se instala por `scripts/install.sh --with-elmer`; el venv cubre
+  mallado y conversión, no las dependencias nativas. La validación FEM del
+  arreglo completo sigue pendiente; el flujo del piloto está enlazado arriba.
 - **GCR vía OLTARIS (Badhwar-O'Neill 2020)** y **SEP vía OLTARIS (Historical
   SPE)** — ambas fuentes cambiaron de SPENVIS a OLTARIS el 2026-09-08, al
   aprobarse el acceso a esa cuenta (ver "Cambio de fuente" en el checklist).
