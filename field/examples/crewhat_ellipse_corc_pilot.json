@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "status": "computational_pilot_not_crewhat",
+  "center_m": [0.0, 0.0, 0.0],
+  "semi_major_m": 4.0,
+  "semi_minor_m": 2.0,
+  "winding_pack_side_m": 0.67,
+  "field_regularization_radius_m": 0.067,
+  "current_A": 1.0e7,
+  "control_points": 128,
+  "field_segments": 512,
+  "mesh_size_m": 0.1,
+  "mesh_min_size_m": 0.05,
+  "mesh_points_per_circle": 16
+}
