@@ -153,6 +153,25 @@ fuentes y pendientes en
   `environment.yml` (misma versión que `gcc`/`gxx_linux-64`, para que los
   tres compiladores vengan de un único toolchain consistente). Verificado
   con `conda create --dry-run`, resuelve sin conflictos.
+
+  **Ese fix por sí solo no bastó** (encontrado inmediatamente después,
+  misma máquina, con `gfortran_linux-64` ya instalado y confirmado en
+  versión 15.2.0): `--with-elmer` seguía fallando, ahora con "Could not
+  determine the Fortran compiler version" / "GNU Fortran major version is
+  too old, should be at least 7". Causa: como con `g++`/`gcc`
+  (`GXX_BIN` ya lo resolvía con un fallback explícito, ver más abajo),
+  los paquetes `*_linux-64` de conda-forge NO exponen binarios llamados
+  simplemente `gcc`/`g++`/`gfortran` en el `PATH` — solo los nombres con
+  prefijo largo (`x86_64-conda-linux-gnu-cc`/`-c++`/`-gfortran`). La
+  llamada a `cmake` para Elmer nunca pasaba `-DCMAKE_Fortran_COMPILER` (ni
+  `-DCMAKE_C_COMPILER`) explícito, así que CMake auto-detectaba y seguía
+  cayendo al `/usr/bin/f95`/`gfortran` del sistema sin importar que el de
+  conda ya estuviera instalado — el mismo problema de fondo del fix
+  anterior, sin resolver del todo. Corregido: `GCC_BIN`/`GFORTRAN_BIN`
+  (mismo patrón que el `GXX_BIN` ya existente: ruta larga de conda con
+  fallback al nombre corto del sistema si no existe) pasados explícitamente
+  como `-DCMAKE_C_COMPILER`/`-DCMAKE_Fortran_COMPILER` en la compilación
+  de Elmer, junto al `-DCMAKE_CXX_COMPILER` que ya se pasaba.
 - Elmer FEM instalado (`scripts/install.sh --with-elmer`, brecha 3) y
   corriendo (`CoilSolver` + `WhitneyAVSolver` + `MagnetoDynamicsCalcFields`,
   `field/examples/elmer_pilot.sif`), con dos bugs reales de `.sif`
