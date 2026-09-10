@@ -245,9 +245,22 @@ if [[ "$WITH_ELMER" -eq 1 ]]; then
     set +u
     conda activate "$GEANT4_ENV_NAME"
     set -u
+    # WITH_MPI=FALSE deliberately: this project never runs ElmerSolver
+    # distributed (always a single process, no mpirun -- confirmed by
+    # every real run so far logging "Running one task without MPI
+    # parallelization"). With MPI enabled, Elmer's own CMakeLists.txt
+    # (cmake/Modules/testMPIcapabilities.cmake) compiles AND RUNS a real
+    # MPI program (MPI_Init/Allreduce/Finalize) via try_run to check
+    # MPI_IN_PLACE support -- OpenMPI programs can hang indefinitely at
+    # that point on certain single-node network configurations (a known,
+    # documented OpenMPI issue, not specific to this project). Confirmed:
+    # reported stuck for an extended time at exactly that CMake message on
+    # another machine. Disabling MPI avoids the check (and the hang)
+    # entirely, at the cost of a capability (distributed Elmer) this
+    # project has never used.
     cmake -S "$ELMER_SRC" -B "$ELMER_SRC/build" \
       -DCMAKE_INSTALL_PREFIX="$ELMER_PREFIX" \
-      -DWITH_MPI:BOOLEAN=TRUE -DWITH_OpenMP:BOOLEAN=TRUE
+      -DWITH_MPI:BOOLEAN=FALSE -DWITH_OpenMP:BOOLEAN=TRUE
     cmake --build "$ELMER_SRC/build" -j"$(nproc)"
     cmake --install "$ELMER_SRC/build"
     set +u
