@@ -94,6 +94,43 @@ documento** — decidir con criterio propio cuál de los dos números usar (0,2 
 por capa está citado dos veces y es internamente consistente con "8 capas";
 1,6 µm aparece una sola vez y contradice esa multiplicación).
 
+## Alternativa evaluada: CREW HaT en vez de Geom14 (2026-09-10, propuesta no decidida)
+
+Se investigó si existe en la literatura pública una configuración de bobina
+para blindaje magnético espacial completamente especificada, para evitar
+extrapolar los vacíos de la tabla de arriba. Resultado detallado y fuentes
+en [`field/ELMER_VALIDATION.md`](../field/ELMER_VALIDATION.md#búsqueda-de-configuraciones-de-bobina-alternativas-100--reproducibles-2026-09-10).
+
+**CREW HaT** (NASA NIAC Phase I, D'Onghia, Univ. Wisconsin-Madison, NTRS
+20250002403 + tesis de maestría 2024 de Ziyang Hang, MINDS@UW 1793/85233)
+es un Halbach Torus de **8 bobinas elípticas** (semieje mayor 4 m, aspect
+ratio 2, radio Halbach 8 m), verificado leyendo ambos documentos completos,
+no solo el resumen. Fija sin ambigüedad: número de bobinas, forma,
+dimensiones de conjunto, campo pico (~10 T) y temperatura de diseño (40 K),
+y da curva Ic del conductor vs. campo/temperatura — más de lo que Geom14
+fija hoy en la tabla de arriba.
+
+**No es plug-and-play tampoco**: el dato de corriente de su Tabla 3.1
+(`I = 1×10⁷ A`) es la corriente **total** del sistema, no vueltas × corriente
+de conductor por separado. El reporte deja dos alternativas de conductor sin
+decidir entre ellas — cinta YBCO de 4 mm (~125.000 vueltas necesarias, Ic
+real ~80 A a 10 T/40 K) o cable CORC de 8 mm (~2.632 vueltas), ambas con
+vueltas/capas y análisis de esfuerzo mecánico ya calculados en la tesis de
+2024. Sigue exigiendo una decisión propia del equipo (elegir conductor),
+pero es una sola decisión bien acotada, no varias sin ningún dato de apoyo
+como exige hoy Geom14 (separación radial entre bobinas, presencia de
+endcaps, ambos sin ningún número del paper ARSSEM que los sustente).
+
+**Estado: propuesta, no decisión.** Migrar la geometría de referencia de
+Geom14 a CREW HaT es un cambio de alcance (topología distinta: Halbach
+Torus de bobinas elípticas vs. Double Helix de 12 bobinas barrel+endcaps)
+que el equipo debe decidir explícitamente, no algo que se resuelve solo
+por tener mejor documentación. Si se decide migrar, la brecha 1 de más
+abajo (fijar los ~10 parámetros dimensionales) se resolvería con los
+números de CREW HaT en vez de extrapolar Geom12/13; las brechas 2-5
+(malla, Elmer, convergencia, arreglo completo) siguen aplicando igual,
+son del método, no de la geometría específica.
+
 ### Qué está y qué no está explícitamente bajo el rótulo "Geom14" (verificado 2026-09-08)
 
 Lectura directa de ARSSEM confirma algo importante para no sobre-prometer
