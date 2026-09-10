@@ -219,6 +219,28 @@ fuentes y pendientes en
   para Geant4) sigue igual, sin tocar. Verificado en esa VM: Elmer compila,
   `ElmerSolver --version` corre, y el binario final exige solo
   `x86-64-baseline` (confirmado con `readelf -n`).
+- **Fix (2026-09-10), corrige una afirmación sin verificar del fix
+  anterior:** ese mismo día se descubrió que `GCR_SEP_Sim`/`ActiveShield_Sim`
+  compilados por el paso de "verificación final" de `install.sh` (que usa
+  `GXX_BIN`, el compilador largo de conda) **tampoco podían ejecutarse**
+  en esa VM — mismo síntoma exacto que Elmer, "CPU ISA level is lower than
+  required", confirmado con `readelf -n` (exige hasta x86-64-v3). El
+  comentario del fix anterior afirmaba que "GXX_BIN/GCC_BIN/GFORTRAN_BIN
+  deben seguir en conda para Geant4 mismo" — nunca se verificó
+  empíricamente esa necesidad, solo se asumió por analogía con el problema
+  real de Elmer. Repitiendo el mismo diagnóstico (compilar y **correr** el
+  binario, no solo compilarlo) se confirmó que **no hay tal necesidad**:
+  a diferencia de Elmer (que compila su propio C/C++/Fortran desde cero,
+  donde sí importa un triplete de compiladores consistente), estos dos
+  proyectos solo compilan un puñado de `.cc` propios que enlazan contra
+  bibliotecas `.so` ya compiladas de Geant4/CLHEP — el enlazado dinámico
+  no exige que el compilador cliente comparta sysroot con la librería.
+  `g++` del sistema (el mismo que ya recomiendan, sin verificar hasta
+  ahora, los comandos manuales de este archivo y de cada README) compila,
+  enlaza y **ejecuta** sin problema. Corregido: los dos `cmake` de la
+  verificación final de `install.sh` usan `g++` a secas en vez de
+  `$GXX_BIN`. `GXX_BIN` en sí no se tocó — Elmer lo sigue usando para su
+  propio build desde fuente, donde el diagnóstico original si aplica.
 - Elmer FEM instalado (`scripts/install.sh --with-elmer`, brecha 3) y
   corriendo (`CoilSolver` + `WhitneyAVSolver` + `MagnetoDynamicsCalcFields`,
   `field/examples/elmer_pilot.sif`), con dos bugs reales de `.sif`
