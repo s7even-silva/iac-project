@@ -188,6 +188,37 @@ fuentes y pendientes en
   fallback al nombre corto del sistema si no existe) pasados explícitamente
   como `-DCMAKE_C_COMPILER`/`-DCMAKE_Fortran_COMPILER` en la compilación
   de Elmer, junto al `-DCMAKE_CXX_COMPILER` que ya se pasaba.
+- **Fix (2026-09-10):** `--with-elmer` volvía a fallar en otra máquina
+  nueva (una VM), otra vez con "Could not determine the Fortran compiler
+  version" / "GNU Fortran major version is too old" — con `gfortran` de
+  conda ya resuelto correctamente por el fix anterior (`GFORTRAN_BIN`
+  apuntaba bien, `--version` reportaba 15.2.0). Causa raíz distinta esta
+  vez, confirmada reproduciendo a mano el `try_run` que usa el propio
+  chequeo de versión de Elmer (`cmake/Modules/testGFortranVersion.cmake`
+  compila y **ejecuta** un programa de prueba, no confía en
+  `CMAKE_Fortran_COMPILER_VERSION`): cualquier binario enlazado con el
+  compilador de conda-forge abortaba al ejecutarse con "CPU ISA level is
+  lower than required", no con un error de compilación. El `Scrt1.o` del
+  sysroot de conda-forge trae una nota ELF (`GNU_PROPERTY_X86_ISA_1_NEEDED`)
+  que exige hasta `x86-64-v3`; esta VM (KVM/Oracle) expone `avx2`/`bmi2`
+  en `/proc/cpuinfo` pero le faltan `fma`/`f16c`/`lzcnt`/`osxsave` —
+  también requeridos por v3 — así que el dynamic linker del sistema
+  (`ld.so`, que reporta él mismo "x86-64-v2 (supported, searched)")
+  rechaza el binario en tiempo de ejecución. `try_run` no distingue
+  "compilador viejo" de "el binario no puede ni arrancar aquí", de ahí el
+  mensaje engañoso. Ni `-march=x86-64-v2` ni `-Wl,-z,x86-64-v2` en la
+  compilación del usuario cambian la nota (viene del `Scrt1.o` precompilado
+  del sysroot, no del objeto propio); el `Scrt1.o` del sistema, en cambio,
+  solo exige baseline y el gfortran del sistema (misma versión 15.2.0)
+  funciona sin problema. Corregido: antes de compilar Elmer, `install.sh`
+  reproduce la misma prueba compile+run con el compilador de conda: si
+  falla, cae automáticamente a `gcc`/`g++`/`gfortran` del sistema solo
+  para Elmer (que no enlaza contra ningún paquete conda de Geant4/CLHEP,
+  así que esto no reintroduce el problema de sysroots mezclados del primer
+  fix de Elmer). El resto del proyecto (`GXX_BIN`/`GCC_BIN`/`GFORTRAN_BIN`
+  para Geant4) sigue igual, sin tocar. Verificado en esa VM: Elmer compila,
+  `ElmerSolver --version` corre, y el binario final exige solo
+  `x86-64-baseline` (confirmado con `readelf -n`).
 - Elmer FEM instalado (`scripts/install.sh --with-elmer`, brecha 3) y
   corriendo (`CoilSolver` + `WhitneyAVSolver` + `MagnetoDynamicsCalcFields`,
   `field/examples/elmer_pilot.sif`), con dos bugs reales de `.sif`
