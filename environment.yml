@@ -6,4 +6,27 @@ dependencies:
   - cmake=4.4.1
   - gcc_linux-64=15.2.0
   - gxx_linux-64=15.2.0
+  # Geant4Config.cmake calls find_dependency() on all of these
+  # unconditionally in this conda-forge build (confirmed by reading the
+  # installed Geant4Config.cmake directly: CLHEP, EXPAT, ZLIB, XercesC,
+  # Freetype, HDF5 always; X11/Qt6/OpenGL always too, since this build has
+  # vis_raytracer_x11/qt/vis_opengl_x11 all ON). conda-forge ships SEVEN
+  # geant4=11.4.2 build variants (noqt_*, qt_*, and py310..py314 with
+  # Python bindings) that differ in exactly which of these dev/header
+  # packages get pulled in transitively -- the geant4 package itself only
+  # declares RUNTIME libs (e.g. libexpat, not expat), and only the py3xx
+  # variants happen to also declare the *-devel ones CMake's
+  # find_package() needs. Without pinning, the solver is free to pick any
+  # variant. Confirmed empirically on a machine whose solver picked a
+  # minimal (noqt) variant: EXPAT then ZLIB missing in sequence, one
+  # find_package failure at a time as each got added by hand. Listed
+  # explicitly here so this doesn't depend on solver luck (verified with
+  # `conda create --dry-run -f environment.yml`, resolves cleanly).
   - expat
+  - zlib
+  - clhep=2.4.7.2
+  - xerces-c=3.3.0
+  - freetype
+  - hdf5
+  - xorg-libx11
+  - qt6-main
