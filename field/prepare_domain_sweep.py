@@ -8,7 +8,7 @@ import sys
 
 import numpy as np
 from compute_field import grid_shape
-from generate_mesh import digest
+from provenance import digest
 
 
 def prepare(source, directory, spacing, enclosing_radius=None):

@@ -7,7 +7,7 @@ from pathlib import Path
 import gmsh
 import numpy as np
 from compute_field import field_at
-from generate_mesh import digest
+from provenance import digest
 
 
 def mesh_volume(mesh):

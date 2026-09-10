@@ -22,7 +22,7 @@ import platform
 import numpy as np
 
 from compute_field import field_at, grid_shape
-from generate_mesh import digest
+from provenance import digest
 
 
 def generate(source, output, half_size, spacing, max_points):
