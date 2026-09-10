@@ -168,6 +168,19 @@ fi
 GEANT4_ENV_PREFIX="$MINICONDA_DIR/envs/$GEANT4_ENV_NAME"
 GXX_BIN="$GEANT4_ENV_PREFIX/bin/x86_64-conda-linux-gnu-c++"
 [[ -x "$GXX_BIN" ]] || GXX_BIN="g++"
+# Same idea for C and Fortran: gcc_linux-64/gxx_linux-64/gfortran_linux-64
+# from conda-forge do NOT expose plain "gcc"/"g++"/"gfortran" on PATH --
+# only the long x86_64-conda-linux-gnu- prefixed names. Without pointing
+# CMake at these explicitly, it silently falls back to auto-detecting a
+# SYSTEM compiler instead (confirmed: this caused both a real link
+# failure building Elmer -- mixing conda C/C++ with the system's
+# /usr/bin/f95 -- and, after installing gfortran_linux-64, a "GNU Fortran
+# major version is too old" error from CMake still finding /usr/bin/f95
+# ahead of the newly-installed conda one).
+GCC_BIN="$GEANT4_ENV_PREFIX/bin/x86_64-conda-linux-gnu-cc"
+[[ -x "$GCC_BIN" ]] || GCC_BIN="gcc"
+GFORTRAN_BIN="$GEANT4_ENV_PREFIX/bin/x86_64-conda-linux-gnu-gfortran"
+[[ -x "$GFORTRAN_BIN" ]] || GFORTRAN_BIN="gfortran"
 
 # ---------------------------------------------------------------------------
 # 4. Entorno py313_bootstrap: SOLO para tener un intérprete Python 3.13.x
@@ -260,6 +273,8 @@ if [[ "$WITH_ELMER" -eq 1 ]]; then
     # project has never used.
     cmake -S "$ELMER_SRC" -B "$ELMER_SRC/build" \
       -DCMAKE_INSTALL_PREFIX="$ELMER_PREFIX" \
+      -DCMAKE_C_COMPILER="$GCC_BIN" -DCMAKE_CXX_COMPILER="$GXX_BIN" \
+      -DCMAKE_Fortran_COMPILER="$GFORTRAN_BIN" \
       -DWITH_MPI:BOOLEAN=FALSE -DWITH_OpenMP:BOOLEAN=TRUE
     cmake --build "$ELMER_SRC/build" -j"$(nproc)"
     cmake --install "$ELMER_SRC/build"
