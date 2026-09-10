@@ -138,6 +138,21 @@ fuentes y pendientes en
   compilación de Elmer, eliminando el chequeo (y el riesgo de cuelgue) de
   raíz. `WITH_OpenMP` no se toca — es paralelismo de memoria compartida,
   no relacionado con el transporte de red de OpenMPI que causaba esto.
+- **Fix (2026-09-09):** compilar Elmer (`--with-elmer`) fallaba en una
+  máquina Ubuntu al enlazar `libelmersolver.so` con `cannot find
+  /lib64/libm.so.6` / `libmvec.so.1` — error real de linker, no una
+  advertencia. Causa raíz: `environment.yml` fijaba `gcc_linux-64`/
+  `gxx_linux-64` (compiladores C/C++ de conda-forge) pero nunca
+  `gfortran_linux-64` — Elmer es mayormente Fortran, así que sin un
+  `gfortran` de conda en el `PATH`, CMake caía al `/usr/bin/f95` del
+  sistema, mezclando ese compilador con el C/C++ de conda-forge en el
+  mismo link final. Ambos toolchains asumen sysroots distintos: el de
+  conda-forge trae uno propio con convención `/lib64` (estilo RHEL), pero
+  Debian/Ubuntu guarda esas libs en `/usr/lib/x86_64-linux-gnu/` — de ahí
+  el "no such file". Corregido: `gfortran_linux-64=15.2.0` agregado a
+  `environment.yml` (misma versión que `gcc`/`gxx_linux-64`, para que los
+  tres compiladores vengan de un único toolchain consistente). Verificado
+  con `conda create --dry-run`, resuelve sin conflictos.
 - Elmer FEM instalado (`scripts/install.sh --with-elmer`, brecha 3) y
   corriendo (`CoilSolver` + `WhitneyAVSolver` + `MagnetoDynamicsCalcFields`,
   `field/examples/elmer_pilot.sif`), con dos bugs reales de `.sif`

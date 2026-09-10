@@ -6,6 +6,22 @@ dependencies:
   - cmake=4.4.1
   - gcc_linux-64=15.2.0
   - gxx_linux-64=15.2.0
+  # gfortran_linux-64 was missing: without a conda-forge Fortran compiler
+  # in PATH, CMake (both for GCR_SEP_Sim/ActiveShield_Sim's own build and
+  # for scripts/install.sh --with-elmer, which compiles Elmer -- a mostly
+  # Fortran codebase) falls back to the SYSTEM /usr/bin/f95, while C/C++
+  # still resolve to the conda-forge compilers above. That mixes two
+  # toolchains with different assumed sysroot layouts in one link step:
+  # conda-forge's compilers are built against their own embedded sysroot,
+  # the system compiler against the distro's real one. Confirmed as the
+  # cause of a real failure compiling Elmer on Ubuntu: the final link of
+  # libelmersolver.so failed with "cannot find /lib64/libm.so.6" -- /lib64
+  # is a RHEL/Fedora convention baked into the mixed toolchain's linker
+  # search path, but Debian/Ubuntu keeps these libraries under
+  # /usr/lib/x86_64-linux-gnu/ instead, so that path never existed on that
+  # machine. Pinned to the same 15.2.0 as gcc/gxx_linux-64 above so all
+  # three compilers come from one consistent conda-forge toolchain.
+  - gfortran_linux-64=15.2.0
   # Geant4Config.cmake calls find_dependency() on all of these
   # unconditionally in this conda-forge build (confirmed by reading the
   # installed Geant4Config.cmake directly: CLHEP, EXPAT, ZLIB, XercesC,
