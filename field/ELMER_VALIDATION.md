@@ -383,3 +383,79 @@ reemplazo de la geometría de referencia. Dos reportes (OSTI 817768 del
 dipolo Double-Helix, y el MAARSS completo de NTRS) siguen sin decodificarse
 con las herramientas de búsqueda usadas — candidatos a revisión manual
 futura, sin la prioridad de CREW HaT tras esta verificación.
+
+## CREW HaT: datos verificados para el generador CAD (2026-09-10)
+
+Segunda ronda de verificación, dirigida específicamente a los números que
+hacen falta para generar la geometría (no solo confirmar que la fuente es
+"más completa que Geom14" en general). Misma fuente primaria ya verificada
+arriba (reporte NIAC Phase I completo, NTRS 20250002403; tesis 2024, Ziyang
+Hang, MINDS@UW 1793/85233) — cita exacta de página/sección para cada dato.
+
+**Corrección de nomenclatura**: las bobinas de CREW HaT son **elípticas**,
+no "racetrack" — ese término corresponde al diseño de SR2S (proyecto
+distinto). Cualquier archivo/generador para CREW HaT debe llamarse
+`generate_ellipse.py` o similar, no `generate_racetrack.py`.
+
+**Geometría de la bobina** (Tabla 3.1, p. 15, reporte NIAC): semieje mayor
+4 m, aspect ratio 2 (semieje menor 2 m), radio Halbach 8 m, 8 bobinas,
+corriente total del sistema I=1×10⁷ (ampere-vuelta, no corriente de un
+conductor — ver más abajo), campo pico ~10 T sobre el conductor, temperatura
+de diseño 40 K (Sección 4.5, p. 28).
+
+**Opciones de conductor, con winding pack ya calculado por la tesis** (no
+un factor de empaquetamiento simple: la tesis suma perímetro capa por capa,
+Ec. 2.10-2.12, p. 35 — usar sus cifras finales de grosor directamente, no
+recalcular desde N×área_conductor):
+
+| Conductor | Ic a 10T/40K | Vueltas (I_total/Ic) | Grosor winding pack (elíptico, optimizado) |
+|---|---:|---:|---:|
+| Cinta YBCO 4 mm | 80 A (p. 10, 32) | ~125.000 | No calculado en Tabla 2.7/2.8 |
+| Cinta YBCO 12 mm | 240 A (Ec. 2.8, p. 33) | ~41.667 | **1,43 m** (Tabla 2.7, p. 51-52) |
+| Cable CORC 8 mm | ≈3.800 A (p. 34) | ~2.632 | **0,67 m** (Tabla 2.8, p. 53-54) |
+
+(Tabla 2.3, p. 38, da cifras "fixed" anteriores a la optimización de masa:
+1,3 m para cinta 12mm y 0,7 m para CORC — usar las de Tabla 2.7/2.8, más
+recientes y ya optimizadas, no estas. Hay además una cifra temprana e
+inconsistente en la Sección 2.2.1, p. 14, de un modelo FEM ilustrativo
+—0,43 m axial × 0,34 m radial, mismas 41.667 vueltas— que el equipo no debe
+usar: es una ilustración preliminar del método, no el resultado final.)
+
+Sección de conductor individual: cinta YBCO, ~0,1 mm de espesor total
+(desglose de capas en Tabla 2.2, p. 32: Cu 40µm, Ag 2µm, YBCO 1µm, buffer
+0,2µm, Hastelloy C-276 50µm, Ag 1,8µm — suma ≈95µm, consistente con la
+cinta SCS4050 ya usada en Geom14), ancho 4 o 12mm. CORC: cable redondo de
+8mm de diámetro, 48 cintas de 4mm enrolladas sobre núcleo de Cu sólido de
+3,2mm a 65° (Sección 2.5.2, p. 34).
+
+**Decisión de modelado — winding pack homogeneizado, no vuelta por vuelta**:
+ni 41.667 ni 2.632 vueltas son viables de trazar individualmente con el
+enfoque de `generate_dh.py`/`mesh_swept.py` (diseñado para una Double Helix
+de pocas vueltas, donde cada vuelta importa físicamente). Una bobina
+elíptica de CREW HaT no tiene ese requisito — es modelable como un sólido
+único barrido a lo largo de la elipse, con densidad de corriente
+J=I_total/área_sección(grosor de la tabla de arriba). Esto es lo que
+permite evaluar cinta y CORC como dos configuraciones del mismo generador
+en vez de dos escalas de cómputo completamente distintas.
+
+**Nave/hábitat**: el reporte fija R_sc=4,5 m (radio, Sección 3.1, p. 10,
+asumiendo el diámetro de SpaceX Starship) para calcular el radio Halbach,
+aclarando explícitamente que "el volumen interior y layout del hábitat
+permanecen sin determinar" (p. 9) — **no da longitud axial del cilindro
+habitable**. Mayor que el radio actual del proyecto (2,8 m). Decidido
+escalar la nave a 4,5 m (`/spacecraft/shipRadius`, ver AGENTS.md) en vez de
+reescalar la bobina — reversible sin recompilar si se retoma Geom14/ARSSEM.
+
+**Lo que falta y no está en ninguno de los dos documentos** (búsqueda
+explícita, confirmado que no está, no que falte revisar más):
+- Longitud axial del hábitat.
+- Un factor de empaquetamiento/relleno escalar del winding pack (se calcula
+  capa por capa en su lugar, ver arriba).
+- El patrón angular explícito de las 8 bobinas en el arreglo Halbach: el
+  reporte solo distingue cualitativamente bobinas "radiales" (perpendicular
+  al eje, fuerza neta hacia el centro) de "tangenciales" (paralelas al eje,
+  Sección 5.2, p. 44-45) — sin una tabla de ángulos por bobina. El patrón
+  típico de un Halbach dipolar de 8 elementos (rotación de 2× el ángulo
+  azimutal por elemento) tendría que aplicarse como fórmula estándar de la
+  ingeniería de imanes, marcada explícitamente como tal y no como dato de
+  esta fuente, si se necesita antes de tener el arreglo completo.

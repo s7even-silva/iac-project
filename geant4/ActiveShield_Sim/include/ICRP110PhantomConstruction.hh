@@ -84,6 +84,8 @@ class ICRP110PhantomConstruction : public G4VUserDetectorConstruction
   G4double fFieldScale = 1.;
   G4double fWorldHalfSize;
   G4double fHullThickness;
+  G4double fShipRadius;
+  G4double fShipHalfLength;
   std::vector<std::pair<G4String, G4double>> fPassiveLayers;
   std::shared_ptr<const MagneticFieldMap> fFieldMap;
  // std::vector<G4Material*> fMaterials;
