@@ -93,6 +93,13 @@ else
   INSTALLER="$(mktemp -t miniconda-installer-XXXXXX.sh)"
   trap 'rm -f "$INSTALLER"' EXIT
   curl -fsSL "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-${MINICONDA_ARCH}.sh" -o "$INSTALLER"
+  # -b (modo batch) instala sin tocar el shell del usuario -- necesario para
+  # correr este script sin interacción, pero deja "conda"/"conda activate"
+  # inutilizables en cualquier terminal nueva, incluso tras reiniciarla
+  # (confirmado: usuario reportó exactamente esto en otra maquina). El
+  # instalador interactivo (sin -b) sí ofrece y corre "conda init" por su
+  # cuenta; replicamos ese paso aquí explícitamente para el shell de login
+  # del usuario (no necesariamente bash, que es el que corre este script).
   bash "$INSTALLER" -b -p "$MINICONDA_DIR"
   rm -f "$INSTALLER"
   trap - EXIT
@@ -101,6 +108,48 @@ fi
 
 # shellcheck disable=SC1091
 source "$MINICONDA_DIR/etc/profile.d/conda.sh"
+
+# conda init es idempotente (actualiza su propio bloque marcado en el rc
+# file, no lo duplica) -- se corre siempre, no solo en la instalación
+# nueva de arriba, para cubrir tambien el caso de una Miniconda ya
+# instalada (por este script en una version anterior, o manualmente) cuyo
+# shell de login nunca recibió "conda init".
+USER_SHELL="$(basename "${SHELL:-bash}")"
+case "$USER_SHELL" in
+  bash|zsh) : ;;
+  *) warn "Shell de login '$USER_SHELL' no reconocido para 'conda init'; usando bash." ; USER_SHELL=bash ;;
+esac
+RC_FILE="$HOME/.$([ "$USER_SHELL" = zsh ] && echo zshrc || echo bashrc)"
+if [[ -f "$RC_FILE" ]] && grep -q ">>> conda initialize >>>" "$RC_FILE" 2>/dev/null; then
+  ok "'conda init $USER_SHELL' ya aplicado en $RC_FILE"
+else
+  log "Ejecutando 'conda init $USER_SHELL' (necesario para usar 'conda' en terminales nuevas)"
+  "$MINICONDA_DIR/bin/conda" init "$USER_SHELL" >/dev/null
+  ok "conda init aplicado a $USER_SHELL -- abre una terminal nueva (o reinicia esta) para que 'conda' quede disponible"
+fi
+
+# ---------------------------------------------------------------------------
+# 2.5. Términos de Servicio de Anaconda: desde 2025 conda exige aceptar el
+#      ToS de los canales "defaults" (pkgs/main, pkgs/r) antes de resolver
+#      CUALQUIER entorno, incluso uno cuyo environment.yml solo lista
+#      "conda-forge" -- la instalación base de conda trae "defaults" en su
+#      config global de canales aparte de lo que pida el .yml. Sin aceptar,
+#      "conda env create" falla con "the following channels have not been
+#      accepted" (confirmado: reportado tras probar el script en otra
+#      máquina, con conda 26.5.3 recién instalado). "conda tos" es un
+#      subcomando relativamente nuevo (plugin conda-anaconda-tos, 2025) --
+#      si una Miniconda más vieja no lo trae, se omite con una advertencia
+#      en vez de fallar todo el script.
+# ---------------------------------------------------------------------------
+if conda tos --help >/dev/null 2>&1; then
+  log "Aceptando Términos de Servicio de los canales por defecto de Anaconda"
+  conda tos accept -c https://repo.anaconda.com/pkgs/main -c https://repo.anaconda.com/pkgs/r
+  ok "Términos de Servicio aceptados"
+else
+  warn "Esta versión de conda no tiene 'conda tos' -- si 'conda env create' falla"
+  warn "más abajo por Términos de Servicio no aceptados, actualiza conda o acéptalos"
+  warn "manualmente (ver https://www.anaconda.com/docs/getting-started/tos-plugin)."
+fi
 
 # ---------------------------------------------------------------------------
 # 3. Entorno geant4_env: Geant4 11.4.2 + CMake + gcc/g++ de conda-forge,
@@ -119,6 +168,19 @@ fi
 GEANT4_ENV_PREFIX="$MINICONDA_DIR/envs/$GEANT4_ENV_NAME"
 GXX_BIN="$GEANT4_ENV_PREFIX/bin/x86_64-conda-linux-gnu-c++"
 [[ -x "$GXX_BIN" ]] || GXX_BIN="g++"
+# Same idea for C and Fortran: gcc_linux-64/gxx_linux-64/gfortran_linux-64
+# from conda-forge do NOT expose plain "gcc"/"g++"/"gfortran" on PATH --
+# only the long x86_64-conda-linux-gnu- prefixed names. Without pointing
+# CMake at these explicitly, it silently falls back to auto-detecting a
+# SYSTEM compiler instead (confirmed: this caused both a real link
+# failure building Elmer -- mixing conda C/C++ with the system's
+# /usr/bin/f95 -- and, after installing gfortran_linux-64, a "GNU Fortran
+# major version is too old" error from CMake still finding /usr/bin/f95
+# ahead of the newly-installed conda one).
+GCC_BIN="$GEANT4_ENV_PREFIX/bin/x86_64-conda-linux-gnu-cc"
+[[ -x "$GCC_BIN" ]] || GCC_BIN="gcc"
+GFORTRAN_BIN="$GEANT4_ENV_PREFIX/bin/x86_64-conda-linux-gnu-gfortran"
+[[ -x "$GFORTRAN_BIN" ]] || GFORTRAN_BIN="gfortran"
 
 # ---------------------------------------------------------------------------
 # 4. Entorno py313_bootstrap: SOLO para tener un intérprete Python 3.13.x
@@ -188,11 +250,37 @@ if [[ "$WITH_ELMER" -eq 1 ]]; then
     log "Compilando Elmer FEM desde fuente en $ELMER_PREFIX (puede tardar 15-30+ min)"
     ELMER_SRC="$(mktemp -d -t elmerfem-src-XXXXXX)"
     git clone --depth 1 https://www.github.com/ElmerCSC/elmerfem "$ELMER_SRC"
+    # cmake vive en geant4_env (declarado en environment.yml), no se instala
+    # por separado en el sistema -- sin activar el entorno aqui, este paso
+    # fallaba con "cmake: command not found" en una distro sin cmake de
+    # sistema (p. ej. --skip-system, o un gestor de paquetes que no lo trae
+    # por defecto). Mismo patron que la verificacion final mas abajo.
+    set +u
+    conda activate "$GEANT4_ENV_NAME"
+    set -u
+    # WITH_MPI=FALSE deliberately: this project never runs ElmerSolver
+    # distributed (always a single process, no mpirun -- confirmed by
+    # every real run so far logging "Running one task without MPI
+    # parallelization"). With MPI enabled, Elmer's own CMakeLists.txt
+    # (cmake/Modules/testMPIcapabilities.cmake) compiles AND RUNS a real
+    # MPI program (MPI_Init/Allreduce/Finalize) via try_run to check
+    # MPI_IN_PLACE support -- OpenMPI programs can hang indefinitely at
+    # that point on certain single-node network configurations (a known,
+    # documented OpenMPI issue, not specific to this project). Confirmed:
+    # reported stuck for an extended time at exactly that CMake message on
+    # another machine. Disabling MPI avoids the check (and the hang)
+    # entirely, at the cost of a capability (distributed Elmer) this
+    # project has never used.
     cmake -S "$ELMER_SRC" -B "$ELMER_SRC/build" \
       -DCMAKE_INSTALL_PREFIX="$ELMER_PREFIX" \
-      -DWITH_MPI:BOOLEAN=TRUE -DWITH_OpenMP:BOOLEAN=TRUE
+      -DCMAKE_C_COMPILER="$GCC_BIN" -DCMAKE_CXX_COMPILER="$GXX_BIN" \
+      -DCMAKE_Fortran_COMPILER="$GFORTRAN_BIN" \
+      -DWITH_MPI:BOOLEAN=FALSE -DWITH_OpenMP:BOOLEAN=TRUE
     cmake --build "$ELMER_SRC/build" -j"$(nproc)"
     cmake --install "$ELMER_SRC/build"
+    set +u
+    conda deactivate
+    set -u
     rm -rf "$ELMER_SRC"
     ok "Elmer instalado en $ELMER_PREFIX"
   fi

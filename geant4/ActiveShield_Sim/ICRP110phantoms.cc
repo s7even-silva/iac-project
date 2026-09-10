@@ -74,19 +74,33 @@ int main(int argc,char** argv)
   G4UImanager* UImanager = G4UImanager::GetUIpointer();
 
   if (argc==1)   // Define UI session for interactive mode.
-    { 
+    {
       G4cout << " UI session starts ..." << G4endl;
       auto ui = new G4UIExecutive(argc, argv);
-      UImanager -> ApplyCommand("/control/execute vis.mac");     
+      UImanager -> ApplyCommand("/control/execute vis.mac");
+      ui -> SessionStart();
+      delete ui;
+    }
+  else if (argc==3 && G4String(argv[1])=="--vis")
+    // Interactive UI session running a caller-chosen macro instead of the
+    // hardcoded vis.mac -- needed for any macro (like a coil-import test)
+    // that must run PreInit commands (/spacecraft/...) before /run/initialize
+    // and also open a viewer: /vis/open with no explicit driver only works
+    // inside an already-instantiated G4UIExecutive session, which plain
+    // batch mode (argc==2, below) never creates.
+    {
+      G4cout << " UI session starts ..." << G4endl;
+      auto ui = new G4UIExecutive(argc, argv);
+      UImanager -> ApplyCommand(G4String("/control/execute ")+argv[2]);
       ui -> SessionStart();
       delete ui;
     }
   else           // Batch mode
-    { 
+    {
       G4String command = "/control/execute ";
       G4String fileName = argv[1];
       UImanager -> ApplyCommand(command+fileName);
-    }     
+    }
 
 delete visManager;
 

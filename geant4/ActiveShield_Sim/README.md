@@ -71,6 +71,26 @@ corridas anteriores no probaban el cruce del casco por el primario.
 Son pruebas de funcionamiento; sus 1000 eventos no fijan el presupuesto
 estadístico de producción ni representan 1000 corridas independientes.
 
+### Visualizar una geometría/campo importado (`--vis`, 2026-09-09)
+
+`./ICRP110phantoms` sin argumentos abre ventana gráfica pero ejecuta
+siempre `vis.mac` (hardcodeado), que nunca llama a `/spacecraft/...` — no
+sirve para ver una bobina importada. `./ICRP110phantoms macro.mac` sí
+puede llamar a `/spacecraft/...`, pero corre en modo batch sin ventana:
+`/vis/open` sin un driver explícito solo funciona dentro de una sesión
+`G4UIExecutive` ya creada, que el modo batch nunca instancia. Para ver una
+geometría/campo importado gráficamente, usar el modo nuevo:
+
+```bash
+./ICRP110phantoms --vis mi_macro.mac
+```
+
+Esto abre la sesión interactiva (como sin argumentos) pero ejecuta
+`mi_macro.mac` en vez de `vis.mac` — la macro debe incluir sus propios
+comandos `/spacecraft/...` (PreInit, antes de `/run/initialize`) seguidos
+de sus propios comandos `/vis/...`. Ver
+`tests/dh_pilot_vis.mac` como ejemplo.
+
 ## Configuración antes de /run/initialize
 
 ```text

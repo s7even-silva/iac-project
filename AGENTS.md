@@ -31,6 +31,22 @@ fuentes y pendientes en
 [decisiones del modelo](geant4/ActiveShield_Sim/docs/modelo_realista.md).
 
 **Implementado:**
+- **Elmer (2026-09-09), actualización que sustituye las limitaciones históricas
+  del piloto descritas más abajo:** `field/mesh_exterior.py` genera aire global
+  a partir de las superficies del conductor swept, conservando sus tetraedros
+  y comprobando interfaz/volumen. `field/build_coilsolver.py` compila un módulo
+  local desde fuente Elmer fijado por revisión y SHA256: restringe la selección
+  y coloreado de cortes a elementos activos del conductor, excluyendo aire.
+  `examples/elmer_pilot.sif` requiere `CoilSolverRestricted.so`, prescribe
+  corriente total (100 A), `Single Coil Cut=True`, normalización puntual False
+  y aborto si el sistema lineal no converge. El instalador no compila este
+  módulo automáticamente. Comparación de tres vueltas: FEM/BS central de
+  0,184 a 0,951; no certifica convergencia ni Geom14 completo.
+  `compare_elmer.py` audita puntos exteriores al hilo, con distancia explícita
+  y sensibilidad a regularización. Regenerar mallas de `mesh_swept_air.py`
+  anteriores al fix de IDs globalmente únicos. Instrucciones/evidencia en
+  [validación Elmer](field/ELMER_VALIDATION.md).
+
 - Piloto `field/generate_dh.py`: Double Helix cerrado y paramétrico, CAD y
   recorrido de corriente común; cobre circular de ensayo, no cinta YBCO/Geom14.
   `compute_field.py` genera una referencia Biot–Savart regularizada, no FEM ni
@@ -51,6 +67,152 @@ fuentes y pendientes en
   6,24M tetraedros del arreglo completo en 62,5s, ~2,6% de error de volumen.
   Detalle en [field/README.md](field/README.md) y
   [field/GEOM14_STATUS.md](field/GEOM14_STATUS.md).
+- Sección transversal rectangular real de la cinta HTS (brecha 2,
+  implementado 2026-09-09): `tape_width_m`/`tape_thickness_m` opcionales en
+  el JSON de una bobina activan un rectángulo orientado radialmente en vez
+  del disco circular equivalente, tanto en CAD (`generate_dh.py`/
+  `generate_array.py`) como en el mallado swept de producción
+  (`mesh_swept.py:ribbon_tetrahedra`) — retrocompatible, sin cambios para
+  cualquier config sin esas claves. `conductor_radius_m` se sigue exigiendo
+  siempre porque alimenta el núcleo regularizado de Biot-Savart, aparte de
+  la forma CAD/malla. Validado con el toro analítico y con la espina real
+  del barrel de producción (2,55M tetraedros, 0,004% de error de volumen).
+  **No activado en `geom14_array_pilot.json`:** la cinta de 50mm no cabe en
+  la separación radial actual del piloto (20mm) — redimensionarla es
+  trabajo de la brecha 1 (coordinar los ~10 parámetros del devanado), no
+  algo que se resuelve solo en el generador. Detalle completo en
+  [field/GEOM14_STATUS.md](field/GEOM14_STATUS.md), brecha 2.
+- **Fix (2026-09-09):** `scripts/install.sh --with-elmer` invocaba `cmake`
+  para compilar Elmer sin activar `geant4_env` primero — `cmake` viene de
+  `environment.yml` (conda-forge), no se instala aparte en el sistema, así
+  que este paso podía fallar con "cmake: command not found" en una distro
+  sin `cmake` de sistema (p. ej. con `--skip-system`). Corregido para
+  activar/desactivar `geant4_env` alrededor de la compilación de Elmer,
+  igual que ya hacía la verificación final del script para los otros dos
+  proyectos Geant4.
+- **Fix (2026-09-09):** `scripts/install.sh` instalaba Miniconda con
+  `-b` (modo batch, necesario para correr sin interacción), que instala el
+  binario pero **no** ejecuta `conda init` — deja `conda`/`conda activate`
+  inutilizables en cualquier terminal nueva del usuario, incluso después
+  de reiniciarla (confirmado: reportado tras probar el script en otra
+  máquina). El resto del script no lo sufría porque hace su propio
+  `source .../conda.sh` explícito, pero eso solo dura la ejecución del
+  script, no queda para sesiones futuras del usuario. Corregido: el script
+  ahora corre `conda init <bash|zsh>` (detectado por `$SHELL`) tras
+  instalar, de forma idempotente (comprueba primero si el bloque de conda
+  ya está en `.bashrc`/`.zshrc`, para no reportarlo de más en
+  reinstalaciones ni en el caso de una Miniconda ya instalada antes de
+  este fix). El usuario debe abrir una terminal nueva (o volver a abrir la
+  actual) después de instalar para que `conda` quede disponible.
+- **Fix (2026-09-09):** `conda env create` fallaba en una máquina nueva
+  con "the following channels have not been accepted" — desde 2025,
+  conda exige aceptar los Términos de Servicio de los canales `defaults`
+  (`pkgs/main`, `pkgs/r`) antes de resolver **cualquier** entorno, incluso
+  uno cuyo `environment.yml` solo lista `conda-forge`: la instalación base
+  trae `defaults` en su configuración global de canales aparte de lo que
+  pida el `.yml` del proyecto. Corregido: el script corre `conda tos
+  accept` para esos dos canales antes de crear `geant4_env`/
+  `py313_bootstrap` (con aviso, no error fatal, si la versión de conda
+  instalada no trae el subcommand `tos`, relativamente nuevo).
+- **Fix (2026-09-09):** compilar GCR_SEP_Sim/ActiveShield_Sim fallaba en
+  una máquina nueva con `Could NOT find EXPAT`, y tras agregar `expat`,
+  luego con `Could NOT find ZLIB` — mismo patrón, no un caso aislado.
+  Causa raíz real: conda-forge publica **7 variantes de build distintas**
+  de `geant4=11.4.2` (`noqt_*`, `qt_*`, y `py310`…`py314` con bindings de
+  Python), y `environment.yml` no fijaba cuál — el solver de conda elige
+  libremente según la máquina. Cada variante trae un juego distinto de
+  dependencias transitivas: las variantes `py3xx` declaran `expat`/`zlib`/
+  `freetype` (paquetes de desarrollo completos) directamente, mientras que
+  `noqt_*`/`qt_*` solo declaran las libs de runtime (`libexpat`/`libzlib`)
+  — sin los headers, `Geant4Config.cmake` (que llama `find_dependency` a
+  `CLHEP`, `EXPAT`, `ZLIB`, `XercesC`, `Freetype`, `HDF5` de forma
+  incondicional en esta build, y también `X11`/`Qt6`/`OpenGL` porque
+  `vis_raytracer_x11`/`qt`/`vis_opengl_x11` están `ON`) falla en cascada,
+  un paquete a la vez, según cuál falte primero. Confirmado leyendo
+  directamente el `Geant4Config.cmake` instalado. Corregido: todas esas
+  dependencias de desarrollo (`expat`, `zlib`, `clhep=2.4.7.2` — versión
+  exacta que exige `find_dependency(CLHEP 2.4.7.2 EXACT CONFIG)` —,
+  `xerces-c=3.3.0`, `freetype`, `hdf5`, `xorg-libx11`, `qt6-main`)
+  agregadas explícitamente a `environment.yml`, en vez de depender de qué
+  variante de `geant4` resuelva el solver o de agregar paquetes uno a uno
+  cada vez que aparezca un error nuevo. Verificado con `conda create
+  --dry-run` que resuelve sin conflictos.
+- **Fix (2026-09-09):** `scripts/install.sh --with-elmer` se quedaba
+  estancado (reportado: bastante tiempo sin avanzar, en otra máquina) en
+  `Checking whether MPI_IN_PLACE is supported with .../mpif90` durante la
+  compilación de Elmer. Ese chequeo (`cmake/Modules/
+  testMPIcapabilities.cmake` del propio Elmer) no es un simple
+  `try_compile` — es un `try_run` que compila **y ejecuta** un programa
+  MPI real (`MPI_Init`/`MPI_Allreduce`/`MPI_Finalize`). Programas OpenMPI
+  triviales pueden colgarse indefinidamente ahí en ciertas configuraciones
+  de red de un solo nodo (problema conocido y documentado en issues
+  oficiales de OpenMPI, no específico de este proyecto). Este proyecto
+  nunca corre `ElmerSolver` distribuido — toda corrida hasta ahora fue de
+  un solo proceso, con el propio log confirmando "Running one task
+  without MPI parallelization" — así que `WITH_MPI` no aportaba ninguna
+  capacidad que se use. Corregido: `-DWITH_MPI:BOOLEAN=FALSE` en la
+  compilación de Elmer, eliminando el chequeo (y el riesgo de cuelgue) de
+  raíz. `WITH_OpenMP` no se toca — es paralelismo de memoria compartida,
+  no relacionado con el transporte de red de OpenMPI que causaba esto.
+- **Fix (2026-09-09):** compilar Elmer (`--with-elmer`) fallaba en una
+  máquina Ubuntu al enlazar `libelmersolver.so` con `cannot find
+  /lib64/libm.so.6` / `libmvec.so.1` — error real de linker, no una
+  advertencia. Causa raíz: `environment.yml` fijaba `gcc_linux-64`/
+  `gxx_linux-64` (compiladores C/C++ de conda-forge) pero nunca
+  `gfortran_linux-64` — Elmer es mayormente Fortran, así que sin un
+  `gfortran` de conda en el `PATH`, CMake caía al `/usr/bin/f95` del
+  sistema, mezclando ese compilador con el C/C++ de conda-forge en el
+  mismo link final. Ambos toolchains asumen sysroots distintos: el de
+  conda-forge trae uno propio con convención `/lib64` (estilo RHEL), pero
+  Debian/Ubuntu guarda esas libs en `/usr/lib/x86_64-linux-gnu/` — de ahí
+  el "no such file". Corregido: `gfortran_linux-64=15.2.0` agregado a
+  `environment.yml` (misma versión que `gcc`/`gxx_linux-64`, para que los
+  tres compiladores vengan de un único toolchain consistente). Verificado
+  con `conda create --dry-run`, resuelve sin conflictos.
+
+  **Ese fix por sí solo no bastó** (encontrado inmediatamente después,
+  misma máquina, con `gfortran_linux-64` ya instalado y confirmado en
+  versión 15.2.0): `--with-elmer` seguía fallando, ahora con "Could not
+  determine the Fortran compiler version" / "GNU Fortran major version is
+  too old, should be at least 7". Causa: como con `g++`/`gcc`
+  (`GXX_BIN` ya lo resolvía con un fallback explícito, ver más abajo),
+  los paquetes `*_linux-64` de conda-forge NO exponen binarios llamados
+  simplemente `gcc`/`g++`/`gfortran` en el `PATH` — solo los nombres con
+  prefijo largo (`x86_64-conda-linux-gnu-cc`/`-c++`/`-gfortran`). La
+  llamada a `cmake` para Elmer nunca pasaba `-DCMAKE_Fortran_COMPILER` (ni
+  `-DCMAKE_C_COMPILER`) explícito, así que CMake auto-detectaba y seguía
+  cayendo al `/usr/bin/f95`/`gfortran` del sistema sin importar que el de
+  conda ya estuviera instalado — el mismo problema de fondo del fix
+  anterior, sin resolver del todo. Corregido: `GCC_BIN`/`GFORTRAN_BIN`
+  (mismo patrón que el `GXX_BIN` ya existente: ruta larga de conda con
+  fallback al nombre corto del sistema si no existe) pasados explícitamente
+  como `-DCMAKE_C_COMPILER`/`-DCMAKE_Fortran_COMPILER` en la compilación
+  de Elmer, junto al `-DCMAKE_CXX_COMPILER` que ya se pasaba.
+- Elmer FEM instalado (`scripts/install.sh --with-elmer`, brecha 3) y
+  corriendo (`CoilSolver` + `WhitneyAVSolver` + `MagnetoDynamicsCalcFields`,
+  `field/examples/elmer_pilot.sif`), con dos bugs reales de `.sif`
+  corregidos (`Normalize Coil Current`, `Relative Permeability` — ver
+  GEOM14_STATUS.md). `field/generate_elmer_domain.py` y
+  `field/mesh_swept_air.py` (nuevo) generan el dominio aire+conductor por
+  dos caminos distintos (CAD/OpenCASCADE vs. tetraedros estructurados sin
+  Gmsh 2D); `field/elmer_to_map.py` (nuevo) remuestrea el resultado a la
+  grilla que Geant4 lee. **Sin validar todavía contra Biot-Savart en la
+  geometría real de la doble hélice** por ninguno de los dos caminos — ver
+  GEOM14_STATUS.md brecha 3/4 para el detalle completo de por qué. No
+  bloquea el proyecto: el piloto de Geant4 usa Biot-Savart
+  (`compute_field.py`), ya validado y en uso.
+- Exportación STEP (2026-09-09): `generate_dh.py`/`generate_array.py`
+  escriben también `dh.step`/`array.step` (con `step_sha256` en el
+  reporte) junto al `.brep` existente — mismo sólido ya validado, para
+  importar en herramientas de terceros con mallador propio (p. ej. Ansys
+  Maxwell, que no comparte el límite de triangulación 2D de
+  OpenCASCADE/Gmsh en geometrías de muchas vueltas). Detalle de por qué
+  esta vía y no exportar solo la trayectoria en GEOM14_STATUS.md brecha 3.
+  **La versión gratuita Ansys Student no alcanza para nuestra geometría**:
+  límite oficial de 64.000 elementos de malla 3D, superado ya por el
+  piloto de una sola bobina (76.176 tetraedros con nuestro mallador) y
+  muchísimo más por el arreglo de producción (6,24M) — ver GEOM14_STATUS.md
+  brecha 3 para el detalle y la alternativa de licencia académica.
 - Conversión `field/generate_mesh.py` → `.msh` → `field/mesh_to_gdml.py`
   → GDML con componentes y materiales separados. Requiere tetraedros de
   primer orden y grupos físicos con asignación explícita en JSON.
@@ -88,8 +250,9 @@ fuentes y pendientes en
   incertidumbre por órgano. No portar muestreo continuo como plan de producción.
 - **Gmsh + Elmer + Python** para calcular y exportar el campo. No implementar
   un Halbach uniforme ficticio; no inventar dimensiones/corrientes de bobinas.
-  Elmer todavía no está instalado/configurado por este flujo: el venv cubre
-  mallado y conversión, no la solución FEM ni sus dependencias nativas.
+  Elmer se instala por `scripts/install.sh --with-elmer`; el venv cubre
+  mallado y conversión, no las dependencias nativas. La validación FEM del
+  arreglo completo sigue pendiente; el flujo del piloto está enlazado arriba.
 - **GCR vía OLTARIS (Badhwar-O'Neill 2020)** y **SEP vía OLTARIS (Historical
   SPE)** — ambas fuentes cambiaron de SPENVIS a OLTARIS el 2026-09-08, al
   aprobarse el acceso a esa cuenta (ver "Cambio de fuente" en el checklist).
@@ -128,10 +291,13 @@ fuentes y pendientes en
   Geom14 específicamente**. El conductor usa un material HTS homogeneizado
   trazable (`field/examples/hts_tape_materials.json`, sustrato Hastelloy +
   YBCO + Ag + Cu de una cinta 2G comercial tipo SCS4050), reemplazando el
-  cobre puro del piloto de una sola bobina — sigue con sección circular
-  (área equivalente a la cinta real), no la cinta rectangular real. El
-  ensamblaje Geom14 completo (12 bobinas) y su campo físico validado
-  (Elmer) **todavía no están implementados**.
+  cobre puro del piloto de una sola bobina — este arreglo de validación
+  sigue con sección circular (área equivalente a la cinta real), no la
+  cinta rectangular real: el generador ya soporta la sección rectangular
+  real (ver más arriba, brecha 2), pero activarla aquí exige antes
+  redimensionar la separación radial del piloto (brecha 1, ver
+  `field/GEOM14_STATUS.md`). El ensamblaje Geom14 completo (12 bobinas) y
+  su campo físico validado (Elmer) **todavía no están implementados**.
 - Comparación pasiva adicional reevaluada: A nave sola, B nave+material de
   bobinas sin campo, C con campo, D nave+capa pasiva, E híbrido opcional.
   No se ha añadido aún la capa ni una interfaz de escenarios.
