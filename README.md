@@ -225,10 +225,7 @@ Con los dos archivos ya en `resultados/`, cualquiera de los dos corre la agregac
 | Columna | Significado |
 |---|---|
 | `n` | repeticiones encontradas para esa combinación (debería ser 5 — el script avisa si no) |
-| `dosis_media_Gy` | dosis absorbida promedio |
-| `dosis_std_Gy` | desviación estándar muestral |
-| `dosis_sem_Gy` | error estándar de la media |
-| `ic95_low_Gy` / `ic95_high_Gy` | intervalo de confianza 95% (t de Student) |
-| `cv_pct` | coeficiente de variación, % |
+| `dosis_media_Gy`, `dosis_std_Gy`, `dosis_sem_Gy`, `ic95_low_Gy`/`ic95_high_Gy`, `cv_pct` | estadística de `dosis_Gy` (dosis cruda de la corrida, sin ponderar por flujo real — solo para QA, no citar en el artículo) |
+| `dosis_absoluta_media_Gy`, `dosis_absoluta_std_Gy`, `dosis_absoluta_sem_Gy`, `ic95_absoluta_low_Gy`/`ic95_absoluta_high_Gy`, `cv_absoluta_pct` | estadística de `dosis_absoluta_Gy` — **esta es la que va al artículo**: Gy/día para GCR, Gy del evento completo para SEP (ver "Dosis absoluta" en `AGENTS.md`) |
 
-`resultados_agregados.csv` es directamente lo que va a la **tabla de resultados del artículo**, y la fuente de datos para la **gráfica** (dosis vs. intensidad de campo, una curva por posición/evento, con barras de error = IC95%) y para lo que se comente en Resultados y Discusión.
+`resultados_agregados.csv` es directamente lo que va a la **tabla de resultados del artículo** (usando las columnas `dosis_absoluta_*`), y la fuente de datos para la **gráfica** (dosis vs. intensidad de campo, una curva por posición/evento, con barras de error = IC95%) y para lo que se comente en Resultados y Discusión.

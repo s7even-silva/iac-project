@@ -148,7 +148,7 @@ Proyecto GEANT4 en C++ (CMake), ejecutable `gcrsim`. Piezas clave:
 - `data/`: 6 archivos de espectro de energía, uno por combinación modelo×fase (`gcr_proton_solarmax.csv`, `gcr_proton_solarmin.csv`, `gcr_alpha_solarmax.csv`, `gcr_alpha_solarmin.csv`, `sep_proton_solarmax.csv`, `sep_proton_solarmin.csv`). **Son placeholders** (max y min son idénticos por ahora) — pendiente reemplazarlos con datos reales antes de sacar conclusiones científicas. **Estos 6 archivos ya NO se versionan directamente** (ver `.gitignore`) — son el destino generado por `scripts/select_spectrum_source.py <fuente>` a partir de `data/sources/<fuente>/*.csv`, que sí se versiona y es la fuente de verdad. Fuentes en `data/sources/`: `spenvis/` (plan B, ISO-15390+ESP-PSYCHIC, ya no es la fuente activa) y `oltaris/` (activa desde 2026-09-08: BON2020 para GCR, evento histórico Oct 1989/Feb 1956-LaRC para SEP — carpeta y README pendientes de poblar con los exports reales, ver checklist). `SpectrumSampler` es agnóstico a la fuente (solo lee dos columnas energía/flujo), así que cambiar de fuente no toca código C++, solo qué CSV se copia a `data/`.
 - `macros/legacy/`: las 4 macros de escenarios de blindaje pasivo (`escenario1-4`), conservadas para referencia pero ya no reflejan el esquema de resultados actual.
 - `scripts/run_sweep.py`: corre automáticamente las 140 combinaciones del barrido (4 evento×fase × 7 campo × 5 posición), con semillas aleatorias fijas por corrida para reproducibilidad. Soporta `--n-events` y `--limit` (nota: `--limit N` corre las primeras N combinaciones en el orden del barrido, no necesariamente una por cada modelo/fase) para hacer una corrida piloto antes del barrido completo. También soporta `--repeats` (repeticiones por combinación, para estadística) y `--only-model GCR|SEP` (repartir el barrido en equipo, ver README.md). El manifiesto (`sweep_manifest.csv`) y el CSV de resultados se escriben por append, corrida por corrida, así que un corte a la mitad no pierde lo ya corrido; resume está activado **por defecto** y salta las combinaciones `(índice, repetición)` que ya tengan `exit_code 0` en el manifiesto — usar `--no-resume` para forzar rehacer todo desde cero (ver sección correspondiente en README.md). El default de `--n-events` (y el `BASE_SEED`) vienen de `geant4/sweep_config.py`, compartido entre proyectos — ver ese archivo antes de hardcodear un número de eventos "oficial" en un script nuevo. Los parámetros específicos de esta geometría (campo uniforme, posiciones del astronauta) NO están ahí a propósito, porque `ActiveShield_Sim` tendrá un espacio de parámetros distinto (bobinas Halbach) una vez que exista — `ActiveShield_Sim` todavía no tiene lanzador por bins: faltan la definición de energías/configuraciones y los pesos físicos. Su lector de mapa ya existe; no confundirlo con un mapa físico validado.
-- Resultados: `resultados_dosis_sweep.csv` (columnas `modelo,fase,field_T,astronaut_x_m,n_eventos,edep_MeV,masa_kg,dosis_Gy`), una fila por corrida.
+- Resultados: `resultados_dosis_sweep.csv` (columnas `modelo,fase,field_T,astronaut_x_m,n_eventos,edep_MeV,masa_kg,dosis_Gy,dosis_absoluta_Gy`), una fila por corrida. `dosis_Gy` es la dosis cruda sin ponderar (QA); `dosis_absoluta_Gy` es la normalización física real (Gy/día para GCR, Gy del evento completo para SEP) — ver "Dosis absoluta implementada" en Pendientes conocidos.
 
 ### Nota técnica: partículas atrapadas en el campo (importante)
 
@@ -173,13 +173,38 @@ Barrido completo (140 corridas):
 ## Pendientes conocidos
 
 - **Reemplazar los 6 CSV placeholder de `data/sources/` con espectros reales por fase solar.** Modelos elegidos, ambos vía **OLTARIS** (acceso aprobado 2026-09-08, reemplaza el plan intermedio con SPENVIS): **Badhwar-O'Neill 2020** para GCR (periodos históricos de mínimo/máximo solar), **evento histórico** para SEP (Oct 1989 = máximo, Feb 1956 ajuste LaRC = mínimo — no el modelo probabilístico ESP-PSYCHIC). CREME96 se había descartado antes porque su componente de GCR está anclado a datos de 1986-87; ISO-15390/SPENVIS y ESP-PSYCHIC/SPENVIS quedaron como plan B si OLTARIS no se aprobaba a tiempo, ya no es el camino activo. Checklist de qué exportar de cada modelo: [`docs/checklist_espectros_reales.md`](geant4/GCR_SEP_Sim/docs/checklist_espectros_reales.md).
-- **Dosis absoluta pendiente de implementar.** El piloto calcula Gy por los
-  N eventos simulados. Producción requiere respuestas por bin y ponderación
-  con flujo GCR (incluye tiempo) o fluencia SEP por evento (sin tiempo extra).
-  Los factores de área y ángulo dependen de la definición del export y del
-  muestreo entrante: no multiplicar un flujo omnidireccional por el área de
-  una esfera sin derivar esa normalización. Ver la fórmula y condiciones en
-  `geant4/ActiveShield_Sim/docs/modelo_realista.md`. Gy y Sv no son equivalentes.
+- **Dosis absoluta implementada en el piloto GCR_SEP_Sim (2026-09-09).** El
+  scorer sigue calculando `dosis_Gy` (cruda, sin ponderar, por los N eventos
+  mezclados de una corrida — se conserva por QA) pero `resultados_dosis_sweep.csv`
+  ahora también trae `dosis_absoluta_Gy`, calculada en `RunAction::EndOfRunAction`
+  acumulando energía depositada y N por especie (`GCR_H`, `GCR_He`, `SEP_p`
+  — ver `PrimaryGeneratorAction::GetLastSpecies()`/`GetIntegratedFlux()`) y
+  combinando:
+
+      R[s] = edep_dep[s] (J) / (masa_fantoma_kg * N[s])         -- Gy por primario simulado de la especie s
+      W[s] = pi * R_esfera_fuente_cm^2 * integral_E Flujo_s(E) dE -- primarios reales que cruzan la esfera fuente
+      dosis_absoluta_Gy = suma_s R[s] * W[s]
+
+  `integral_E Flujo_s(E) dE` es el flujo/fluencia tal cual está en el CSV de
+  OLTARIS integrado por trapecios (`SpectrumSampler::GetIntegratedFlux()`),
+  sin reescalar por tiempo aparte: los CSV de GCR ya vienen en
+  `particles/(day*cm2)` (OLTARIS "Boundary Flux"), así que `dosis_absoluta_Gy`
+  para GCR es **Gy/día**, no Gy total ni Gy/s — no multiplicar de nuevo por
+  86400. Los de SEP vienen en `particles/cm2` (OLTARIS "Boundary Fluence",
+  ya integrada sobre todo el evento), así que `dosis_absoluta_Gy` para SEP
+  es la **dosis aguda del evento completo** (Oct 1989), sin factor de tiempo.
+  `pi * R^2` es el área de sección transversal de la esfera fuente (radio =
+  casco + 20 cm) — la relación estándar entre flujo omnidireccional y tasa
+  de partículas reales que cruzan una superficie convexa, independiente de
+  si el muestreo interno de direcciones es radial (como hoy) o con ley de
+  coseno. `aggregate_results.py` ya agrega esta columna (media/std/IC95%)
+  junto a `dosis_Gy`; degrada con aviso, no falla, si algún CSV viene de
+  antes de este cambio y no la trae. **Limitaciones que siguen igual:**
+  muestreo angular de entrada radial (no ley de coseno, simplificación del
+  piloto), GCR limitado a H+He, Gy no es Sv. La fórmula completa (con bins
+  de energía, para producción de `ActiveShield_Sim`) sigue en
+  `geant4/ActiveShield_Sim/docs/modelo_realista.md` — ese documento describe
+  un pipeline distinto (por bins/órgano), no el de este piloto.
 - Medir el tiempo del barrido completo con `--n-events 10000` real antes de dejarlo corriendo desatendido (un piloto con 200 eventos tomó ~2s/corrida; a 10000 eventos cada corrida será más lenta, sobre todo por la physics list `Shielding` — corran un piloto con el `--n-events` real primero para estimar el total de las 140 corridas).
 - **Bins ya acordados para ActiveShield_Sim.** Pendientes de implementación:
   respuesta por energía/especie/órgano, pesos físicos y su incertidumbre.

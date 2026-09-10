@@ -43,8 +43,8 @@ SpectrumSampler::SpectrumSampler(const G4String& csvFilename)
     G4double avgFlux = 0.5 * (fluxes[i] + fluxes[i-1]);
     fCDF[i] = fCDF[i-1] + avgFlux * dE;
   }
-  G4double total = fCDF.back();
-  for (auto& c : fCDF) c /= total;
+  fIntegratedFlux = fCDF.back();
+  for (auto& c : fCDF) c /= fIntegratedFlux;
 }
 
 G4double SpectrumSampler::SampleEnergy() const
