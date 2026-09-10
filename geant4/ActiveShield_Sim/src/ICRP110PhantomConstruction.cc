@@ -73,6 +73,8 @@ ICRP110PhantomConstruction::ICRP110PhantomConstruction():
   fSection = "head"; // Head partial phantom is the default option
   fWorldHalfSize = 10.*m;  // Minimum envelope, expanded to contain an imported map.
   fHullThickness = 1.5*cm; // ARSSEM Geom01 radiation reference, not structural sizing.
+  fShipRadius = 2.8*m;     // ARSSEM/Geom14 default; CREW HaT's own reference is 4.5 m (Starship).
+  fShipHalfLength = 5.*m;  // Kept as the default so existing Geom14 macros are unaffected.
   fSpacecraftMessenger = new G4GenericMessenger(this, "/spacecraft/", "Spacecraft and field setup");
   auto& size = fSpacecraftMessenger->DeclarePropertyWithUnit("worldHalfSize", "m", fWorldHalfSize);
   size.SetParameterName("size", false);
@@ -82,6 +84,14 @@ ICRP110PhantomConstruction::ICRP110PhantomConstruction():
   hull.SetParameterName("thickness", false);
   hull.SetRange("thickness>0 && thickness<100");
   hull.SetStates(G4State_PreInit);
+  auto& shipRadiusCmd = fSpacecraftMessenger->DeclarePropertyWithUnit("shipRadius", "m", fShipRadius);
+  shipRadiusCmd.SetParameterName("radius", false);
+  shipRadiusCmd.SetRange("radius>0");
+  shipRadiusCmd.SetStates(G4State_PreInit);
+  auto& shipHalfLengthCmd = fSpacecraftMessenger->DeclarePropertyWithUnit("shipHalfLength", "m", fShipHalfLength);
+  shipHalfLengthCmd.SetParameterName("halfLength", false);
+  shipHalfLengthCmd.SetRange("halfLength>0");
+  shipHalfLengthCmd.SetStates(G4State_PreInit);
   fSpacecraftMessenger->DeclareMethod("addPassiveLayerCm",
       &ICRP110PhantomConstruction::AddPassiveLayer,
       "Append outside hull, inner to outer: G4_Al|G4_POLYETHYLENE thickness_in_cm")
@@ -256,8 +266,8 @@ G4VPhysicalVolume* ICRP110PhantomConstruction::Construct()
   G4NistManager* nist = G4NistManager::Instance();
   auto* matVacuum = nist->FindOrBuildMaterial("G4_Galactic");
   auto* matAluminum = nist->FindOrBuildMaterial("G4_Al");
-  const G4double shipRadius = 2.8*m;
-  const G4double shipHalfLength = 5.*m;
+  const G4double shipRadius = fShipRadius;
+  const G4double shipHalfLength = fShipHalfLength;
 
   fFieldMap.reset();
   G4ThreeVector worldHalf(fWorldHalfSize, fWorldHalfSize, fWorldHalfSize);
