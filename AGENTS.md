@@ -121,6 +121,23 @@ fuentes y pendientes en
   variante de `geant4` resuelva el solver o de agregar paquetes uno a uno
   cada vez que aparezca un error nuevo. Verificado con `conda create
   --dry-run` que resuelve sin conflictos.
+- **Fix (2026-09-09):** `scripts/install.sh --with-elmer` se quedaba
+  estancado (reportado: bastante tiempo sin avanzar, en otra máquina) en
+  `Checking whether MPI_IN_PLACE is supported with .../mpif90` durante la
+  compilación de Elmer. Ese chequeo (`cmake/Modules/
+  testMPIcapabilities.cmake` del propio Elmer) no es un simple
+  `try_compile` — es un `try_run` que compila **y ejecuta** un programa
+  MPI real (`MPI_Init`/`MPI_Allreduce`/`MPI_Finalize`). Programas OpenMPI
+  triviales pueden colgarse indefinidamente ahí en ciertas configuraciones
+  de red de un solo nodo (problema conocido y documentado en issues
+  oficiales de OpenMPI, no específico de este proyecto). Este proyecto
+  nunca corre `ElmerSolver` distribuido — toda corrida hasta ahora fue de
+  un solo proceso, con el propio log confirmando "Running one task
+  without MPI parallelization" — así que `WITH_MPI` no aportaba ninguna
+  capacidad que se use. Corregido: `-DWITH_MPI:BOOLEAN=FALSE` en la
+  compilación de Elmer, eliminando el chequeo (y el riesgo de cuelgue) de
+  raíz. `WITH_OpenMP` no se toca — es paralelismo de memoria compartida,
+  no relacionado con el transporte de red de OpenMPI que causaba esto.
 - Elmer FEM instalado (`scripts/install.sh --with-elmer`, brecha 3) y
   corriendo (`CoilSolver` + `WhitneyAVSolver` + `MagnetoDynamicsCalcFields`,
   `field/examples/elmer_pilot.sif`), con dos bugs reales de `.sif`
