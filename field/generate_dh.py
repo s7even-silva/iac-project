@@ -8,7 +8,7 @@ import platform
 
 import gmsh
 import numpy as np
-from generate_mesh import digest
+from provenance import digest
 from cad_cleanup import remove_construction_entities
 
 

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Mesh a parameterized .geo with pinned single-thread settings and provenance."""
 import argparse
-import hashlib
 import json
 from pathlib import Path
 import platform
@@ -10,9 +9,7 @@ import sys
 import time
 import gmsh
 
-
-def digest(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+from provenance import digest
 
 
 def generate(source, output, dependencies=()):

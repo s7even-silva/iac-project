@@ -26,7 +26,7 @@ import platform
 import xml.etree.ElementTree as ET
 
 import numpy as np
-from generate_mesh import digest
+from provenance import digest
 
 
 _B_NAMES = ('magnetic flux density', 'b', 'magnetic flux density_1')
