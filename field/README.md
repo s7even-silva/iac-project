@@ -67,9 +67,12 @@ solapamientos detectados, y geantino entrando en `coil_placement_1` y saliendo
 de nuevo al vacío. Ejecutarla desde `geant4/ActiveShield_Sim/build` con
 `./ICRP110phantoms ../../../field/examples/import_dh.mac`.
 
-**Elmer es el siguiente paso electromagnético pendiente**, no un comando oculto
-de esta secuencia. Faltan dominio exterior FEM, J volumétrica, solver y exportador
-de su solución; el mapa de referencia permite desarrollar y comprobar esas piezas.
+**Piloto Elmer disponible:** `mesh_exterior.py` añade aire exterior al conductor
+swept sin volver a triangular el CAD helicoidal. `build_coilsolver.py` compila
+un módulo local que corrige la selección de cortes de corriente en presencia
+de aire. `examples/elmer_pilot.sif` requiere ese módulo y prescribe 100 A.
+Secuencia, evidencia, fuentes y límites: [validación Elmer](ELMER_VALIDATION.md).
+El piloto no equivale a una solución validada del arreglo completo Geom14.
 
 ## Ensamblaje multi-bobina: barrel + endcaps (Geom14)
 
@@ -251,11 +254,10 @@ los resultados y fijar sistema/contenedor si se necesita identidad entre máquin
 (configurable con `ELMER_PREFIX`) — no hay paquete Elmer en conda-forge, y
 el PPA oficial solo cubre versiones específicas de Ubuntu/Debian, no
 "cualquier distro" como el resto de este instalador. Es un paso opcional
-(15-30+ min de compilación) porque Elmer todavía no está integrado al flujo
-del proyecto — ver `GEOM14_STATUS.md`, brecha 3, para el siguiente paso
-(acoplar el ejemplo oficial `mgdyn_steady_coils` a la curva de corriente que
-ya genera `generate_array.py`). Su versión, solver y parámetros de
-producción se fijarán al implementar esa solución FEM.
+(15-30+ min de compilación). Después se compila el módulo local con
+`python3 field/build_coilsolver.py`; el instalador no lo ejecuta automáticamente.
+Ver [flujo FEM del piloto](ELMER_VALIDATION.md). Los parámetros y la validación
+del arreglo de producción siguen pendientes.
 
 ## Ejemplo reproducible
 

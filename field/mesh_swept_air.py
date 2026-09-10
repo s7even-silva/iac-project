@@ -283,7 +283,9 @@ def generate(source, output, air_radius_factor=6.0, step=.02, sectors=16,
         air_only_nodes = combined_nodes[len(cond_nodes):]
         gmsh.model.mesh.addNodes(3, air_tag, np.arange(len(cond_nodes)+1, len(combined_nodes)+1),
                                  air_only_nodes.ravel())
-        gmsh.model.mesh.addElementsByType(air_tag, 4, np.arange(1, len(air_tetra)+1), air_tetra.ravel()+1)
+        gmsh.model.mesh.addElementsByType(air_tag, 4,
+                                          np.arange(1, len(air_tetra)+1)+len(cond_tetra),
+                                          air_tetra.ravel()+1)
         # 2D physical surface for the outer boundary: ElmerGrid needs actual
         # 2D elements in the .msh to populate mesh.boundary -- a Physical
         # Volume alone (as generated above) produces an EMPTY mesh.boundary
@@ -291,7 +293,8 @@ def generate(source, output, air_radius_factor=6.0, step=.02, sectors=16,
         # far-field AV=0 condition.
         boundary_tag = gmsh.model.addDiscreteEntity(2)
         gmsh.model.addPhysicalGroup(2, [boundary_tag], name='outer_boundary')
-        gmsh.model.mesh.addElementsByType(boundary_tag, 2, np.arange(1, len(outer_faces)+1),
+        gmsh.model.mesh.addElementsByType(boundary_tag, 2,
+                                          np.arange(1, len(outer_faces)+1)+len(cond_tetra)+len(air_tetra),
                                           outer_faces.ravel()+1)
         for name, value in {'Mesh.MshFileVersion': 4.1, 'Mesh.Binary': 0, 'Mesh.SaveAll': 1}.items():
             gmsh.option.setNumber(name, value)
