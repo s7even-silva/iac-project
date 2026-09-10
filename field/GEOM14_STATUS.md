@@ -5,6 +5,39 @@ geometría completa ya implementada ni una ficha constructiva cerrada.**
 El JSON `examples/dh_pilot.json` se identifica expresamente como
 `computational_pilot_not_geom14`. El generador solo admite ese estado.
 
+## Actualización Elmer (2026-09-09): dominio global y selección de cortes
+
+La bitácora de las brechas 3/4 más abajo describe los intentos anteriores.
+Se añade una vía funcional: `mesh_exterior.py` conserva los tetraedros swept
+y genera aire en una caja independiente, con interfaz conforme. El límite de
+radio del tubo de aire deja de limitar esta nueva vía. También se corrigieron
+IDs duplicados en la exportación del tubo histórico.
+
+Se encontró que el coloreado de cortes de CoilSolver incluía tetraedros del
+aire. El módulo local `CoilSolverRestricted`, compilado reproduciblemente por
+`build_coilsolver.py`, restringe la búsqueda a los elementos activos del
+conductor. Usar `Single Coil Cut=True`, corriente total de 100 A y normalización
+puntual desactivada en el piloto. Esto sustituye la recomendación anterior de
+activar la normalización puntual como solución definitiva. Con el mismo
+conductor y aire global, el cociente de magnitudes FEM/BS central pasó de 0,184
+a 0,951; quedan errores espaciales y falta convergencia. El `.sif` piloto ahora
+requiere el módulo local y aborta ante falta de convergencia lineal.
+
+[Secuencia reproducible, diagnóstico y alcance](ELMER_VALIDATION.md).
+Biot–Savart filamentario se compara lejos de la **sección del conductor**,
+no necesariamente lejos de toda la bobina. El nuevo auditor registra esa
+separación y la sensibilidad a regularización. El campo máximo dentro de la
+cinta y la solución completa Geom14 todavía no están validados.
+
+**Primer estudio de convergencia (2026-09-09):** con el mismo conductor,
+combinar dominio más grande (`--padding 2.0`) y malla de aire más fina
+(`--air-size 0.10`) simultáneamente da el mejor resultado de los cuatro
+probados en los 6 puntos de diagnóstico (error vectorial 1,3–5,8 %, mejor
+que cualquiera de los dos ajustes por separado) — ver el detalle completo
+en `ELMER_VALIDATION.md`. Sigue sin ser una convergencia formal (solo dos
+niveles por eje); es la configuración recomendada hoy para repetir o
+extender este piloto, no un valor de producción cerrado.
+
 ## Cambiar el physics list de ActiveShield_Sim (Shielding vs. QGSP_BIC_HP)
 
 Mecánicamente es un cambio de pocas líneas en `ICRP110phantoms.cc`: reemplazar
@@ -130,38 +163,271 @@ de investigación bibliográfica adicional.
    un diseño geométricamente consistente.
 
 2. **Sustituir cobre circular por la cinta YBCO/CORC real (rectangular).**
-   El generador asume hoy sección transversal **circular**
-   (`conductor_radius_m`, barrida con `occ.addDisk(...)` en
-   `generate_dh.py`). Una cinta HTS real es plana y rectangular (50 mm ×
-   0,2 mm según §4.3) — hay que reemplazar el disco por un rectángulo
-   orientado con su ancho tangente a la dirección de arrollamiento, lo que
-   sí es una modificación real de `controls()`/`generate()`, no solo de
-   datos. Además el material deja de ser homogéneo: una cinta YBCO real es
-   un laminado multicapa (sustrato, buffer, YBCO, plata, cobre de
-   estabilización) — decidir si se homogeneiza a un material compuesto
-   (más barato, recomendado como primer paso, ya permitido por
-   `modelo_realista.md`) o se modelan capas separadas.
+   **Implementado 2026-09-09** para CAD (`generate_dh.py`/`generate_array.py`)
+   y para el mallado swept de producción (`mesh_swept.py`): declarar
+   `tape_width_m`/`tape_thickness_m` en el JSON de una bobina activa la
+   sección rectangular (`has_tape_section()` en `generate_dh.py`); sin
+   esas claves, el generador sigue usando el disco circular de siempre, sin
+   ningún cambio de comportamiento para `dh_pilot.json` ni para los pilotos
+   existentes. `conductor_radius_m` se sigue exigiendo siempre, incluso con
+   cinta real: alimenta el núcleo regularizado de Biot-Savart en
+   `compute_field.py`, una aproximación de campo cercano independiente de
+   la forma real de la sección (ver más abajo, "núcleo regularizado").
 
-3. **Configurar y ejecutar Elmer** (el paso de mayor esfuerzo nuevo;
-   confirmado que Elmer no está instalado en ningún entorno del proyecto
-   a la fecha). Piezas que faltan, todas nuevas:
-   - Dominio FEM de vacío alrededor de las bobinas (malla distinta de la
-     grilla de exportación que ya prepara `prepare_domain_sweep.py` — son
-     discretizaciones diferentes, ver `DOMAINS.md`).
-   - Densidad de corriente vectorial `J` siguiendo la trayectoria
-     helicoidal real en cada elemento del conductor, no una corriente
-     axial simplificada. El ejemplo oficial `mgdyn_steady_coils` de Elmer
-     es plantilla, no la solución de este imán.
-   - Solver magnetostático y verificación de convergencia.
-   - Exportador que remuestree la solución Elmer (en su malla FEM propia)
-     a la grilla regular que el lector de Geant4 ya implementado
-     (`MagneticFieldMap`/`TabulatedMagneticField`) espera.
+   - **CAD** (`_conductor_profile()` en `generate_dh.py`, reutilizada por
+     `generate_array.py`): el ancho de la cinta se orienta a lo largo de la
+     dirección radial local (ortogonalizada contra la tangente de la
+     espina, Gram-Schmidt), el espesor a lo largo de la binormal resultante
+     — la cara ancha de la cinta queda enfrentando el eje de la bobina,
+     coherente con "campo perpendicular a la cinta" de ARSSEM §4.3. Es la
+     mejor aproximación geométrica disponible sin una ley de orientación
+     por vuelta publicada por ARSSEM (brecha 1 sigue sin resolver eso).
+   - **Malla de producción** (`ribbon_tetrahedra()` en `mesh_swept.py`):
+     usa el mismo marco de rotación mínima que `tube_tetrahedra()`
+     (`frames()`), con nodos solo en el perímetro del rectángulo (sin
+     grilla interior — la cinta es un rectángulo delgado, no necesita
+     resolución interna para transporte GDML ni para masa). Validado contra
+     el volumen analítico de un toro de sección rectangular delgada
+     (`test_ribbon_torus_and_orientation`, error <0,1%) y contra la
+     geometría real de producción del barrel (60 vueltas, ~936 m de
+     espina): 2,55M tetraedros en 14,3 s, 0,004% de error de volumen
+     respecto a `length × width × thickness` — mejor que el ~2,6% del
+     círculo, porque 4 segmentos de ancho + 1 de espesor por defecto
+     capturan la sección real con menos error de discretización que un
+     círculo aproximado por `sectors` lados.
+   - **Material:** sigue siendo el compuesto homogeneizado
+     (`hts_tape_materials.json`), no capas separadas — decisión ya tomada
+     como primer paso, permitida por `modelo_realista.md`; homogeneizar
+     por capas separadas queda fuera de esta brecha.
+
+   **Hallazgo nuevo, acopla esta brecha con la brecha 1:** la cinta real
+   (50 mm de ancho) **no cabe** en la separación radial actual de
+   `geom14_array_pilot.json` (`radii_m` de las dos hélices concéntricas
+   difieren solo 20 mm; `controls()` exige `width < (r2-r1)/4 = 5 mm`, y lo
+   rechaza correctamente si se intenta). Esos radios fueron elegidos para
+   un conductor delgado circular (radio equivalente 1,22 mm), no para una
+   cinta plana de 50 mm — activar la sección rectangular en el arreglo de
+   producción real exige **primero** redimensionar `radii_m` (separación
+   entre las dos hélices del Double Helix) de forma coordinada, exactamente
+   el tipo de ajuste conjunto de ~10 parámetros que la brecha 1 ya advertía
+   como pendiente. No se ha inventado un valor de separación nuevo — eso
+   sería exactamente lo que `AGENTS.md` prohíbe ("no inventar dimensiones
+   de bobinas"). La demostración de extremo a extremo (CAD → swept → GDML,
+   `test_tape_section_end_to_end_cad_and_swept_agree`) usa la geometría
+   pequeña de `dh_pilot.json`, con radios propios ya separados lo
+   suficiente para una cinta de prueba, no el arreglo de tres bobinas real.
+
+3. **Configurar y ejecutar Elmer.** Elmer instalado 2026-09-09 (compilado
+   desde fuente vía `scripts/install.sh --with-elmer`,
+   `~/.local/elmerfem/bin/ElmerSolver`). Piloto completo de una bobina
+   (`dh_pilot.json`) implementado y corriendo de punta a punta:
+   - **Dominio FEM**: `field/generate_elmer_domain.py` (nuevo) genera una
+     esfera de aire conforme alrededor del conductor circular (fragment de
+     OpenCASCADE, no boolean subtract, para compartir malla en la
+     interfaz), con un campo de tamaño de malla `Distance+Threshold` de
+     Gmsh — necesario porque `Mesh.MeshSizeFromCurvature` global refina
+     también la esfera exterior lisa tan fino como el conductor
+     milimétrico, generando un problema 3D que nunca termina (confirmado
+     empíricamente: 126k nodos de superficie, 3D sin terminar en 55s+).
+     Con el campo de tamaño correcto: 2,85M tetraedros en 17,7s.
+   - **Densidad de corriente**: `field/examples/elmer_pilot.sif` usa
+     `CoilSolver` (`Coil Closed = Logical True`) para calcular `J`
+     automáticamente sobre la geometría real de la hélice — no hace falta
+     invertir la parametrización a mano. Encontrado en
+     `fem/tests/CoilSolverLoop/case.sif` del propio repo de ElmerCSC (vía
+     búsqueda de código en GitHub), plantilla más cercana al caso de bobina
+     cerrada que el ejemplo `mgdyn_steady_coils` (que usa electrodos
+     abiertos, `Coil Start`/`Coil End`, no aplica a un devanado cerrado).
+   - **Solver magnetostático**: `WhitneyAVSolver` (elementos de borde,
+     formulación A-V) + `MagnetoDynamicsCalcFields` (recupera B desde A),
+     ambos de `MagnetoDynamics.F90`, siguiendo el ejemplo oficial
+     `mgdyn_steady_coils/case.sif`.
+   - **Exportador a grilla regular**: `field/elmer_to_map.py` (nuevo) lee
+     el VTU ascii de salida (`Ascii Output = True`, sin depender de
+     vtk/pyvista — parseo por streaming con `xml.etree.iterparse`,
+     necesario porque un VTU de 252 MB con `ET.parse()` completo hizo OOM
+     en esta máquina de 5,7 GB de RAM corriendo justo después de
+     ElmerSolver) e interpola por coordenadas baricéntricas a la misma
+     grilla `.map` que ya lee `TabulatedMagneticField` en Geant4. La
+     búsqueda del tetraedro que contiene cada punto usa un hash espacial
+     por celdas (no una matriz de distancias `O(puntos×tetraedros)`, que
+     para 2,6M tetraedros pedía ~12,5 GB) — el tamaño de celda se fija por
+     el percentil 95 del tamaño de tetraedro (no la mediana), porque una
+     malla graduada tiene tetraedros hasta 65x más grandes lejos del
+     conductor que cerca de él, y un tetraedro grande debe indexarse en
+     TODAS las celdas de su bounding box, no solo la de su centroide, o se
+     pierde cobertura en la región gruesa (confirmado: cobertura subió de
+     21,7% a 100% al corregir esto).
+
+   **Dos bugs reales encontrados y corregidos en el `.sif` (2026-09-09),
+   ambos copiados sin darse cuenta del propio ejemplo oficial de Elmer:**
+   - `Normalize Coil Current = Logical True` faltaba. Sin ella,
+     `CoilSolver.F90` salta por completo el bloque que escala la densidad
+     de corriente al valor de `Desired Current Density` (`IF (.NOT.
+     NormalizeCoil(Coil)) CYCLE`) y deja la corriente en la escala interna
+     que resulta de resolver el potencial `CoilPot`, no la corriente física
+     pedida.
+   - `Permeability = 1.0` (el nombre usado en el ejemplo oficial
+     `mgdyn_steady_coils/case.sif`) no es la keyword que
+     `MagnetoDynamicsUtils.F90` lee — busca literalmente `Relative
+     Permeability`, y si no la encuentra devuelve un tensor de
+     permeabilidad **cero** (no un valor por defecto de 1.0). Con
+     permeabilidad cero, `WhitneyAVSolver` resuelve un sistema
+     numéricamente mal condicionado. Cambiar a `Relative Permeability =
+     1.0` es el fix.
+   - **Cómo se encontraron**: no por lectura de código antes de correr,
+     sino por diseñar un caso de diagnóstico aislado (espira circular
+     plana simple, con solución analítica exacta en el eje,
+     `B_z=μ₀IR²/2(R²+z²)^1.5`) que corre en ~30s en vez de ~40min — la
+     primera corrida real de la doble hélice completó sin errores pero
+     dio un campo con dirección inconsistente punto a punto y magnitud
+     ~2,4x el error relativo esperado; aislar la topología compleja
+     (doble hélice) del resto del pipeline con la espira simple permitió
+     ver que el error real era ~800.000x (cercano a 1/μ₀, confirmando la
+     hipótesis de la keyword de permeabilidad) en vez de un problema de
+     orientación/dirección como parecía inicialmente en la geometría
+     compleja. **Lección**: para depurar un pipeline FEM caro, aislar con
+     el caso más simple posible con solución analítica conocida ANTES de
+     iterar sobre la geometría real cara.
+   - **Validado en el caso simple** tras el fix: razón B_Elmer/B_analítico
+     entre 0,92 y 0,98 cerca del conductor (antes: hasta 800.000x de
+     error) — el ~5-8% de discrepancia sobrante es del orden esperado por
+     discretización de malla y truncamiento del dominio (esfera de aire
+     finita con `AV=0` en su cáscara exterior, no un dominio infinito real).
+   - **Repetido sobre la geometría real de `dh_pilot.json`** (doble hélice,
+     3 vueltas): con el mismo dominio de esfera de aire grande (radio
+     1,95 m, generado por `generate_elmer_domain.py`/OpenCASCADE), el
+     campo de Elmer resultó 3-6x **menor** que Biot-Savart, con la razón
+     empeorando con la distancia (0,17 cerca, 0,32 lejos) en vez de
+     mantenerse estable — patrón distinto y peor que la espira simple, y
+     no explicado por ningún parámetro del `.sif` revisado hasta ahora
+     (se descartó `Single Coil Cut`: ninguno de los dos casos lo usa).
+
+   - **`field/mesh_swept_air.py` (nuevo, 2026-09-09):** el dominio FEM vía
+     `generate_elmer_domain.py`/OpenCASCADE cuelga en la triangulación 2D
+     de Gmsh para geometrías de varias vueltas — confirmado igual que la
+     brecha 5 (mallado GDML), esta vez con un solenoide corto de
+     diagnóstico (5 vueltas, 0,9 m de avance axial): 2D nunca termina, con
+     o sin aire. Este módulo genera **ambas** regiones (`conductor` y
+     `air`) con tetraedros estructurados a lo largo de la espina, evitando
+     Gmsh 2D por completo, igual que `mesh_swept.py` ya hace para el
+     conductor solo:
+     - Un cascarón de aire (anillos concéntricos entre `conductor_radius`
+       y `air_radius`) alrededor de la misma espina, con la interfaz
+       conductor/aire compartiendo nodos exactos (topología conforme,
+       verificado con `mesh_to_gdml.py:boundary()` sobre ambas regiones).
+     - **Bug real corregido durante el desarrollo**: la primera
+       descomposición de cada celda hexaédrica en 6 tetraedros usaba una
+       diagonal de corte por orden de esquina local, no consistente entre
+       celdas vecinas — dos hexaedros que comparten una cara la
+       triangulaban con diagonales distintas, dejando caras sin pareja
+       (`boundary()` lo detectó como "Duplicate or inconsistently joined
+       tetrahedra"). Corregido con una convención de diagonal derivada
+       únicamente de los índices globales de cada cara (el corte pasa
+       siempre por la esquina de menor índice), que ambas celdas vecinas
+       calculan igual sin coordinarse.
+     - **Límite real descubierto, no resuelto**: `air_radius` está acotado
+       por el radio de curvatura mínimo de la espina — un tubo de aire más
+       ancho que la curva puede doblar se autointerseca en los retornos
+       suavizados de la doble hélice (radio de curvatura mínimo medido
+       ~0,0373-0,0377 m, **convergente** al refinar la espina, confirmando
+       que es una propiedad geométrica real de `controls()`, no un
+       artefacto de muestreo). Para `dh_pilot.json` esto limita
+       `air_radius` a ~2,5x `conductor_radius_m` (cascarón de solo 1,5x de
+       espesor extra) — mucho más delgado que la esfera de radio
+       1,95 m (~162x el conductor) que sí completa vía OpenCASCADE. Con
+       ese cascarón delgado, `AV=0` en la frontera contamina el campo
+       incluso muy cerca del conductor (razón ~0,52-0,61 vs Biot-Savart,
+       con diferencias de **dirección** notables, no solo magnitud) — la
+       condición de frontera artificial está demasiado cerca para no
+       distorsionar la solución. Revisado el código fuente de
+       `WhitneyAVSolver.F90`: la condición Robin disponible (`Magnetic
+       Field Strength` + `Magnetic Transfer Coefficient`) está pensada
+       para inyectar un campo externo prescrito o modelar pérdidas, no
+       para aproximar mejor un dominio infinito — no resuelve este límite.
+       **Sí funciona y es muy rápido** (32,5 s vs. 40 min con el dominio
+       CAD grande) para geometría/topología, pero no da hoy un campo
+       comparable a Biot-Savart para curvas de curvatura fuerte como esta.
+   - **Estado 2026-09-09**: ninguno de los dos caminos de dominio de aire
+     (esfera grande vía CAD, cascarón delgado vía `mesh_swept_air.py`) da
+     un campo Elmer validado contra Biot-Savart sobre la geometría real
+     de la doble hélice. El camino de la esfera grande completa en tiempo
+     razonable (40 min) pero da una discrepancia de dirección/magnitud sin
+     diagnosticar; el camino del cascarón delgado es rápido pero
+     geométricamente limitado a un dominio demasiado pequeño para esta
+     curvatura. **No bloquea el proyecto**: la simulación piloto de
+     Geant4 (bobina + campo) ya corre de punta a punta usando el mapa
+     Biot-Savart regularizado (`compute_field.py`), que es la vía activa
+     documentada — ver `geant4/ActiveShield_Sim/tests/dh_pilot.mac`.
+
+   - **Vía alternativa investigada (2026-09-09): exportar a Ansys Maxwell.**
+     Maxwell tiene su propio mallador 3D maduro (motor ACIS/Parasolid +
+     generador adaptativo propio), distinto de OpenCASCADE/Gmsh — no
+     comparte la limitación de triangulación 2D que bloquea el mallado
+     directo de geometrías de muchas vueltas (la razón de ser de
+     `mesh_swept.py`/`mesh_swept_air.py`). Confirmado por documentación
+     oficial de Ansys: importa STEP nativamente (traductor dedicado desde
+     AEDT 2024 R2) y admite conductor sólido de sección variable a lo
+     largo del camino ("current path can have varying cross-section"),
+     que es justo nuestro caso (cinta rectangular, brecha 2). La
+     excitación de corriente ("Coil Terminal") se asigna sobre una
+     **superficie de corte transversal** del sólido, no sobre el volumen
+     completo ni sobre una curva ("Terminals cannot be assigned to
+     volume; a surface must be created to assign terminals") — quien use
+     Maxwell deberá cortar el sólido importado en un punto de la
+     trayectoria para generar esa superficie antes de excitar corriente;
+     es un paso estándar de su flujo, no una limitación de nuestra
+     exportación.
+
+     **Implementado**: `generate_dh.py` y `generate_array.py` ahora
+     también escriben `dh.step`/`array.step` (formato universal de
+     intercambio CAD) junto al `.brep` existente, con su hash
+     (`step_sha256`) en `current_path.json`/`array_current_paths.json`
+     para trazabilidad — mismo sólido ya validado (mismo volumen/masa que
+     usa el GDML), sin tocar el pipeline de mallado de producción. Se
+     evaluó también exportar solo la trayectoria (`path_m`, ya disponible
+     en el reporte) para que Maxwell la use con su herramienta nativa de
+     "Sweep Along Path" — descartado como camino principal: obligaría a
+     reconstruir manualmente en Maxwell el mismo barrido que Python ya
+     hizo, con más trabajo y riesgo de discrepancia geométrica que
+     simplemente importar el sólido ya construido.
+
+     **La versión gratuita Ansys Student NO alcanza para nuestra
+     geometría real (confirmado 2026-09-09).** Límite oficial de Maxwell
+     Student: **64.000 elementos de malla 3D** (documentación oficial de
+     Ansys, `MaxwellStudentLimitations.htm`). El piloto de una sola bobina
+     (3 vueltas) ya generó 76.176 tetraedros con nuestro propio mallador
+     — por encima del límite (el mallador nativo de Maxwell podría dar un
+     número algo distinto sobre el mismo sólido STEP, pero el orden de
+     magnitud es el mismo tipo de geometría). Confirmado también por un
+     caso reportado en el foro oficial de Ansys: un usuario modelando solo
+     **dos bobinas** con acoplamiento mutuo llegó a 75.818 elementos y fue
+     rechazado por el mismo límite — mismo orden de magnitud que nuestro
+     piloto de una bobina. El arreglo de producción completo (60 vueltas)
+     generó 6,24M tetraedros, muy por encima de cualquier posibilidad con
+     Student. Import STEP sí está soportado en Student ("Import of DXF
+     and STEP files only"), así que el archivo `.step` exportado es
+     compatible — el bloqueo es únicamente de tamaño de malla al mallar
+     el sólido importado, no de formato de entrada.
+
+     Además, los términos de uso de Ansys Student excluyen explícitamente
+     investigación ("not intended for research, commercial, professional
+     or production") — una restricción de uso, no solo técnica, relevante
+     si este proyecto de curso reporta resultados formalmente. La UNMSM,
+     como universidad, puede tener acceso a una licencia académica
+     institucional de Ansys (sin el límite de 64k y sin esa restricción de
+     uso) — verificar con la facultad/departamento antes de asumir que la
+     versión Student es la única opción disponible.
 
 4. **Validar el campo Elmer contra Biot-Savart** lejos del conductor (donde
    Biot-Savart es válido sin regularización), antes de confiar en el mapa
    FEM. El flujo de auditoría ya existe en miniatura (`audit_dh.py` calcula
    sondas de campo con el mismo `field_at()` de `compute_field.py`) — falta
    aplicarlo al mapa Elmer real en vez del Biot-Savart regularizado actual.
+   **Validación preliminar 2026-09-09** sobre la espira circular de
+   diagnóstico (no la geometría del piloto): ver detalle en brecha 3
+   arriba. Falta repetir sobre `dh_pilot.json` y formalizar como script
+   reutilizable (hoy es un análisis manual, no una herramienta en el repo).
 
 5. **Convergencia de dominio/malla, y solo entonces replicar a 12 bobinas.**
    El pipeline ya sigue el orden correcto (una bobina primero, ver
@@ -346,13 +612,18 @@ se usa para resultados):
 - Los porcentajes de Hastelloy C276 usan el **punto medio** de los rangos
   publicados por proveedores (Mo 15–17%, Cr 14,5–16,5%, etc.), no una
   colada certificada específica.
-- **La sección transversal sigue siendo circular en el generador**, no la
-  cinta rectangular real (50 mm × 94 µm) — se usa un radio equivalente de
-  área (conserva la masa de conductor correctamente, no la forma del campo
-  cercano al devanado). Sustituir el disco por un rectángulo orientado en
-  `generate_dh.py`/`generate_array.py` sigue pendiente; no cambia la validez
-  del mapa Biot-Savart de referencia, que de todos modos no es válido cerca
-  del conductor con ningún radio (ver núcleo regularizado más abajo).
+- **Sección transversal rectangular disponible pero no activada en el
+  arreglo de producción (brecha 2, implementado 2026-09-09).** El generador
+  soporta la cinta real (50 mm × 94 µm) vía `tape_width_m`/`tape_thickness_m`
+  en CAD y en el mallado swept de producción (ver brecha 2 más arriba para
+  el detalle y la validación) — pero `geom14_array_pilot.json` sigue usando
+  el radio equivalente de área porque su separación radial actual (`radii_m`
+  a 20 mm) no admite todavía una cinta de 50 mm de ancho sin redimensionar
+  el Double Helix de forma coordinada (acoplado con la brecha 1, ver arriba).
+  El radio equivalente conserva la masa de conductor correctamente, no la
+  forma del campo cercano al devanado; no cambia la validez del mapa
+  Biot-Savart de referencia, que de todos modos no es válido cerca del
+  conductor con ningún radio ni forma (ver núcleo regularizado más abajo).
 
 ## Ensamblaje multi-bobina: barrel + endcaps (implementado 2026-09-08)
 

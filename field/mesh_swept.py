@@ -9,7 +9,7 @@ import time
 
 import gmsh
 import numpy as np
-from generate_dh import controls
+from generate_dh import controls, has_tape_section
 from generate_mesh import digest
 
 
@@ -66,11 +66,21 @@ def frames(points):
     return normals, np.cross(tangent, normals), float(lengths.sum())
 
 
-def tube_tetrahedra(points, radius, sectors):
-    normals, binormals, length = frames(points)
-    angle = np.arange(sectors)*2*np.pi/sectors
-    ring = points[:, None, :]+radius*(normals[:, None, :]*np.cos(angle)[None, :, None]
-                                     +binormals[:, None, :]*np.sin(angle)[None, :, None])
+def _extrude_ring(points, ring_local):
+    """Shared prism/tetrahedra extrusion along the spine for one cross-section ring.
+
+    `ring_local` is (n_ring_nodes, 2) planar coordinates in the (normal,
+    binormal) basis, listing every node OTHER than the on-spine centre node
+    in a single loop order (consecutive entries are adjacent on the section
+    boundary, wrapping from the last back to the first) -- this is exactly
+    what both the circular ring and the rectangle perimeter need, so the
+    prism/tetrahedra/orientation/volume logic is written once here and
+    reused by both tube_tetrahedra() and ribbon_tetrahedra().
+    """
+    normals, binormals, spine_length = frames(points)
+    sectors = ring_local.shape[0]
+    ring = (points[:, None, :]+ring_local[None, :, 0, None]*normals[:, None, :]
+            +ring_local[None, :, 1, None]*binormals[:, None, :])
     nodes = np.concatenate((points[:, None, :], ring), axis=1).reshape(-1, 3)
     # Same diagonal on every shared prism face, including the closure section.
     sections = np.arange(len(points))[:, None]*(sectors+1)
@@ -94,10 +104,45 @@ def tube_tetrahedra(points, radius, sectors):
         negative = determinant < 0
         t[negative, :2] = t[negative, 1::-1]
         volume += float(np.abs(determinant).sum()/6)
-    return nodes, tetra, volume, length
+    return nodes, tetra, volume, spine_length
 
 
-def generate(source, output, step=.02, sectors=16, sagitta_fraction=.02, max_elements=5000000):
+def tube_tetrahedra(points, radius, sectors):
+    angle = np.arange(sectors)*2*np.pi/sectors
+    ring_local = radius*np.column_stack((np.cos(angle), np.sin(angle)))
+    return _extrude_ring(points, ring_local)
+
+
+def ribbon_tetrahedra(points, width, thickness, width_segments, thickness_segments):
+    """Rectangular-section tube: `width` along the frame normal (the tape's
+    wide face, conventionally oriented radially for an HTS tape wound with
+    its perpendicular-field face along the winding normal -- see
+    GEOM14_STATUS.md brecha 2), `thickness` along the binormal. Perimeter
+    nodes only (no interior grid): the cross-section is a thin rectangle,
+    so a perimeter-only tube mesh is sufficient for the same 3-tetrahedra-
+    per-prism scheme already validated for the circular section, without
+    inventing a second cell topology for interior quads.
+    """
+    if width_segments < 1 or thickness_segments < 1:
+        raise ValueError('Require at least one segment per rectangle side')
+    hw, ht = width/2, thickness/2
+    # Counter-clockwise in the (normal, binormal) plane, matching tube_tetrahedra's
+    # increasing-angle convention -- _extrude_ring's inversion check assumes it.
+    bottom = np.column_stack((np.linspace(-hw, hw, width_segments+1), np.full(width_segments+1, -ht)))
+    right = np.column_stack((np.full(thickness_segments+1, hw), np.linspace(-ht, ht, thickness_segments+1)))
+    top = np.column_stack((np.linspace(hw, -hw, width_segments+1), np.full(width_segments+1, ht)))
+    left = np.column_stack((np.full(thickness_segments+1, -hw), np.linspace(ht, -ht, thickness_segments+1)))
+    ring_local = np.concatenate((bottom[:-1], right[:-1], top[:-1], left[:-1]))
+    return _extrude_ring(points, ring_local)
+
+
+def generate(source, output, step=.02, sectors=16, sagitta_fraction=.02, max_elements=5000000,
+             tape_width_segments=4, tape_thickness_segments=1):
+    """Circular section by default; rectangular tape (brecha 2) when the
+    coil config carries tape_width_m/tape_thickness_m (has_tape_section()).
+    Both are structured swept tetrahedra -- see tube_tetrahedra() and
+    ribbon_tetrahedra() -- no OpenCASCADE/Gmsh 2D triangulation either way,
+    the fix this module exists for (GEOM14_STATUS.md brecha 5)."""
     if (output.suffix != '.msh' or sectors < 8 or
             not np.isfinite([step, sagitta_fraction]).all() or step <= 0 or not 0 < sagitta_fraction < .1):
         raise ValueError('Require .msh, sectors>=8, positive step and 0<sagitta_fraction<0.1')
@@ -108,7 +153,7 @@ def generate(source, output, step=.02, sectors=16, sagitta_fraction=.02, max_ele
         reports = {c['name']: c for c in data['coils']}
         coils = [(c['name'], c['config'], reports[c['name']]['cad_volume_m3']) for c in data['config']['coils']]
     else:
-        raise ValueError('Only circular-section DH pilot reports are supported')
+        raise ValueError('Only circular- or rectangular-section DH pilot reports are supported')
     start = time.monotonic()
     gmsh.initialize([], readConfigFiles=False)
     components = []
@@ -119,12 +164,23 @@ def generate(source, output, step=.02, sectors=16, sagitta_fraction=.02, max_ele
         gmsh.option.setNumber('General.Terminal', 0)
         for i, (name, config, cad_volume) in enumerate(coils, 1):
             gmsh.model.add(f'spine_{i}')
-            radius = config['conductor_radius_m']
-            points, error = sample_spine(config, step, radius*sagitta_fraction)
-            count = len(points)*sectors*3
+            rectangular = has_tape_section(config)
+            if rectangular:
+                half_span = config['tape_width_m']/2
+                perimeter_nodes = 2*(tape_width_segments+tape_thickness_segments)
+            else:
+                half_span = config['conductor_radius_m']
+                perimeter_nodes = sectors
+            points, error = sample_spine(config, step, half_span*sagitta_fraction)
+            count = len(points)*perimeter_nodes*3
             if element_offset+count > max_elements:
                 raise ValueError(f'Element budget exceeded: {element_offset+count} > {max_elements}')
-            nodes, tetra, volume, length = tube_tetrahedra(points, radius, sectors)
+            if rectangular:
+                nodes, tetra, volume, length = ribbon_tetrahedra(
+                    points, config['tape_width_m'], config['tape_thickness_m'],
+                    tape_width_segments, tape_thickness_segments)
+            else:
+                nodes, tetra, volume, length = tube_tetrahedra(points, config['conductor_radius_m'], sectors)
             gmsh.model.remove()
             if i == 1:
                 gmsh.model.add('swept_conductors')
@@ -138,9 +194,10 @@ def generate(source, output, step=.02, sectors=16, sagitta_fraction=.02, max_ele
             relative = volume/cad_volume-1
             if abs(relative) > .05:
                 raise ValueError(f'{name}: volume differs from CAD by {relative:.2%}, exceeds pilot 5% guard')
-            components.append({'group': name, 'tag': tag, 'volume_m3': volume,
-                               'cad_volume_m3': cad_volume, 'relative_volume_error': relative,
-                               'nodes': len(nodes), 'tetrahedra': len(tetra), 'sections': len(points),
+            components.append({'group': name, 'tag': tag, 'volume_m3': volume, 'section': 'rectangular'
+                               if rectangular else 'circular', 'cad_volume_m3': cad_volume,
+                               'relative_volume_error': relative, 'nodes': len(nodes),
+                               'tetrahedra': len(tetra), 'sections': len(points),
                                'path_length_m': length, 'maximum_midpoint_chord_error_m': error})
             node_offset += len(nodes)
             element_offset += len(tetra)
@@ -152,12 +209,13 @@ def generate(source, output, step=.02, sectors=16, sagitta_fraction=.02, max_ele
     finally:
         gmsh.finalize()
         temporary.unlink(missing_ok=True)
-    report = {'method': 'circular_spine_swept_linear_tetrahedra', 'production_validated': False,
+    report = {'method': 'spine_swept_linear_tetrahedra', 'production_validated': False,
               'source_sha256':digest(source), 'generator_sha256':digest(Path(__file__)),
               'controls_sha256':digest(Path(__file__).with_name('generate_dh.py')),
               'mesh_sha256':digest(output), 'gmsh':gmsh.__version__, 'numpy':np.__version__,
               'python':platform.python_version(), 'platform':platform.platform(),
               'longitudinal_step_m':step, 'sectors':sectors, 'sagitta_fraction':sagitta_fraction,
+              'tape_width_segments':tape_width_segments, 'tape_thickness_segments':tape_thickness_segments,
               'elapsed_s':time.monotonic()-start, 'components':components}
     output.with_suffix('.mesh-manifest.json').write_text(json.dumps(report, indent=2)+'\n')
     return report
@@ -171,5 +229,10 @@ if __name__ == '__main__':
     p.add_argument('--sectors', type=int, default=16)
     p.add_argument('--sagitta-fraction', type=float, default=.02)
     p.add_argument('--max-elements', type=int, default=5000000)
+    p.add_argument('--tape-width-segments', type=int, default=4,
+                    help='Rectangular tape section only (ignored for circular coils)')
+    p.add_argument('--tape-thickness-segments', type=int, default=1,
+                    help='Rectangular tape section only (ignored for circular coils)')
     a = p.parse_args()
-    generate(a.source, a.output, a.longitudinal_step, a.sectors, a.sagitta_fraction, a.max_elements)
+    generate(a.source, a.output, a.longitudinal_step, a.sectors, a.sagitta_fraction, a.max_elements,
+              a.tape_width_segments, a.tape_thickness_segments)

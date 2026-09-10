@@ -1,0 +1,182 @@
+! Single DH pilot, 100 A: swept conductor + global exterior air.
+! Build field/build_coilsolver.py and copy CoilSolverRestricted.so beside
+! this case before running. See field/README.md (Elmer exterior).
+! The restricted module excludes AIR elements from closed-coil cut selection.
+! Physical IDs from mesh_exterior.py for ONE conductor:
+! conductor=1, air=2, outer_boundary=3. Check ElmerGrid mesh.names.
+! This is not a complete Geom14 SIF: multiple coils need one Component per
+! independent circuit, with the correct Body index, current and orientation.
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "elmer_mesh"
+End
+
+Simulation
+  Coordinate System = Cartesian
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Max Output Level = 7
+End
+
+Constants
+  Permittivity of Vacuum = 8.8542e-12
+End
+
+Body 1
+  Target Bodies(1) = 2
+  Name = "Air"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Target Bodies(1) = 1
+  Name = "Conductor"
+  Equation = 2
+  Material = 2
+  Body Force = 1
+End
+
+Solver 1
+  Equation = "CoilSolver"
+  Procedure = "CoilSolverRestricted" "CoilSolver"
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = ILU2
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1e-8
+  Linear System Iterative Method = BiCGStab
+  Linear System Residual Output = 20
+
+  Coil Closed = Logical True
+  Single Coil Cut = Logical True
+  Narrow Interface = Logical True
+  Save Coil Set = Logical True
+  Save Coil Index = Logical True
+  Calculate Elemental Fields = Logical True
+
+  Fix Input Current Density = True
+  ! Scale the potential by integrated circuit current. Pointwise |J|
+  ! normalization changes the solution and is unnecessary here.
+  Normalize Coil Current = Logical False
+End
+
+Solver 2
+  Equation = MGDynamics
+  Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+
+  Fix Input Current density = True
+  jfix: linear system iterative method = idrs
+  jfix: Linear System Preconditioning = ILU1
+
+  Use Elemental CoilCurrent = True
+
+  Nonlinear System Max Iterations = 1
+
+  Linear System Solver = iterative
+  Linear System Iterative Method = BiCGStabl
+
+  Linear System GCR Restart = 100
+  BiCGStabl Polynomial Degree = 6
+  Idrs Parameter = Integer 6
+  Linear System Robust = Logical True
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = none
+  Linear System Residual Output = 10
+  Linear System Abort Not Converged = True
+End
+
+Solver 3
+  Equation = MGDynamicsCalc
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+
+  Steady State Convergence Tolerance = 1.0e-5
+  Nonlinear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Max Iterations = 20
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 1
+
+  Linear System Solver = Iterative
+  Linear System Symmetric = True
+  Linear System Iterative Method = CG
+  Linear System Max Iterations = 5000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU0
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = True
+  Linear System Residual Output = 1
+  Linear System Precondition Recompute = 1
+
+  Nonlinear System Consistent Norm = Logical True
+  Discontinuous Bodies = True
+
+  Calculate Magnetic Field Strength = Logical True
+End
+
+Solver 4
+  Exec Solver = after all
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = elmer_pilot
+  Vtu format = Logical True
+  Discontinuous Bodies = Logical True
+  Save Geometry Ids = True
+  Save Bulk Only = True
+  Vtu Part Collection = True
+  Ascii Output = True
+End
+
+Equation 1
+  Name = "MGDyn for air"
+  Active Solvers(2) = 2 3
+End
+
+Equation 2
+  Name = "MGDyn for coil"
+  Active Solvers(3) = 1 2 3
+End
+
+! "Permeability" (no "Relative") is silently ignored by MagnetoDynamicsUtils
+! .F90's GetPermeabilityTensor -- it only reads the keyword "Relative
+! Permeability", and returns an all-zero tensor when that keyword is not
+! found (not a fallback to 1.0). Copying the official mgdyn_steady_coils
+! example verbatim (which also uses "Permeability", not "Relative
+! Permeability") silently solved with mu=0 in both materials -- found
+! 2026-09-09 by isolating a trivial circular-loop case (analytic B known
+! exactly on-axis) and tracing a ~1/mu0 (~800,000x) discrepancy back to
+! this exact keyword name via MagnetoDynamicsUtils.F90 source. Confirmed
+! fixed on the loop case; not yet re-validated on this Double Helix domain.
+Material 1
+  Name = "Vacuum"
+  Relative Permeability = 1.0
+  Relative Permittivity = 1.0
+End
+
+Material 2
+  Name = "Conductor"
+  Relative Permeability = 1.0
+  Relative Permittivity = 1.0
+  Electric Conductivity = 1.0
+End
+
+! dh_pilot.json: 100 A through the entire closed winding.
+! A polygonal swept cross section has a slightly smaller area than pi*r^2;
+! prescribing total current avoids an unintended loss of ampere-turns.
+Component 1
+  Name = String "DHCoil"
+  Coil Type = String "test"
+  Master Bodies(1) = Integer 2
+  Desired Coil Current = Real 100.0
+  Coil Normal(3) = 0 0 1
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 3
+  Name = "outer_boundary"
+  AV {e} = 0.0
+  AV = 0.0
+  jfix = Real 0.0
+End
