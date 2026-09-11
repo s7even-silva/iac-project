@@ -247,6 +247,60 @@ if [[ "$WITH_ELMER" -eq 1 ]]; then
         warn "Instala manualmente: git, gfortran, MPI (OpenMPI), BLAS y LAPACK de desarrollo."
       fi
     fi
+    # Elmer's own CMakeLists.txt (cmake/Modules/testGFortranVersion.cmake)
+    # checks the Fortran compiler version by compiling AND RUNNING a tiny
+    # program via try_run, not by trusting CMAKE_Fortran_COMPILER_VERSION.
+    # On a VM whose hypervisor exposes an incomplete CPU feature set (seen
+    # on a KVM/Oracle VM: avx2/bmi2 present but fma/f16c/lzcnt/osxsave
+    # missing), conda-forge's gcc_linux-64/gfortran_linux-64 toolchain
+    # links against its own sysroot's Scrt1.o, which carries an ELF
+    # GNU_PROPERTY note declaring "x86 ISA needed: up to x86-64-v3" --
+    # every binary built with it then aborts at exec with "CPU ISA level
+    # is lower than required" (a glibc dynamic-linker compatibility check,
+    # confirmed by inspecting `readelf -n` on the conda sysroot's Scrt1.o
+    # vs. the system's, which only needs baseline). try_run can't tell
+    # "compiler too old" apart from "binary can't even run here", so this
+    # surfaces as the same misleading "GNU Fortran major version is too
+    # old, should be at least 7" error CMake shows for a real old compiler.
+    # Detect this up front with the exact same compile+run try_run does,
+    # and fall back to the system's own gcc/g++/gfortran (same 15.x
+    # version family, fully self-consistent sysroot) for Elmer specifically
+    # -- Elmer compiles its own C/C++/Fortran sources from scratch, where
+    # mixing sysroots across the three compilers is what caused the real
+    # link failure documented above for GXX_BIN/GCC_BIN/GFORTRAN_BIN.
+    # (Correction 2026-09-10: the two Geant4 client projects below do NOT
+    # have that same requirement -- they only compile small .cc files that
+    # link against Geant4/CLHEP's already-built .so files, so plain system
+    # g++ works fine there too, confirmed by actually running the
+    # resulting binaries on an ISA-limited VM; see the two `cmake` calls
+    # near "Verificando: compilando" further down, which now use system
+    # g++ directly instead of GXX_BIN for exactly this reason.)
+    ELMER_ISA_PROBE="$(mktemp -d -t elmer-isa-probe-XXXXXX)"
+    cat > "$ELMER_ISA_PROBE/probe.f90" <<'EOF'
+program probe
+end program probe
+EOF
+    ELMER_CC="$GCC_BIN"
+    ELMER_CXX="$GXX_BIN"
+    ELMER_FC="$GFORTRAN_BIN"
+    if "$GFORTRAN_BIN" "$ELMER_ISA_PROBE/probe.f90" -o "$ELMER_ISA_PROBE/probe" >/dev/null 2>&1 \
+       && "$ELMER_ISA_PROBE/probe" >/dev/null 2>&1; then
+      ok "Toolchain de conda-forge ejecuta binarios correctamente (usado para Elmer)"
+    else
+      warn "El toolchain de conda-forge no puede ejecutar binarios en esta máquina"
+      warn "(síntoma típico: 'CPU ISA level is lower than required' -- el"
+      warn "sysroot de conda-forge exige hasta x86-64-v3 y este hipervisor no"
+      warn "expone fma/f16c/lzcnt/osxsave completos). Usando gcc/g++/gfortran"
+      warn "del sistema para compilar Elmer en su lugar."
+      command -v gcc >/dev/null 2>&1 || die "Se necesita 'gcc' del sistema (instala build-essential / el paquete equivalente de tu distro)."
+      command -v g++ >/dev/null 2>&1 || die "Se necesita 'g++' del sistema."
+      command -v gfortran >/dev/null 2>&1 || die "Se necesita 'gfortran' del sistema."
+      ELMER_CC="gcc"
+      ELMER_CXX="g++"
+      ELMER_FC="gfortran"
+    fi
+    rm -rf "$ELMER_ISA_PROBE"
+
     log "Compilando Elmer FEM desde fuente en $ELMER_PREFIX (puede tardar 15-30+ min)"
     ELMER_SRC="$(mktemp -d -t elmerfem-src-XXXXXX)"
     git clone --depth 1 https://www.github.com/ElmerCSC/elmerfem "$ELMER_SRC"
@@ -273,8 +327,8 @@ if [[ "$WITH_ELMER" -eq 1 ]]; then
     # project has never used.
     cmake -S "$ELMER_SRC" -B "$ELMER_SRC/build" \
       -DCMAKE_INSTALL_PREFIX="$ELMER_PREFIX" \
-      -DCMAKE_C_COMPILER="$GCC_BIN" -DCMAKE_CXX_COMPILER="$GXX_BIN" \
-      -DCMAKE_Fortran_COMPILER="$GFORTRAN_BIN" \
+      -DCMAKE_C_COMPILER="$ELMER_CC" -DCMAKE_CXX_COMPILER="$ELMER_CXX" \
+      -DCMAKE_Fortran_COMPILER="$ELMER_FC" \
       -DWITH_MPI:BOOLEAN=FALSE -DWITH_OpenMP:BOOLEAN=TRUE
     cmake --build "$ELMER_SRC/build" -j"$(nproc)"
     cmake --install "$ELMER_SRC/build"
@@ -293,6 +347,21 @@ fi
 # 6. Verificación final: compila ambos proyectos Geant4 y corre los tests
 #    Python de field/, igual que se validó manualmente en sesiones previas
 #    (ver AGENTS.md, "Verificación de este cambio").
+#
+#    Fix (2026-09-10): estos dos `cmake` usaban GXX_BIN (el compilador
+#    largo de conda-forge), no system g++ como recomiendan las instrucciones
+#    manuales de AGENTS.md/README.md -- eso compilaba binarios exigiendo
+#    ISA x86-64-v3 (mismo bug ya diagnosticado para Elmer, ver más arriba)
+#    que compilan sin error pero abortan con "CPU ISA level is lower than
+#    required" al ejecutarse en una VM con CPU recortada, algo que este
+#    paso de verificación nunca detectaba porque solo compila, no corre
+#    los binarios. A diferencia de Elmer (que compila su propio C/C++/
+#    Fortran desde cero y sí necesita un triplete de compiladores
+#    consistente), estos dos proyectos solo compilan un puñado de .cc
+#    propios que enlazan contra las bibliotecas .so ya compiladas de
+#    Geant4/CLHEP -- confirmado que system g++ las enlaza y ejecuta sin
+#    problema, igual que ya documentaban (sin verificar hasta ahora) los
+#    comandos manuales. Corregido a system g++ en los dos `cmake` de abajo.
 # ---------------------------------------------------------------------------
 log "Verificando: compilando GCR_SEP_Sim"
 # Los scripts de activación de conda-forge para los datasets de Geant4
@@ -305,7 +374,7 @@ conda activate "$GEANT4_ENV_NAME"
 set -u
 (
   cd "$REPO_ROOT/geant4/GCR_SEP_Sim"
-  cmake -S . -B build -DCMAKE_CXX_COMPILER="$GXX_BIN" -DCMAKE_PREFIX_PATH="$GEANT4_ENV_PREFIX" >/dev/null
+  cmake -S . -B build -DCMAKE_CXX_COMPILER=g++ -DCMAKE_PREFIX_PATH="$GEANT4_ENV_PREFIX" >/dev/null
   cmake --build build -j"$(nproc)" >/dev/null
 )
 ok "GCR_SEP_Sim compila"
@@ -313,7 +382,7 @@ ok "GCR_SEP_Sim compila"
 log "Verificando: compilando ActiveShield_Sim"
 (
   cd "$REPO_ROOT/geant4/ActiveShield_Sim"
-  cmake -S . -B build -DCMAKE_CXX_COMPILER="$GXX_BIN" -DCMAKE_PREFIX_PATH="$GEANT4_ENV_PREFIX" >/dev/null
+  cmake -S . -B build -DCMAKE_CXX_COMPILER=g++ -DCMAKE_PREFIX_PATH="$GEANT4_ENV_PREFIX" >/dev/null
   cmake --build build -j"$(nproc)" >/dev/null
 )
 ok "ActiveShield_Sim compila"

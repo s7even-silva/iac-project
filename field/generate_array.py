@@ -37,7 +37,7 @@ import gmsh
 import numpy as np
 
 from generate_dh import controls, _conductor_profile
-from generate_mesh import digest
+from provenance import digest
 from cad_cleanup import remove_construction_entities
 
 

@@ -1,0 +1,38 @@
+# Run from geant4/ActiveShield_Sim/build after the field/README.md-style
+# sequence for the CREW HaT ellipse pilot, INCLUDING compute_field.py on
+# crewhat_ellipse_import_demo/current_path.json (--half-size 14 --spacing
+# 0.5). Field-on deflection check, not a validated Halbach-array result --
+# same placement caveats as import_crewhat_ellipse.mac.
+#
+# CAUTION: unlike every fieldMap test so far in this project (synthetic
+# uT-scale fields), this coil's real Biot-Savart field is genuinely strong
+# (~2.4 T at its center) and ActiveShield_Sim has NO G4UserLimits/
+# StepLimiterPhysics trapped-particle safety net (unlike GCR_SEP_Sim, see
+# AGENTS.md's "partículas atrapadas" note -- a real +27min incident there).
+# A low-energy charged probe here could circulate indefinitely with
+# nothing to stop it. Proton kinetic energy below is deliberately chosen
+# so its gyroradius (~15m at 2.4T) is much larger than the coil's own
+# scale, to guarantee it transits through rather than loops. Always run
+# this under a shell `timeout` as a second line of defense.
+/run/numberOfThreads 1
+/spacecraft/worldHalfSize 14 m
+/spacecraft/coilGeometry ../../../field/generated/crewhat_ellipse_import_demo/ellipse.gdml
+/spacecraft/fieldMap ../../../field/generated/crewhat_ellipse_import_demo/ellipse.map
+/spacecraft/fieldScale 1
+/phantom/setPhantomSex male
+/phantom/setPhantomSection head
+/run/initialize
+/gps/particle proton
+/gps/ene/mono 9.9 GeV
+# NOT the coil's central axis: by symmetry, every point in a planar loop's
+# own plane (global Z=0 here) has a PURELY axial (Z) field -- a probe
+# moving along Z there feels zero Lorentz force (v parallel to B), which
+# is exactly what an earlier attempt at (8,0,z) confirmed (nanometre-scale
+# "deflection", pure numerical noise). (10,0,-3)m is off-axis AND off the
+# loop's plane, where B has a real transverse (X) component (~0.4 T,
+# confirmed with field_at() directly) alongside the dominant axial one --
+# a Z-moving proton there feels a real v x B force, deflecting in Y.
+/gps/pos/centre 10 0 -3 m
+/gps/direction 0 0 1
+/tracking/verbose 1
+/run/beamOn 1
