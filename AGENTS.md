@@ -490,7 +490,25 @@ fuentes y pendientes en
   la configuración). **Detenido ahí por precaución**: el siguiente paso de
   refinamiento extrapola a ~15GB de pico, peligrosamente cerca del total
   de RAM+swap de esta VM — no intentado. Detalle completo, tabla del
-  barrido y comandos reproducibles en `field/CREWHAT_STATUS.md`. Elmer
+  barrido y comandos reproducibles en `field/CREWHAT_STATUS.md`.
+
+  **Convención de signo confirmada para una bobina rotada, el mismo día**:
+  probado con una sola bobina aislada construida con la orientación real
+  de la bobina k=1 de un arreglo de 8 (sin generar las otras 7, mucho más
+  barato) — `Coil Normal = -normal_de_la_bobina` da el signo correcto
+  también para una rotación genuina, no solo el caso sin rotar. Regla
+  aplicable a las 8 sin necesitar validar cada una por separado.
+
+  **Arreglo completo de 8 bobinas: riesgo de memoria estimado, no
+  intentado**. Extrapolando de los datos medidos (~3,1KB/tetraedro en el
+  solve, dominio del arreglo ~42x el de una sola bobina): incluso los
+  parámetros más gruesos ya usados con seguridad para una bobina
+  extrapolan a **~14,5GB de pico** para las 8 juntas — demasiado cerca del
+  límite de esta VM para intentarlo. **Camino recomendado en su lugar**:
+  explotar que la magnetostática es lineal (ya usado para Biot-Savart)
+  resolviendo Elmer solo para una bobina aislada y obteniendo las otras 7
+  por simetría rotacional de esa misma solución, evitando mallar el
+  dominio combinado — no implementado todavía. Elmer
   **todavía no probado** para CORC ni para el arreglo completo — ver
   [`field/CREWHAT_STATUS.md`](field/CREWHAT_STATUS.md) para el detalle
   completo de brechas y las decisiones de modelado propias marcadas

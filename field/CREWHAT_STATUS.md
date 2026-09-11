@@ -369,6 +369,65 @@ para dosimetría. Los tres pilotos completos (mesh + solve + comparación)
 quedan en `field/generated/crewhat_elmer_tape12mm{,_r2,_r3}/`
 (no versionado, regenerable con los comandos de este documento).
 
+### Convención de signo de `Coil Normal`, validada para una bobina rotada (2026-09-10)
+
+Antes de intentar el arreglo de 8 bobinas, se necesitaba saber si el
+signo de `Coil Normal` encontrado para la bobina sin rotar (`0 0 -1` en
+vez de `0 0 1`, ver arriba) sigue aplicando igual para una bobina
+**rotada** (cada una de las 8 bobinas del arreglo tiene su propio eje
+propio, distinto de la bobina individual ya validada — incluso la "menos
+rotada" del arreglo real está a 90° de la orientación de esa bobina
+individual). Probarlo con las 8 bobinas reales habría sido caro; en
+cambio, se construyó **una sola bobina aislada** con la orientación real
+que tendría la bobina k=1 de un arreglo n=8 (normal en dirección Y,
+`halbach_orientation()` de `generate_ellipse_array.py`, sin generar las
+otras 7) — mismo principio que ya usa el proyecto de aislar el caso más
+simple posible antes de la geometría cara completa.
+
+**Resultado**: con `Coil Normal = -normal_de_la_bobina` (el mismo
+principio de signo invertido ya encontrado, ahora confirmado para una
+rotación genuina, no solo el caso trivial sin rotar), el signo coincide
+correctamente con Biot-Savart (ambos con la misma componente Y positiva
+dominante) — sin necesidad de probar las 8 orientaciones una por una.
+Error de magnitud 22%-72% (creciente con la distancia), coherente con la
+misma malla deliberadamente gruesa (14.350 tetraedros de conductor,
+padding=2,0/air-size=0,3) usada para el primer intento seguro de la
+bobina sin rotar — no evidencia de un problema de signo residual, la
+firma de un problema de signo sería un vector opuesto, no solo magnitud.
+Pico de memoria: 345MB, 11,5s — trivial.
+
+**Regla confirmada para el arreglo completo**: al construir el `.sif` de
+las 8 bobinas, cada `Component k` debe usar
+`Coil Normal = -n_k` (negativo de la dirección de momento calculada por
+`halbach_orientation()`), consistente para las 8, sin necesitar validar
+cada una por separado.
+
+### Riesgo de memoria del arreglo completo: estimado, no intentado
+
+Extrapolando de los datos medidos arriba (bobina individual, ~3,1KB de
+memoria de solve por tetraedro) y la relación de volumen de dominio entre
+una sola bobina y el arreglo completo (bounds del arreglo ~42x el volumen
+de la envolvente de una sola bobina): mallar el aire alrededor de las 8
+bobinas con los parámetros **más gruesos ya usados con seguridad** para
+una sola bobina (padding=2,0/air-size=0,3) extrapola a **~4,6 millones de
+tetraedros y ~14,5GB de pico** — peligrosamente cerca del total de RAM+
+swap de esta VM (15GB+12GB), compitiendo además con todo lo demás en
+ejecución. **No se intentó el mallado/solve del arreglo completo por esta
+razón.**
+
+**Camino recomendado, no implementado todavía**: la magnetostática con
+corrientes prescritas es lineal (ya establecido para la superposición de
+Biot-Savart del arreglo, `compute_field_ellipse_array.py`) — en vez de
+mallar y resolver las 8 bobinas juntas en un solo dominio de Elmer
+(costoso y riesgoso), se podría resolver **una sola bobina aislada** en
+Elmer (con su propio dominio, ya validado arriba y en la bobina rotada de
+prueba) y usar la **simetría rotacional del arreglo Halbach** para obtener
+la contribución de las otras 7 rotando esa misma solución, sumando las 8
+copias rotadas por superposición — evitando por completo mallar el
+dominio combinado. Esto requiere interpolar y rotar la malla/campo de
+Elmer numéricamente (no implementado), pero mantiene el costo de memoria
+igual al de una sola bobina para las 8 evaluaciones.
+
 ## Lo que aún no existe
 - **Nave/hábitat**: `shipRadius`/`shipHalfLength` ya son configurables
   (ver AGENTS.md) y se decidió escalar a 4,5m, pero la longitud axial del
