@@ -94,6 +94,8 @@ class ICRP110PhantomConstruction : public G4VUserDetectorConstruction
   G4double fShipRadius;
   G4double fShipHalfLength;
   G4double fPhantomPositionCm; // Offset along the ship's cylinder axis (Z; see ICRP110PhantomConstruction.cc)
+  G4double fPhantomOffsetX;    // Offset across the ship's XY cross-section (m; see ICRP110PhantomConstruction.cc)
+  G4double fPhantomOffsetY;
   std::vector<std::pair<G4String, G4double>> fPassiveLayers;
   std::shared_ptr<const MagneticFieldMap> fFieldMap;
  // std::vector<G4Material*> fMaterials;

@@ -1,0 +1,264 @@
+! CREW HaT 8-coil Halbach array pilot. 1e7 A per coil (total
+! ampere-turns each, not a single-wire current). Coil Normal per
+! component = -halbach_orientation() normal (sign rule confirmed
+! 2026-09-10 for both the unrotated single-coil pilot and a rotated
+! representative coil -- see field/CREWHAT_STATUS.md).
+! Physical IDs from mesh_exterior.py: crewhat_coil_0..7 = 1..8, air=9,
+! outer_boundary=10 -- check elmer_mesh/mesh.names before running.
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "elmer_mesh"
+End
+
+Simulation
+  Coordinate System = Cartesian
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Max Output Level = 7
+End
+
+Constants
+  Permittivity of Vacuum = 8.8542e-12
+End
+
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Conductor0"
+  Equation = 2
+  Material = 2
+  Body Force = 1
+End
+Body 2
+  Target Bodies(1) = 2
+  Name = "Conductor1"
+  Equation = 2
+  Material = 2
+  Body Force = 1
+End
+Body 3
+  Target Bodies(1) = 3
+  Name = "Conductor2"
+  Equation = 2
+  Material = 2
+  Body Force = 1
+End
+Body 4
+  Target Bodies(1) = 4
+  Name = "Conductor3"
+  Equation = 2
+  Material = 2
+  Body Force = 1
+End
+Body 5
+  Target Bodies(1) = 5
+  Name = "Conductor4"
+  Equation = 2
+  Material = 2
+  Body Force = 1
+End
+Body 6
+  Target Bodies(1) = 6
+  Name = "Conductor5"
+  Equation = 2
+  Material = 2
+  Body Force = 1
+End
+Body 7
+  Target Bodies(1) = 7
+  Name = "Conductor6"
+  Equation = 2
+  Material = 2
+  Body Force = 1
+End
+Body 8
+  Target Bodies(1) = 8
+  Name = "Conductor7"
+  Equation = 2
+  Material = 2
+  Body Force = 1
+End
+Body 9
+  Target Bodies(1) = 9
+  Name = "Air"
+  Equation = 1
+  Material = 1
+End
+
+Solver 1
+  Equation = "CoilSolver"
+  Procedure = "CoilSolverRestricted" "CoilSolver"
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = ILU2
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1e-8
+  Linear System Iterative Method = BiCGStab
+  Linear System Residual Output = 20
+
+  Coil Closed = Logical True
+  Single Coil Cut = Logical True
+  Narrow Interface = Logical True
+  Save Coil Set = Logical True
+  Save Coil Index = Logical True
+  Calculate Elemental Fields = Logical True
+
+  Fix Input Current Density = True
+  Normalize Coil Current = Logical False
+End
+
+Solver 2
+  Equation = MGDynamics
+  Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+
+  Fix Input Current density = True
+  jfix: linear system iterative method = idrs
+  jfix: Linear System Preconditioning = ILU1
+
+  Use Elemental CoilCurrent = True
+
+  Nonlinear System Max Iterations = 1
+
+  Linear System Solver = iterative
+  Linear System Iterative Method = BiCGStabl
+
+  Linear System GCR Restart = 100
+  BiCGStabl Polynomial Degree = 6
+  Idrs Parameter = Integer 6
+  Linear System Robust = Logical True
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = none
+  Linear System Residual Output = 10
+  Linear System Abort Not Converged = True
+End
+
+Solver 3
+  Equation = MGDynamicsCalc
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+
+  Steady State Convergence Tolerance = 1.0e-5
+  Nonlinear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Max Iterations = 20
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 1
+
+  Linear System Solver = Iterative
+  Linear System Symmetric = True
+  Linear System Iterative Method = CG
+  Linear System Max Iterations = 5000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU0
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = True
+  Linear System Residual Output = 1
+  Linear System Precondition Recompute = 1
+
+  Nonlinear System Consistent Norm = Logical True
+  Discontinuous Bodies = True
+
+  Calculate Magnetic Field Strength = Logical True
+End
+
+Solver 4
+  Exec Solver = after all
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = elmer_pilot
+  Vtu format = Logical True
+  Discontinuous Bodies = Logical True
+  Save Geometry Ids = True
+  Save Bulk Only = True
+  Vtu Part Collection = True
+  Ascii Output = True
+End
+
+Equation 1
+  Name = "MGDyn for air"
+  Active Solvers(2) = 2 3
+End
+
+Equation 2
+  Name = "MGDyn for coil"
+  Active Solvers(3) = 1 2 3
+End
+
+Material 1
+  Name = "Vacuum"
+  Relative Permeability = 1.0
+  Relative Permittivity = 1.0
+End
+
+Material 2
+  Name = "Conductor"
+  Relative Permeability = 1.0
+  Relative Permittivity = 1.0
+  Electric Conductivity = 1.0
+End
+
+Component 1
+  Name = String "Coil0"
+  Coil Type = String "test"
+  Master Bodies(1) = Integer 1
+  Desired Coil Current = Real 1.0e7
+  Coil Normal(3) = -1 -0 -0
+End
+Component 2
+  Name = String "Coil1"
+  Coil Type = String "test"
+  Master Bodies(1) = Integer 2
+  Desired Coil Current = Real 1.0e7
+  Coil Normal(3) = -0 -1 -0
+End
+Component 3
+  Name = String "Coil2"
+  Coil Type = String "test"
+  Master Bodies(1) = Integer 3
+  Desired Coil Current = Real 1.0e7
+  Coil Normal(3) = 1 -0 -0
+End
+Component 4
+  Name = String "Coil3"
+  Coil Type = String "test"
+  Master Bodies(1) = Integer 4
+  Desired Coil Current = Real 1.0e7
+  Coil Normal(3) = 0 1 -0
+End
+Component 5
+  Name = String "Coil4"
+  Coil Type = String "test"
+  Master Bodies(1) = Integer 5
+  Desired Coil Current = Real 1.0e7
+  Coil Normal(3) = -1 0 -0
+End
+Component 6
+  Name = String "Coil5"
+  Coil Type = String "test"
+  Master Bodies(1) = Integer 6
+  Desired Coil Current = Real 1.0e7
+  Coil Normal(3) = -0 -1 -0
+End
+Component 7
+  Name = String "Coil6"
+  Coil Type = String "test"
+  Master Bodies(1) = Integer 7
+  Desired Coil Current = Real 1.0e7
+  Coil Normal(3) = 1 -0 -0
+End
+Component 8
+  Name = String "Coil7"
+  Coil Type = String "test"
+  Master Bodies(1) = Integer 8
+  Desired Coil Current = Real 1.0e7
+  Coil Normal(3) = 0 1 -0
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 10
+  Name = "outer_boundary"
+  AV {e} = 0.0
+  AV = 0.0
+  jfix = Real 0.0
+End

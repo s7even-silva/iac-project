@@ -307,13 +307,22 @@ fuentes y pendientes en
 
 **Decisiones confirmadas por el equipo:**
 - ~~Fantoma fijo, centrado en el eje a media longitud; no barrido de
-  posición.~~ **Revertido 2026-09-10** para el análisis de riesgo
-  estocástico de cáncer por órgano (ver más abajo): el fantoma sigue
-  centrado en X/Y por defecto (`/spacecraft/phantomPositionCm 0`), pero ya
-  es desplazable a lo largo del eje Z de la nave. Motivo: el usuario pidió
-  específicamente ver cómo varía la dosis equivalente en los órganos de
-  mayor riesgo según la posición dentro de la nave, algo que la geometría
-  fija no permite estudiar.
+  posición.~~ **Revertido 2026-09-10, por dos motivos independientes que
+  llegaron el mismo día:** (1) el usuario pidió ver cómo varía la dosis
+  equivalente en los órganos de mayor riesgo estocástico de cáncer según
+  la posición del fantoma dentro de la nave — implementado como
+  `/spacecraft/phantomPositionCm <cm>`, desplazamiento a lo largo del eje
+  Z (el eje largo del cilindro); (2) el campo Halbach de CREW HaT ya
+  validado resultó ser genuinamente no uniforme (0,42-0,72 T dentro del
+  anillo, asimetría discreta de 8 pliegues) — implementado como
+  `/spacecraft/phantomOffsetX|Y <m>`, desplazamiento en la sección
+  transversal XY. Los dos comandos son independientes y se combinan sin
+  conflicto (ejes distintos); ambos con default 0 (retrocompatibles, cero
+  cambio de comportamiento sin macro nueva). `phantomOffsetX|Y` es solo
+  infraestructura de posicionamiento — el barrido en sí (rango, N de
+  puntos, integración con el pipeline de bins de dosimetría) sigue sin
+  implementar; ver `field/CREWHAT_STATUS.md`. `phantomPositionCm` sí tiene
+  un barrido completo, ver más abajo ("Dosis por órgano y equivalente").
 - **Bins de energía + reponderación** para producción. La decisión ya está
   tomada; faltan bordes/rango, especies, N/bin, orquestador y estimación de
   incertidumbre por órgano. No portar muestreo continuo como plan de producción.
@@ -506,8 +515,99 @@ fuentes y pendientes en
   (hasta -77,9 mm) en un protón de 9,9 GeV cruzando la región de campo en
   Geant4 — energía alta elegida a propósito porque `ActiveShield_Sim`, a
   diferencia de `GCR_SEP_Sim`, no tiene protección contra partículas
-  atrapadas en campos fuertes. El arreglo de las 8 bobinas, Elmer y el
-  material HTS real **todavía no existen** — ver
+  atrapadas en campos fuertes. **Arreglo de las 8 bobinas implementado el
+  mismo día** (`field/generate_ellipse_array.py`): patrón Halbach dipolar
+  K=1 (momento magnético rotando al doble de la posición angular) — fórmula
+  estándar de ingeniería de imanes aplicada como supuesto propio del
+  equipo, confirmado por dos rondas de búsqueda que ni el reporte NIAC ni
+  la tesis dan una tabla de ángulos ni un conteo de bobinas "radiales"
+  vs. "tangenciales" (esa distinción del reporte es para el montaje
+  mecánico, no la fase electromagnética). Las 8 bobinas importan en
+  `ActiveShield_Sim` sin ningún solapamiento, ni entre sí ni con el casco.
+  **Campo Biot-Savart superpuesto de las 8 bobinas calculado el mismo día**
+  (`field/compute_field_ellipse_array.py`) — resultado físico central del
+  ejercicio: el patrón dipolar de Halbach funciona como se espera, con
+  campo razonablemente uniforme (0,42-0,72 T) dentro del radio de la nave
+  escalada (4,5m) y cayendo a 0,09 T en el borde del dominio (14m), con
+  simetría de 180° exacta. Sigue siendo Biot-Savart regularizado, no
+  Elmer/FEM. **Material HTS real implementado el mismo día**
+  (`field/examples/crewhat_hts_materials.json` — archivo separado de
+  `hts_tape_materials.json` de Geom14, mismos tipos de capa pero espesores
+  de la propia tesis de CREW HaT): compuesto homogeneizado para cinta
+  12mm (Hastelloy+YBCO+Ag+Cu, 94,8µm) y para CORC (núcleo de Cu sólido
+  3,2mm + región anular de cinta hasta 8mm, sin factor de relleno dado por
+  la fuente — supuesto propio marcado explícitamente). Reemplaza el cobre
+  placeholder en ambos generadores (retrocompatible), validado
+  reimportando en Geant4 (`material=coil_mat_crewhat_tape_homogenized`/
+  `_corc_homogenized` con las densidades correctas, sin solapamientos
+  nuevos). **Primera corrida de Elmer FEM sobre esta geometría, el mismo
+  día, con precauciones reales de memoria**: esta VM (VirtualBox en la
+  laptop del usuario) ya había forzado apagados con el barrido de
+  convergencia del piloto DH al agotar RAM+swap con mallas de 13-28M
+  tetraedros — con la elipse (volumen mucho mayor que el conductor DH) se
+  usó un límite duro de memoria vía cgroups (`systemd-run -p MemoryMax=6G
+  -p MemorySwapMax=4G`) y parámetros deliberadamente gruesos para el
+  primer intento. Resultado real, confirmado por la contabilidad de
+  systemd: picos de 186MB (mallado) y 471,5MB (`ElmerSolver`, 16,9s) —
+  muy por debajo del límite y lejísimos de los apagados anteriores.
+  **Bug real encontrado**: `Coil Normal(3) = 0 0 1` (copiado del piloto
+  DH) daba el campo con el signo exactamente invertido en las 6 sondas de
+  validación frente a Biot-Savart — corregido a `0 0 -1`
+  (`field/examples/crewhat_ellipse_pilot.sif`), bajando el error relativo
+  de ~150-250% a 16%-54% (coherente con la malla deliberadamente gruesa
+  de este primer intento). Cada una de las 8 bobinas del arreglo tiene
+  orientación distinta — el signo correcto no se puede asumir igual para
+  las 8 sin verificarlo por separado.
+
+  **Barrido de convergencia parcial, mismo día**: refinar solo `air-size`
+  apenas cambió el error (mismo patrón ya visto en el piloto DH); combinar
+  `air-size` más fino con `padding` más grande sí lo redujo a la mitad
+  (7,6% en el centro, 33,5% en el punto más lejano probado), con picos de
+  memoria reales medidos vía contabilidad de systemd (186MB a 4,7GB según
+  la configuración). **Detenido ahí por precaución**: el siguiente paso de
+  refinamiento extrapola a ~15GB de pico, peligrosamente cerca del total
+  de RAM+swap de esta VM — no intentado. Detalle completo, tabla del
+  barrido y comandos reproducibles en `field/CREWHAT_STATUS.md`.
+
+  **Convención de signo confirmada para una bobina rotada, el mismo día**:
+  probado con una sola bobina aislada construida con la orientación real
+  de la bobina k=1 de un arreglo de 8 (sin generar las otras 7, mucho más
+  barato) — `Coil Normal = -normal_de_la_bobina` da el signo correcto
+  también para una rotación genuina, no solo el caso sin rotar. Regla
+  aplicable a las 8 sin necesitar validar cada una por separado.
+
+  **Arreglo completo de 8 bobinas: intentado directamente, la estimación
+  de memoria anterior era incorrecta.** La extrapolación de ~14,5GB se
+  basaba en la razón de envolventes geométricas (~42x) entre una bobina y
+  el arreglo — error real de método: el padding (2,0m) se suma fijo, no
+  proporcional, así que la razón de volumen de dominio **ya mallado** es
+  mucho menor (~9,9x, no 42x). Al intentarlo con el límite de cgroup como
+  red de seguridad: mallado del aire en 8,9s con 1,3GB de pico;
+  `ElmerSolver` con las 8 bobinas (8 `Component`, cada uno con el `Coil
+  Normal` correcto de la fórmula ya confirmada) completó "ALL DONE" en
+  148s con **3,4GB de pico** — muy por debajo de cualquier límite.
+  Comparado contra la superposición de Biot-Savart de las 8 bobinas
+  (`compare_elmer_array.py`, nuevo): **2,4%-15,4% de error** en 7 puntos
+  de la región de protección, mejor que la bobina individual sola con la
+  misma malla gruesa (dentro del anillo el campo está dominado por la
+  contribución conjunta de las 8, un régimen más favorable). Esto también
+  confirma indirectamente que las 8 señales de `Coil Normal` son
+  correctas.
+
+  **Refinamiento del arreglo completo, mismo día**: con memoria de sobra
+  confirmada (3,4GB de 27GB), se intentó `padding=3,0/air-size=0,15`
+  (lo que funcionó bien para la bobina individual) — esta vez sí se
+  encontró un límite real: 10,26 millones de tetraedros de aire, con el
+  **mallado solo ya en 11,9GB**, demasiado cerca del límite para
+  arriesgar el solve. Un paso intermedio (`padding=2,5/air-size=0,20`,
+  3,77M tetraedros) sí fue seguro: 12GB de pico confirmado por
+  seguimiento directo del proceso durante los ~10 minutos que tardó, sin
+  usar swap de forma significativa. Mejora real: **2,4%-15,4% → 2,3%-
+  11,2%** — más modesta que en la bobina individual porque el resultado
+  grueso ya estaba en un régimen favorable (dominado por la contribución
+  conjunta de las 8 bobinas). Esta configuración es la más fina que se
+  puede correr con margen de seguridad real en esta VM. Elmer **todavía
+  no probado** para CORC en solitario — ver
   [`field/CREWHAT_STATUS.md`](field/CREWHAT_STATUS.md) para el detalle
   completo de brechas y las decisiones de modelado propias marcadas
   explícitamente (sección cuadrada sin segunda dimensión de la fuente,
@@ -515,6 +615,60 @@ fuentes y pendientes en
   de la elipse). Cifras exactas con cita de página en
   [`field/ELMER_VALIDATION.md`](field/ELMER_VALIDATION.md) y comparación
   con Geom14 en [`field/GEOM14_STATUS.md`](field/GEOM14_STATUS.md).
+
+  **Dos pendientes chicos resueltos el mismo día (2026-09-10):**
+  - **Ubicación bobina-nave verificada a escala real**: se corrió el
+    chequeo de solapamiento de `import_crewhat_halbach_array.mac` con
+    `/spacecraft/shipRadius 4,5 m` explícito (antes solo probado con el
+    valor por defecto de 2,8m) — las 8 bobinas siguen sin solaparse entre
+    sí ni con el casco a la escala real decidida para CREW HaT (margen
+    ~1,8m en el punto más cercano). El macro ya quedó actualizado con ese
+    valor.
+  - **Longitud axial del hábitat**: confirmado que ningún documento la
+    da (NIAC Phase I la deja explícitamente indeterminada) — no es un
+    dato pendiente de buscar más, ya se agotó la búsqueda. Se fija como
+    supuesto propio explícito: `shipHalfLength=5m` (10m total), el mismo
+    valor heredado de Geom14/ARSSEM, documentado como decisión consciente
+    en vez de pendiente abierto.
+
+  **Barrido de posición del fantoma: infraestructura agregada (2026-09-10),
+  revierte la decisión anterior de "sin barrido de posición"** — ver la
+  entrada correspondiente en "Decisiones confirmadas por el equipo" más
+  abajo. `ICRP110PhantomConstruction` gana `/spacecraft/phantomOffsetX|Y
+  <m>` (mismo patrón `G4GenericMessenger` que `shipRadius`), por defecto
+  0 (retrocompatible, sin cambiar ninguna corrida existente). Probado con
+  `geant4/ActiveShield_Sim/tests/phantom_offset.mac` a la escala real de
+  nave (4,5m) con un offset de 2m: sin solapamientos. Solo la
+  infraestructura de posicionamiento — el barrido en sí (rango, N de
+  puntos, integración con el pipeline de bins de dosimetría) sigue sin
+  implementar.
+
+  **Ablation de patrón angular (2026-09-10), roadmap de 8 fases
+  completo**: comparación del patrón dipolar K=1 suave (actual) contra
+  una lectura literal "radial/tangencial alternante" de NIAC. Fase 0-1:
+  `uniformity_metric.py` (nuevo) fija el criterio de comparación —
+  coeficiente de variación de `|B|` sobre una grilla de la región de
+  protección; `generate_ellipse_array.py` generalizado con
+  `theta_deg_pattern` opcional, retrocompatible, para generar patrones
+  explícitos. Baseline K=1 real (8 bobinas, escala 4,5m): media 0,571T,
+  CV 0,179, máximo 0,970T (más alto que el rango 0,42-0,72T reportado
+  antes, porque esta grilla más completa sí muestrea Z distinto de cero).
+  Fase 2-4: se generó el patrón alternante crudo y se comparó con la
+  misma grilla — **~4,5x peor en uniformidad** (CV 0,799), con un punto de
+  campo casi nulo dentro de la región de protección, e igual de libre de
+  solapamientos a 4,5m. **Se decidió omitir la Fase 5 (Elmer)** para este
+  candidato: el margen del resultado barato ya es concluyente, no amerita
+  el costo de memoria de un FEM completo (Fase 6 no aplica en consecuencia).
+  **Fase 7 (gratis, sin remallar)**: `field/phase_sensitivity.py` (nuevo)
+  reutiliza el campo K=1 ya calculado para medir si la fase de instalación
+  del arreglo importa relativa al barrido de posición del fantoma —
+  resultado: irrelevante cerca del eje (CV 0,004 a 1m), relevante cerca
+  del casco (CV 0,168, hasta 64% de diferencia entre el mejor y el peor
+  ángulo, a 4,5m). El patrón K=1 de producción queda respaldado
+  cuantitativamente, no solo por analogía con la teoría de imanes, y con
+  una caracterización explícita de cuándo la fase de instalación
+  importaría. Ninguna configuración de producción cambió. Detalle, tabla
+  y comandos reproducibles en `field/CREWHAT_STATUS.md`.
 
 ## Estructura de `geant4/GCR_SEP_Sim/`
 
