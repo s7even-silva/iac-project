@@ -164,16 +164,55 @@ confirmado) — genera el mapa `.map` directamente desde el
   es una demostración de que el pipeline funciona, no una validación de
   que esa cifra sea físicamente correcta cerca de la bobina.
 
-## Lo que aún no existe
+## Arreglo de las 8 bobinas: implementado con patrón Halbach dipolar (2026-09-10)
 
-- **Arreglo de las 8 bobinas** (análogo a `generate_array.py`/
-  `geom14_array_pilot.json`): no implementado. Requiere el patrón angular
-  de las 8 bobinas en el toro Halbach — no dado por ninguna fuente (ver
-  `ELMER_VALIDATION.md`), tendría que aplicarse como fórmula estándar de
-  Halbach dipolar, marcada explícitamente como tal — y resolver la
-  ubicación real relativa al casco de 4,5m (ver arriba).
+`field/generate_ellipse_array.py` (análogo a `generate_array.py`, reutiliza
+`controls()` de `generate_ellipse.py` sin modificarlo) genera las N bobinas
+del toro Halbach. **El patrón angular es un supuesto propio del equipo, no
+un dato de NIAC/tesis** — confirmado por dos rondas de búsqueda dirigida
+que ninguno de los dos documentos da una tabla de ángulos ni siquiera un
+conteo de cuántas de las 8 bobinas son "radiales" vs. "tangenciales" (esa
+distinción, Sección 5.3.3 del reporte NIAC p.61, es para el **montaje
+mecánico-estructural**, no necesariamente la fase electromagnética). Se
+aplicó en su lugar la fórmula estándar de un arreglo Halbach **dipolar**
+(K=1) de la ingeniería de imanes: con N elementos a posición angular
+`φ_k=2πk/N`, el momento magnético de cada uno rota al doble de esa
+velocidad, `θ_k=2φ_k` — la misma regla usada en imanes Halbach de MRI y
+onduladores de aceleradores. Todas las N bobinas son del mismo tipo en
+este piloto (no la posible mezcla radial/tangencial real de CREW HaT, que
+no hay datos para reconstruir).
+
+Geometría 3D de cada bobina: semieje mayor (a=4m) a lo largo del eje de la
+nave (Z global), semieje menor (b=2m) tangencial al anillo, centro sobre
+un círculo de radio 8m (R_Halbach verificado), momento magnético (normal
+al plano propio) apuntando radialmente al ángulo `θ_k` en el plano XY
+global.
+
+**Validado con las 8 bobinas reales** (`crewhat_halbach_array_pilot.json`,
+conductor CORC): ángulos generados coinciden exactamente con la fórmula
+analítica (posición 0°,45°,...,315°; momento 0°,90°,180°,270° repetido dos
+veces). Volumen CAD total (69,59 m³) coincide exactamente con 8× el
+volumen de una sola bobina (8,70 m³) — confirma que ninguna bobina se
+fusionó accidentalmente con otra en el paso de `fuse` (que solo opera
+dentro de cada bobina, nunca entre bobinas distintas, mismo diseño que
+`generate_array.py`). Mallado (168.834 elementos, <1s), conversión a GDML
+(8 componentes) e importación en `ActiveShield_Sim`
+(`field/examples/import_crewhat_halbach_array.mac`) **sin ningún
+solapamiento, ni entre las 8 bobinas entre sí ni con el casco** — pese a
+que el generador nunca comprueba solapamientos entre bobinas en tiempo de
+generación (el chequeo real ocurre al importar en Geant4, mismo principio
+ya documentado para el arreglo DH). Masa por bobina (~77.932 kg cobre
+placeholder) consistente con volumen×densidad. Regresión en
+`field/tests/test_ellipse_array.py` (4 bobinas, más rápido que las 8
+reales, mismo camino de código).
+
 - **Elmer FEM**: no probado sobre esta geometría todavía. Solo Biot-Savart
-  regularizado (ver arriba).
+  regularizado, y solo para una bobina aislada — no para el arreglo
+  completo de 8 (superposición de campos, análogo a
+  `compute_field_array.py` para la Double Helix, sigue sin implementar
+  para esta topología).
+
+## Lo que aún no existe
 - **Material HTS real**: el CAD usa cobre puro placeholder, no el material
   homogeneizado de la cinta YBCO/CORC (análogo a
   `hts_tape_materials.json` de Geom14, con su propia composición).

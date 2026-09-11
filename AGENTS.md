@@ -438,8 +438,16 @@ fuentes y pendientes en
   (hasta -77,9 mm) en un protón de 9,9 GeV cruzando la región de campo en
   Geant4 — energía alta elegida a propósito porque `ActiveShield_Sim`, a
   diferencia de `GCR_SEP_Sim`, no tiene protección contra partículas
-  atrapadas en campos fuertes. El arreglo de las 8 bobinas, Elmer y el
-  material HTS real **todavía no existen** — ver
+  atrapadas en campos fuertes. **Arreglo de las 8 bobinas implementado el
+  mismo día** (`field/generate_ellipse_array.py`): patrón Halbach dipolar
+  K=1 (momento magnético rotando al doble de la posición angular) — fórmula
+  estándar de ingeniería de imanes aplicada como supuesto propio del
+  equipo, confirmado por dos rondas de búsqueda que ni el reporte NIAC ni
+  la tesis dan una tabla de ángulos ni un conteo de bobinas "radiales"
+  vs. "tangenciales" (esa distinción del reporte es para el montaje
+  mecánico, no la fase electromagnética). Las 8 bobinas importan en
+  `ActiveShield_Sim` sin ningún solapamiento, ni entre sí ni con el casco.
+  Elmer FEM y el material HTS real **todavía no existen** — ver
   [`field/CREWHAT_STATUS.md`](field/CREWHAT_STATUS.md) para el detalle
   completo de brechas y las decisiones de modelado propias marcadas
   explícitamente (sección cuadrada sin segunda dimensión de la fuente,
