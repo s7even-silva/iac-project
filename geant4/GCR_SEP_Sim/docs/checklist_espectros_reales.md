@@ -16,9 +16,9 @@ Herramienta: https://oltaris.larc.nasa.gov/
 
 ## Parte 1 — GCR (Environment Definition: GCR, Free Space 1AU)
 
-**Prioridad ahora: solo mínimo solar** (flujo GCR más alto, ver README.md sección "Fechas de referencia"). Máximo solar queda diferido — instrucciones idénticas, solo cambia la fecha, ver nota al final de esta parte.
+**✅ Ambas fases completadas** — mínimo (2026-09-08) y máximo (2026-09-10, con la limitación de fecha de BON2020 anotada más abajo).
 
-**✅ Completado (2026-09-08).** Verificado parseando los `.dat` crudos (el
+**✅ Mínimo completado (2026-09-08).** Verificado parseando los `.dat` crudos (el
 export siempre trae la plantilla genérica de 59 especies, pero el dato real
 de la corrida cae en el índice = Z del ion pedido con "Select Specific Ion"
 — confirmado con captura de pantalla del selector "Select Nucleus [Z]"):
@@ -41,7 +41,16 @@ de la corrida cae en el índice = Z del ion pedido con "Select Specific Ion"
   - Proyecto H: `GCR, Free Space 1AU · GCR Model: BO-20 · Dates: December 31, 2019 to January 1, 2020 · Mission Duration: 1.0 days · Specific ion: Hydrogen [Z=1] · Geometry: zero sphere (42 rays, density-based) · Responses: none`.
   - Proyecto He: idéntico al de H salvo `Specific ion: Helium [Z=2]`.
 
-**Diferido — GCR máximo solar (no hace falta para la primera corrida):** cuando se retome, repetir exactamente los mismos pasos con fecha de **enero 2024** (o cualquiera dentro de 2024-2025) en vez de dic 2019/ene 2020, generando `oltaris_BON2020_H_solarmax.csv` / `oltaris_BON2020_He_solarmax.csv`.
+**✅ GCR máximo solar completado (2026-09-10), con una salvedad importante de fecha.**
+
+Al intentar usar la fecha originalmente planeada (enero 2024–julio 2025), **BON2020 en OLTARIS no la acepta — el usuario confirmó que el modelo "solo valida hasta enero del 2023"**. Se usó entonces la fecha más tardía disponible dentro de ese límite: **14–15 de enero de 2023**. Esto **no es el pico real del ciclo 25** (que según NOAA/SWPC ocurrió más tarde, hacia 2024-2025) — es la mejor aproximación al máximo solar que la herramienta permite exportar con BON2020. Dejar esto explícito en Métodos: la fecha se eligió por limitación de la herramienta, no porque sea el máximo real.
+
+Los dos archivos llegaron con el campo "Job Name" mal etiquetado como "H_min"/"He_min" (residuo de una corrida de mínimo anterior, no se actualizó antes de correr) — el contenido real sí corresponde a enero 2023, verificado dos veces: (a) el usuario confirmó explícitamente la fecha usada, y (b) el flujo GCR resultante es ~2× más bajo que el de mínimo solar (dic-2019), consistente con que enero-2023 tiene más actividad solar que el mínimo real (el flujo GCR es inversamente proporcional a la actividad solar).
+
+- [x] Mismos pasos que el mínimo (modelo, "Select Specific Ion" H y He por separado, "Defined by: Date", duración 1 día, toggle "Sí").
+- [x] Fecha: **14–15/01/2023** (límite de BON2020 en OLTARIS, no el pico real del ciclo).
+- [x] Verificado índice=Z en ambos (H→índice 1, He→índice 2), mismo método que el mínimo.
+- [x] Archivos reformateados en `data/sources/oltaris/gcr_proton_solarmax.csv` / `gcr_alpha_solarmax.csv`; crudos (recortados, con nota de la limitación de fecha) en `raw_exports/oltaris_BON2020_{H,He}_solarmax_raw.txt`.
 
 ---
 
@@ -82,16 +91,21 @@ Con un evento histórico puntual, la interpretación de dosis sigue siendo **dos
 
 ---
 
-## Al terminar (por ahora, los 3 archivos prioritarios)
+## Al terminar (estado: 5 de 6 archivos listos)
 
-**✅ Los 3 archivos prioritarios ya están reformateados y en el repo** (2026-09-08):
-`data/sources/oltaris/gcr_proton_solarmin.csv`, `gcr_alpha_solarmin.csv`,
-`sep_proton_solarmax.csv` (crudos correspondientes en `raw_exports/`).
+**✅ 5 de 6 archivos ya están reformateados y en el repo:**
+`gcr_proton_solarmin.csv`, `gcr_alpha_solarmin.csv` (2026-09-08),
+`gcr_proton_solarmax.csv`, `gcr_alpha_solarmax.csv` (2026-09-10, fecha
+14-15/01/2023 por el límite de BON2020 — ver nota en Parte 1),
+`sep_proton_solarmax.csv` (2026-09-08). Crudos correspondientes en `raw_exports/`.
+
+**Solo falta:** `sep_proton_solarmin.csv` (evento Feb 1956, LaRC) — ver "Diferido" en Parte 2.
+
 Pendiente aún:
 
-1. ~~Reformateo de los exports crudos a CSV~~ — hecho.
-2. El cálculo de los pesos por bin (`W[s,i]`) a partir de estos espectros, una vez que se fijen los bordes de bin (puntos 6-7 de la lista de pendientes).
-3. La normalización a dosis absoluta en `RunAction.cc`/el pipeline de `ActiveShield_Sim`, usando las unidades ya confirmadas arriba (flujo/día para GCR, fluencia de evento para SEP).
-4. El párrafo de Métodos describiendo exactamente qué modelo (BON2020, fecha 31/12/2019-01/01/2020 de mínimo solar; evento Oct 1989 de SEP), y qué unidades se usaron — dejando explícito que por ahora se prioriza el caso de mayor dosis por especie, y que GCR máximo/SEP mínimo quedan pendientes de completar.
-5. ~~Capturas de pantalla de la configuración de OLTARIS~~ — hecho (resumen de proyecto transcrito en cada parte de este checklist).
-6. Decidir si `run_sweep.py`/`select_spectrum_source.py` corren solo el subconjunto GCR-mínimo + SEP-máximo (70 combinaciones) o si se completan los 3 archivos "diferidos" (GCR máximo, SEP mínimo) antes de correr el barrido completo de 140 — hoy `select_spectrum_source.py oltaris` sin `--only` fallaría porque esos 3 archivos aún no existen en `data/sources/oltaris/`.
+1. ~~Reformateo de los exports crudos a CSV~~ — hecho para 5/6.
+2. El cálculo de los pesos por bin (`W[s,i]`) a partir de estos espectros, una vez que se fijen los bordes de bin (puntos 6-7 de la lista de pendientes) — esto es para el pipeline por bins de `ActiveShield_Sim`; `GCR_SEP_Sim` (el piloto) ya usa estos espectros por muestreo continuo, sin bins.
+3. ~~La normalización a dosis absoluta en `RunAction.cc`~~ — implementada en `GCR_SEP_Sim` (2026-09-09), ver `AGENTS.md` sección "Dosis absoluta".
+4. El párrafo de Métodos describiendo exactamente qué modelo (BON2020, fechas de mínimo y máximo solar — incluyendo la limitación de BON2020 para el máximo; evento Oct 1989 de SEP), y qué unidades se usaron.
+5. ~~Capturas de pantalla de la configuración de OLTARIS~~ — hecho.
+6. **Ya no bloquea:** con GCR (ambas fases) completo, `select_spectrum_source.py oltaris --only gcr_proton_solarmin.csv gcr_alpha_solarmin.csv gcr_proton_solarmax.csv gcr_alpha_solarmax.csv sep_proton_solarmax.csv` activa 5/6 archivos reales; `run_sweep.py --only-model GCR` (sin `--priority-only`) ya puede correr las 70 combinaciones completas de GCR. Para SEP sigue haciendo falta `--priority-only` (o esperar `sep_proton_solarmin.csv`) porque falta esa fase.

@@ -1,14 +1,22 @@
 # Fuente activa: OLTARIS (2026-09-08)
 
-**Estado (2026-09-08): 3 de 6 archivos listos** — `gcr_proton_solarmin.csv`,
-`gcr_alpha_solarmin.csv` y `sep_proton_solarmax.csv` ya están reformateados
-y verificados en esta carpeta (fecha GCR: 31/12/2019-01/01/2020; evento SEP:
-Oct 1989). Los 3 restantes (`gcr_proton_solarmax.csv`, `gcr_alpha_solarmax.csv`,
-`sep_proton_solarmin.csv`) siguen diferidos — ver
-`../../docs/checklist_espectros_reales.md`. Mientras falten, activar esta
+**Estado (2026-09-10): 5 de 6 archivos listos** — `gcr_proton_solarmin.csv`,
+`gcr_alpha_solarmin.csv` (fecha 31/12/2019-01/01/2020), `gcr_proton_solarmax.csv`,
+`gcr_alpha_solarmax.csv` (fecha 14-15/01/2023 — **no** el pico real del ciclo 25,
+ver limitación de BON2020 abajo) y `sep_proton_solarmax.csv` (evento Oct 1989)
+ya están reformateados y verificados en esta carpeta. Solo falta
+`sep_proton_solarmin.csv` (evento Feb 1956, LaRC) — ver
+`../../docs/checklist_espectros_reales.md`. Mientras falte, activar esta
 fuente con `select_spectrum_source.py oltaris` (sin `--only`) fallará; usar
-`--only gcr_proton_solarmin.csv gcr_alpha_solarmin.csv sep_proton_solarmax.csv`
-para correr solo el subconjunto de mayor dosis por especie.
+`--only gcr_proton_solarmin.csv gcr_alpha_solarmin.csv gcr_proton_solarmax.csv gcr_alpha_solarmax.csv sep_proton_solarmax.csv`
+para correr todo excepto SEP mínimo.
+
+**Limitación de fecha descubierta para GCR máximo:** BON2020 en OLTARIS no
+acepta fechas más allá de enero de 2023 — no se pudo usar la ventana real del
+máximo del ciclo 25 (ene 2024–jul 2025, según NOAA/SWPC) como estaba planeado.
+Se usó la fecha más tardía disponible (14-15/01/2023) como mejor aproximación.
+Dejar esto explícito en Métodos: la fecha de "máximo" está acotada por la
+herramienta, no es el pico real de actividad solar.
 
 Reemplaza a `spenvis/` (ISO-15390 + ESP-PSYCHIC) como fuente de GCR y SEP,
 al aprobarse el acceso a la cuenta de OLTARIS. `spenvis/` se conserva como
@@ -64,14 +72,14 @@ separador coma o espacio, líneas `#` como comentario. El piloto solo usa la
 *forma* de la distribución; las unidades exactas se anotan en el checklist
 para la normalización de dosis absoluta (`RunAction.cc`, pendiente).
 
-## Cómo activar esta fuente una vez completa
+## Cómo activar esta fuente hoy (5 de 6 archivos)
 
-Desde `geant4/GCR_SEP_Sim/`:
+Desde `geant4/GCR_SEP_Sim/`, mientras falte `sep_proton_solarmin.csv`:
 
-    python3 scripts/select_spectrum_source.py oltaris
+    python3 scripts/select_spectrum_source.py oltaris --only gcr_proton_solarmin.csv gcr_alpha_solarmin.csv gcr_proton_solarmax.csv gcr_alpha_solarmax.csv sep_proton_solarmax.csv
 
-Sin `--only` esta vez, porque a diferencia del plan anterior esta fuente sí
-cubre los 6 archivos (GCR y SEP). Después, volver a correr `cmake ..` dentro
+Una vez que los 6 estén reales, se podrá correr `select_spectrum_source.py oltaris`
+sin `--only`. Después de activar la fuente, volver a correr `cmake ..` dentro
 de `build/` (no basta con `make -j`) para que el binario recoja los CSV
 actualizados.
 

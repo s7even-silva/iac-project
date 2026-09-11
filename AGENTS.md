@@ -273,6 +273,14 @@ fuentes y pendientes en
   diferidos, no bloquean la primera corrida de producción; se completan
   después si hay tiempo. Ver checklist para el detalle de qué 3 archivos
   (no 6) se exportan primero.
+- **GCR máximo completado (2026-09-10), con limitación de fecha:** BON2020 en
+  OLTARIS no acepta fechas más allá de enero de 2023 (confirmado al intentar
+  la ventana real del máximo del ciclo 25, ene 2024–jul 2025). Se usó
+  14-15/01/2023 en su lugar — la mejor aproximación disponible en la
+  herramienta, no el pico real (que según NOAA/SWPC fue más tarde). Con esto,
+  GCR ya tiene ambas fases reales (`gcr_{proton,alpha}_solarmin.csv` y
+  `_solarmax.csv`); solo falta `sep_proton_solarmin.csv` (Feb 1956) para
+  completar los 6. Detalle en el checklist.
 - Mantener material de devanados, soportes y crióstato en el modelo final:
   la contribución pasiva y los secundarios pueden aumentar o reducir dosis.
 
