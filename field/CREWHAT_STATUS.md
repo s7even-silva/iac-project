@@ -485,8 +485,192 @@ margen de seguridad real — no un límite artificial, sino el punto donde
 el costo de memoria empieza a crecer más rápido que la mejora de
 precisión que aporta.
 
-## Lo que aún no existe
-- **Nave/hábitat**: `shipRadius`/`shipHalfLength` ya son configurables
-  (ver AGENTS.md) y se decidió escalar a 4,5m, pero la longitud axial del
-  hábitat no está dada por ninguna fuente, y la ubicación de las bobinas
-  relativa a ese casco más grande sigue sin resolver — ver arriba.
+## Nave/hábitat: ubicación de las bobinas verificada a escala real (2026-09-10)
+
+Pendiente resuelto: se corrió `import_crewhat_halbach_array.mac` con
+`/spacecraft/shipRadius 4.5 m` explícito (antes solo se había probado con
+el valor por defecto de 2,8m, que no garantizaba nada sobre la escala real
+decidida para CREW HaT). Resultado: las 8 bobinas (radio Halbach 8m, medio
+eje menor 2m) siguen sin ningún solapamiento entre sí ni con el casco a
+4,5m — el anillo se mantiene bien alejado del casco (margen ~1,8m en el
+punto más cercano, 6m de radio interior de la bobina frente a 4,5m de
+radio de nave), consistente con lo razonado pero no antes confirmado a
+esta escala específica. Comando reproducible: el macro de
+`field/examples/import_crewhat_halbach_array.mac` ya incluye
+`/spacecraft/shipRadius 4.5 m`.
+
+**Longitud axial del hábitat: sigue sin dato de ninguna fuente** (NIAC
+Phase I lo deja explícitamente indeterminado, p.9) — esto no es algo que
+se pueda "resolver" con más búsqueda, ya se confirmó que no existe. Se
+mantiene como supuesto propio explícito del equipo: `shipHalfLength=5m`
+(10m de longitud total), el mismo valor por defecto heredado de Geom14/
+ARSSEM, sin ninguna base de CREW HaT específica — documentado aquí como
+decisión consciente, no como pendiente indefinido, para no bloquear el
+diseño del barrido de posición (ver AGENTS.md).
+
+## Ablation de patrón angular: Fase 0 y Fase 1 (2026-09-10)
+
+Preparación para comparar el patrón dipolar K=1 suave (actual) contra una
+lectura literal "radial/tangencial alternante" del texto de NIAC §5.3.3
+(ver más arriba) — sin decidir todavía cuál es mejor, solo la
+infraestructura para poder medirlo. Roadmap completo de 8 fases acordado
+con el equipo; esto cubre las dos primeras.
+
+**Fase 0 — criterio de comparación fijado.** `field/uniformity_metric.py`
+(nuevo): calcula media, desviación estándar y coeficiente de variación de
+`|B|` sobre una grilla polar dentro del disco de la región de protección
+(radio de nave, varios planos Z), reutilizando `field_at()` sin
+modificarlo — misma superposición regularizada ya validada, misma
+salvedad de "no es Elmer/FEM" que el resto de estos mapas. Explícitamente
+`production_validated: false` y documentado como **un primer criterio
+razonable, no el único posible** — el equipo puede refinarlo después, el
+punto es tener un número fijo y reproducible en vez de comparar a ojo
+unos pocos puntos sueltos, como se hacía hasta ahora.
+
+**Baseline real medido** (arreglo de 8 bobinas CORC, patrón K=1, radio de
+nave real 4,5m, grilla 5 radial × 8 angular × 3 planos Z={0,±2}m, 123
+puntos): media 0,571T, coeficiente de variación 0,179,
+rango 0,467T–0,970T. **El máximo (0,970T) es más alto que el rango
+0,42-0,72T reportado antes** — no es una regresión ni un error: los 7
+puntos de prueba anteriores nunca muestrearon Z=±2m ni la región angular
+completa, así que no habían capturado el punto más fuerte del campo. Es
+exactamente el tipo de información que esta grilla sistemática, más
+completa, existe para revelar.
+
+**Fase 1 — generador generalizado.** `generate_ellipse_array.py`:
+`halbach_orientation()` acepta un `theta_override` opcional (retrocompatible,
+por defecto `None` reproduce exactamente la fórmula `θ=(order_k+1)·φ` de
+antes). A nivel de config, una clave opcional `theta_deg_pattern` (lista
+de N ángulos en grados) reemplaza esa fórmula por un ángulo explícito por
+bobina — la posición `φ_k` en el anillo nunca cambia, solo la orientación
+del momento. `halbach_order_k` se mantiene como campo obligatorio del
+esquema incluso con override, como registro de qué fórmula se está
+desviando. El reporte (`array_current_paths.json`) ahora incluye
+`angular_pattern` (`"halbach_order_formula"` o
+`"explicit_theta_deg_pattern"`) y `theta_deg_pattern`, para que cada
+resultado se identifique solo sin depender de a qué archivo de config
+apunta. 8 tests nuevos/actualizados en `field/tests/test_ellipse_array.py`
+y `field/tests/test_uniformity_metric.py` (46 tests en total en `field/`,
+todos verdes).
+
+**Fase 2 — config alternativa generada.**
+`examples/crewhat_halbach_array_radial_tangential_pilot.json`: mismo
+`coil_template` CORC (idéntico al piloto K=1, para que la comparación sea
+sobre lo mismo salvo el patrón angular), con `theta_deg_pattern` explícito
+— lectura literal de "radial/tangencial alternante": `k` par → radial
+puro (`θ=φ_k`), `k` impar → tangencial puro (`θ=φ_k+90°`). CAD/malla/GDML
+generados en `generated/crewhat_halbach_array_radial_tangential/`: mismo
+volumen CAD total (69,586518 m³, idéntico a la 6ª cifra decimal al
+piloto K=1) y prácticamente el mismo número de elementos de malla
+(168.824 vs. 168.834) — confirma que cambiar el patrón angular no cambia
+el costo geométrico/de malla, tal como se anticipó.
+
+**Fase 3 — screening Biot-Savart, resultado contundente.**
+`uniformity_metric.py` sobre la misma grilla que el baseline K=1 (radio
+de nave 4,5m, 5 radial × 8 angular × Z={0,±2}m, 123 puntos):
+
+| Patrón | Media (T) | Desv. est. (T) | CV | Mínimo (T) | Máximo (T) |
+|---|---:|---:|---:|---:|---:|
+| K=1 suave (actual) | 0,571 | 0,102 | **0,179** | 0,467 | 0,970 |
+| Radial/tangencial crudo | 0,198 | 0,158 | **0,799** | 4,0×10⁻¹⁰ | 0,600 |
+
+El patrón crudo es **~4,5x peor en uniformidad**, con **media 3x menor**
+y un punto de **cancelación casi total** dentro de la región de
+protección (4×10⁻¹⁰T, esencialmente cero) — no es un empate ni un
+resultado ambiguo, confirma con margen amplio la predicción de la teoría
+de arreglos Halbach (la fórmula suave `θ=2φ` es la que produce un dipolo
+interno; una alternancia binaria cruda no sigue esa progresión y degrada
+la cancelación de armónicos superiores).
+
+**Fase 4 — solapamiento bobina-nave verificado.** Mismo chequeo que el
+patrón K=1, con `shipRadius=4,5m` explícito: sin solapamientos, ni entre
+bobinas ni con el casco.
+
+**Decisión: se omite la Fase 5 (validación Elmer) para este candidato.**
+El screening barato ya descarta el patrón con margen tan amplio (CV
+4,5x peor, punto de campo casi nulo) que invertir ~10-15 minutos y ~12GB
+de esta VM en refinar con FEM no cambiaría la conclusión — Elmer solo
+tendría sentido si el screening diera un resultado competitivo o
+ambiguo, que no es el caso. **Resultado del ablation**: el patrón K=1
+suave, ya implementado como configuración de producción, queda respaldado
+por esta comparación cuantitativa — evidencia citable para el paper de
+que la elección de diseño no fue arbitraria.
+
+**Fase 7 — sensibilidad de fase respecto al barrido de posición del
+fantoma (gratis, sin remallar).** Una rotación rígida de todo el patrón
+de 8 bobinas alrededor del eje Z es físicamente equivalente a consultar
+el mismo campo ya calculado en un ángulo de consulta rotado — así que
+`field/phase_sensitivity.py` (nuevo) reutiliza directamente el arreglo K=1
+ya generado, sin ninguna geometría/malla nueva, para responder: ¿importa
+hacia dónde apunta la fase del arreglo relativo a dónde se desplaza el
+fantoma? Muestreo azimutal (16 ángulos) a Z=0, en varios radios:
+
+| Radio (m) | Media (T) | CV | Peor/mejor ángulo |
+|---:|---:|---:|---:|
+| 1,0 | 0,524 | 0,004 | 1,01x |
+| 2,0 (offset probado en `phantom_offset.mac`) | 0,546 | 0,016 | 1,05x |
+| 3,0 | 0,587 | 0,036 | 1,11x |
+| 4,0 | 0,658 | 0,085 | 1,31x |
+| 4,5 (pared de la nave) | 0,711 | 0,168 | 1,64x |
+
+**Conclusión práctica**: cerca del eje (menos de 2m, donde probablemente
+pase la mayor parte del barrido de posición inicial) la fase de
+instalación del arreglo prácticamente no importa (variación de 5% o
+menos) — no hace falta coordinar la orientación del arreglo con la
+posición esperada del astronauta. Cerca de la pared de la nave (4,5m) sí
+importa, y bastante (hasta 64% de diferencia entre el mejor y el peor
+ángulo relativo) — si el barrido de posición del fantoma eventualmente
+incluye puntos cerca del casco, esto es evidencia concreta de que la fase
+del arreglo relativa a esos puntos sí debería decidirse a propósito, no
+dejarse arbitraria.
+
+## Ablation de patrón angular: roadmap completo (2026-09-10)
+
+Las 8 fases del roadmap acordado quedan resueltas (Fases 5-6 resueltas
+como "omitidas deliberadamente", no como pendientes sin hacer):
+
+| Fase | Resultado |
+|---|---|
+| 0 — Criterio de comparación | `uniformity_metric.py`: CV de `\|B\|` sobre grilla de la región de protección |
+| 1 — Generador generalizado | `theta_deg_pattern` opcional en `generate_ellipse_array.py`, retrocompatible |
+| 2 — Config alternativa | `crewhat_halbach_array_radial_tangential_pilot.json` generada, mismo costo de malla |
+| 3 — Screening Biot-Savart | K=1 gana por ~4,5x en uniformidad, con margen decisivo |
+| 4 — Solapamiento a escala real | Sin solapamientos para ningún patrón, a 4,5m |
+| 5 — Validación Elmer | Omitida deliberadamente (screening ya concluyente) |
+| 6 — Comparación contra Elmer | No aplica (depende de la Fase 5) |
+| 7 — Sensibilidad de fase | Cuantificada: irrelevante cerca del eje, relevante cerca del casco |
+
+**Resultado para el paper**: la elección del patrón dipolar K=1 suave (ya
+en producción desde antes de este ablation) queda respaldada por una
+comparación cuantitativa explícita, no solo por analogía con la teoría de
+arreglos Halbach — y además se caracterizó cuándo la fase de instalación
+del arreglo importaría (barrido de posición cerca del casco) y cuándo no
+(cerca del eje). Nada de la configuración de producción cambió: el
+resultado de este ablation es evidencia documentada, no un cambio de
+diseño.
+
+## Barrido de posición del fantoma: infraestructura agregada (2026-09-10)
+
+La decisión "fantoma fijo, sin barrido de posición" (ver AGENTS.md) se
+reconsideró porque el campo Halbach ya validado es genuinamente no
+uniforme (0,42-0,72T dentro del anillo, asimetría discreta de 8 pliegues)
+— a diferencia de la suposición más simple que probablemente motivó la
+decisión original. Implementado en `ICRP110PhantomConstruction`:
+`/spacecraft/phantomOffsetX <m>` y `/spacecraft/phantomOffsetY <m>`
+(mismo patrón `G4GenericMessenger` que `shipRadius`/`shipHalfLength`,
+estado PreInit), desplazan el `phantomContainer` dentro de
+`ShipInterior`. Por defecto ambos son 0 — reproduce exactamente el
+placement fijo anterior, retrocompatible con cualquier macro existente.
+Sin chequeo de límites propio: se apoya en el chequeo de solapamiento
+nativo de `G4PVPlacement` (mismo criterio que el resto del proyecto),
+que atraparía un offset que saque el fantoma de `ShipInterior`.
+
+Probado con `geant4/ActiveShield_Sim/tests/phantom_offset.mac`
+(`shipRadius=4,5m`, `phantomOffsetX=2m`): coloca el fantoma en (2,0,0)m
+sin solapamientos. **No es un barrido completo** — falta decidir cuántos
+puntos y en qué rango (probablemente radial, como el piloto GCR_SEP_Sim,
+0 a shipRadius-hullThickness, pero el campo de CREW HaT también varía
+angularmente por su estructura de 8 pliegues, a diferencia del campo
+uniforme del piloto), y falta integrarlo con el pipeline de bins de
+dosimetría (todavía sin implementar) para que el barrido de posición sea
+una dimensión más de ese barrido combinatorio, no un barrido aparte.

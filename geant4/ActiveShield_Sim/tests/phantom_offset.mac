@@ -1,0 +1,16 @@
+# Smoke test for /spacecraft/phantomOffsetX|Y (2026-09-10): confirms a
+# nonzero offset places the phantom off-axis inside ShipInterior without
+# overlap, at the real CREW HaT ship scale (shipRadius=4.5m). Reverses the
+# earlier "no barrido de posicion" decision -- see AGENTS.md.
+/run/numberOfThreads 1
+/spacecraft/shipRadius 4.5 m
+/spacecraft/phantomOffsetX 2 m
+/phantom/setPhantomSex male
+/phantom/setPhantomSection head
+/run/initialize
+/gps/particle geantino
+/gps/ene/mono 1 MeV
+/gps/pos/centre 4 0 0 m
+/gps/direction -1 0 0
+/tracking/verbose 1
+/run/beamOn 1

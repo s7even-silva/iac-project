@@ -75,6 +75,8 @@ ICRP110PhantomConstruction::ICRP110PhantomConstruction():
   fHullThickness = 1.5*cm; // ARSSEM Geom01 radiation reference, not structural sizing.
   fShipRadius = 2.8*m;     // ARSSEM/Geom14 default; CREW HaT's own reference is 4.5 m (Starship).
   fShipHalfLength = 5.*m;  // Kept as the default so existing Geom14 macros are unaffected.
+  fPhantomOffsetX = 0.;    // Default reproduces the old fixed-on-axis placement exactly.
+  fPhantomOffsetY = 0.;
   fSpacecraftMessenger = new G4GenericMessenger(this, "/spacecraft/", "Spacecraft and field setup");
   auto& size = fSpacecraftMessenger->DeclarePropertyWithUnit("worldHalfSize", "m", fWorldHalfSize);
   size.SetParameterName("size", false);
@@ -102,6 +104,23 @@ ICRP110PhantomConstruction::ICRP110PhantomConstruction():
   scale.SetParameterName("scale", false);
   scale.SetRange("scale>=0");
   scale.SetStates(G4State_PreInit);
+  // Phantom position sweep (2026-09-10): reverses the earlier "fixed
+  // phantom, no position sweep" team decision (see AGENTS.md) now that the
+  // validated CREW HaT Halbach field is measurably non-uniform (0.42-0.72 T
+  // across the protection region, 8-fold discrete asymmetry) -- unlike
+  // whatever simpler field assumption motivated the original decision.
+  // Offsets the phantom container within ShipInterior's XY cross-section,
+  // same placement axis convention as GCR_SEP_Sim's /detector/astronautX.
+  // Default 0,0 reproduces the previous fixed-on-axis placement exactly.
+  // Geant4's own overlap check on fPhantomContainer's G4PVPlacement (see
+  // below) catches an offset that pushes the phantom outside ShipInterior;
+  // no separate bounds check is added here.
+  auto& offX = fSpacecraftMessenger->DeclarePropertyWithUnit("phantomOffsetX", "m", fPhantomOffsetX);
+  offX.SetParameterName("x", false);
+  offX.SetStates(G4State_PreInit);
+  auto& offY = fSpacecraftMessenger->DeclarePropertyWithUnit("phantomOffsetY", "m", fPhantomOffsetY);
+  offY.SetParameterName("y", false);
+  offY.SetStates(G4State_PreInit);
   // Register field accuracy commands before /run/initialize; setup is thread local.
   G4FieldBuilder::Instance();
 }
@@ -436,13 +455,17 @@ G4VPhysicalVolume* ICRP110PhantomConstruction::Construct()
   fMinY = -fNVoxelY*fVoxelHalfDimY*mm;// Min Y
   fMinZ = -fNVoxelZ*fVoxelHalfDimZ*mm;// Min Z
 
-  G4ThreeVector posCentreVoxels((fMinX+fMaxX)/2.,(fMinY+fMaxY)/2.,(fMinZ+fMaxZ)/2.);
+  G4ThreeVector posCentreVoxels((fMinX+fMaxX)/2.+fPhantomOffsetX,
+                                 (fMinY+fMaxY)/2.+fPhantomOffsetY,
+                                 (fMinZ+fMaxZ)/2.);
 
   G4cout << " placing voxel container volume at " << posCentreVoxels << G4endl;
 
   // Fantoma colgado del interior de la nave (ShipInterior), no directo del
-  // World -- queda centrado en el eje del cilindro, a media longitud, tal
-  // como decidio el equipo (ver AGENTS.md, sin barrido de posicion).
+  // World -- centrado en el eje a media longitud por defecto, desplazable
+  // en XY vía /spacecraft/phantomOffsetX|Y para un barrido de posicion
+  // (ver AGENTS.md, decision revertida el 2026-09-10 dado el campo Halbach
+  // no uniforme ya validado).
   fPhantomContainer
   = new G4PVPlacement(nullptr,                     // rotation
                       posCentreVoxels,

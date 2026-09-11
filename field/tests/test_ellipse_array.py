@@ -1,4 +1,5 @@
 import json
+import math
 from pathlib import Path
 import sys
 import tempfile
@@ -41,6 +42,22 @@ class HalbachOrientationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             _validate({**small_array_config(), 'n_coils': 1})
 
+    def test_theta_override_replaces_formula_for_that_coil_only(self):
+        phi, theta, center, normal, rotation = halbach_orientation(2, 4, 1, 8.0, math.radians(30.0))
+        self.assertAlmostEqual(theta, math.radians(30.0))
+        # Position (phi/center) must be untouched by the override -- only
+        # the moment direction (theta/normal/rotation) changes.
+        np.testing.assert_allclose(center, 8.0*np.array([np.cos(phi), np.sin(phi), 0.0]))
+        np.testing.assert_allclose(normal, np.array([np.cos(theta), np.sin(theta), 0.0]))
+
+    def test_rejects_wrong_length_theta_pattern(self):
+        with self.assertRaises(ValueError):
+            _validate({**small_array_config(), 'theta_deg_pattern': [0.0, 90.0, 180.0]})
+
+    def test_rejects_non_finite_theta_pattern(self):
+        with self.assertRaises(ValueError):
+            _validate({**small_array_config(), 'theta_deg_pattern': [0.0, 90.0, 180.0, float('nan')]})
+
 
 class HalbachArrayGenerationTests(unittest.TestCase):
     def test_four_coil_array_volume_and_angles(self):
@@ -63,6 +80,29 @@ class HalbachArrayGenerationTests(unittest.TestCase):
             for c, pos, mom in zip(data['coils'], expected_positions, expected_moments):
                 self.assertAlmostEqual(c['position_deg'], pos)
                 self.assertAlmostEqual(c['moment_deg'], mom)
+
+    def test_explicit_pattern_generates_and_differs_from_the_formula(self):
+        """A literal 'alternating radial/tangential' reading of NIAC Sec.
+        5.3.3 (theta_k = phi_k for even k, phi_k+90 for odd k) is NOT the
+        same field-generation formula as the smooth K=1 dipole above, even
+        though both happen to agree at k=0 and k=1 for N=4 -- this is the
+        angular-pattern ablation from field/CREWHAT_STATUS.md, not a data
+        source, exercised end-to-end through generate()."""
+        naive_alternating = [0.0, 180.0, 180.0, 0.0]  # degrees; K=1 formula gives [0,180,0,180]
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            config = {**small_array_config(), 'theta_deg_pattern': naive_alternating}
+            config_path = directory/'config.json'
+            config_path.write_text(json.dumps(config))
+            generate(config_path, directory/'out')
+            data = json.loads((directory/'out'/'array_current_paths.json').read_text())
+            self.assertEqual(data['angular_pattern'], 'explicit_theta_deg_pattern')
+            self.assertEqual(data['theta_deg_pattern'], naive_alternating)
+            moments = [c['moment_deg'] for c in data['coils']]
+            for got, expected in zip(moments, naive_alternating):
+                self.assertAlmostEqual(got % 360, expected % 360)
+            # Differs from the K=1 formula specifically at k=2 (180 vs 0).
+            self.assertNotAlmostEqual(moments[2] % 360, 0.0)
 
     def test_dipole_field_pattern_inside_vs_outside_the_ring(self):
         """The whole point of a dipole Halbach array: roughly uniform field
