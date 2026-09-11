@@ -480,9 +480,18 @@ fuentes y pendientes en
   de ~150-250% a 16%-54% (coherente con la malla deliberadamente gruesa
   de este primer intento). Cada una de las 8 bobinas del arreglo tiene
   orientación distinta — el signo correcto no se puede asumir igual para
-  las 8 sin verificarlo por separado. Ver `field/CREWHAT_STATUS.md` para
-  el detalle completo. Elmer **todavía no probado** para CORC ni para el
-  arreglo completo — ver
+  las 8 sin verificarlo por separado.
+
+  **Barrido de convergencia parcial, mismo día**: refinar solo `air-size`
+  apenas cambió el error (mismo patrón ya visto en el piloto DH); combinar
+  `air-size` más fino con `padding` más grande sí lo redujo a la mitad
+  (7,6% en el centro, 33,5% en el punto más lejano probado), con picos de
+  memoria reales medidos vía contabilidad de systemd (186MB a 4,7GB según
+  la configuración). **Detenido ahí por precaución**: el siguiente paso de
+  refinamiento extrapola a ~15GB de pico, peligrosamente cerca del total
+  de RAM+swap de esta VM — no intentado. Detalle completo, tabla del
+  barrido y comandos reproducibles en `field/CREWHAT_STATUS.md`. Elmer
+  **todavía no probado** para CORC ni para el arreglo completo — ver
   [`field/CREWHAT_STATUS.md`](field/CREWHAT_STATUS.md) para el detalle
   completo de brechas y las decisiones de modelado propias marcadas
   explícitamente (sección cuadrada sin segunda dimensión de la fuente,
