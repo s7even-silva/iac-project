@@ -1,0 +1,22 @@
+# Run from geant4/ActiveShield_Sim/build after the field/README.md-style
+# sequence for the CREW HaT Halbach array pilot (generate_ellipse_array.py
+# -> mesh -> GDML). Import-mechanics and coil-to-coil overlap check ONLY --
+# the angular pattern is the team's own K=1 dipole Halbach assumption, not
+# a validated CREW HaT design (see field/CREWHAT_STATUS.md). shipRadius set
+# explicitly to the real CREW HaT-scaled 4.5m (not the 2.8m default) and
+# confirmed clear (2026-09-10): at halbach_radius_m=8, the ring's closest
+# approach to the ship axis stays well outside 4.5m -- checked here against
+# the actual scale, not assumed from the geometric numbers alone.
+/run/numberOfThreads 1
+/spacecraft/worldHalfSize 14 m
+/spacecraft/shipRadius 4.5 m
+/spacecraft/coilGeometry ../../../field/generated/crewhat_halbach_array/halbach_array.gdml
+/phantom/setPhantomSex male
+/phantom/setPhantomSection head
+/run/initialize
+/gps/particle geantino
+/gps/ene/mono 1 MeV
+/gps/pos/centre 8 0 -6 m
+/gps/direction 0 0 1
+/tracking/verbose 1
+/run/beamOn 1

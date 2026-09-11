@@ -123,9 +123,20 @@ def generate(config, directory):
     geo = 'SetFactory("OpenCASCADE");\nMerge "ellipse.brep";\nPhysical Volume("crewhat_coil") = Volume{:};\n'
     geo += f'Mesh.MeshSizeMin = {c["mesh_min_size_m"]};\nMesh.MeshSizeMax = {c["mesh_size_m"]};\nMesh.MeshSizeFromCurvature = {c["mesh_points_per_circle"]};\n'
     (directory/'ellipse.geo').write_text(geo)
-    materials = {'schema_version': 1, 'length_unit': 'm', 'elements': {'Cu': {'Z': 29, 'A': 63.546}},
-                 'materials': {'placeholder_copper': {'density_g_cm3': 8.96, 'mass_fractions': {'Cu': 1.0}}},
-                 'groups': {'crewhat_coil': 'placeholder_copper'}}
+    # Real HTS material if the config carries one (materials_library +
+    # material, same convention generate_array.py uses for the DH array);
+    # falls back to placeholder copper so older configs without those keys
+    # keep working unchanged.
+    if 'materials_library' in c and 'material' in c:
+        library = c['materials_library']
+        if c['material'] not in library['materials']:
+            raise ValueError(f'Undefined material {c["material"]!r} in materials_library')
+        materials = {'schema_version': 1, 'length_unit': 'm', 'elements': library['elements'],
+                     'materials': library['materials'], 'groups': {'crewhat_coil': c['material']}}
+    else:
+        materials = {'schema_version': 1, 'length_unit': 'm', 'elements': {'Cu': {'Z': 29, 'A': 63.546}},
+                     'materials': {'placeholder_copper': {'density_g_cm3': 8.96, 'mass_fractions': {'Cu': 1.0}}},
+                     'groups': {'crewhat_coil': 'placeholder_copper'}}
     (directory/'materials.json').write_text(json.dumps(materials, indent=2)+'\n')
     report = {'schema_version': 1, 'status': c['status'], 'config': c,
               'config_sha256': digest(config), 'generator_sha256': digest(Path(__file__)),

@@ -102,14 +102,24 @@ de sus propios comandos `/vis/...`. Ver
 
 ```text
 /spacecraft/hullThickness 1.5 cm
+/spacecraft/shipRadius 2.8 m
+/spacecraft/shipHalfLength 5 m
 /spacecraft/worldHalfSize 10 m
 /spacecraft/coilGeometry /ruta/absoluta/componentes.gdml
 /spacecraft/fieldMap /ruta/absoluta/geom14.map
 /spacecraft/fieldScale 1
+/spacecraft/addPassiveLayerCm G4_Al 1
 /spacecraft/phantomPositionCm 0
+/spacecraft/phantomOffsetX 0 m
+/spacecraft/phantomOffsetY 0 m
 ```
 
 - `hullThickness`: positivo y menor de 100 cm, dimensiones exteriores fijas.
+- `shipRadius`/`shipHalfLength`: radio y semilongitud del cilindro de la
+  nave (por defecto 2,8m/5m, tamaño de Geom14/ARSSEM). CREW HaT usa
+  4,5m de radio (referencia NIAC, diámetro de Starship); la semilongitud
+  no tiene fuente para CREW HaT, se mantiene el valor por defecto como
+  supuesto propio explícito (ver AGENTS.md).
 - `coilGeometry`: omitir para no importar piezas. Acepta el contrato GDML
   de `field/mesh_to_gdml.py` (componentes teselados sin hijos). CMake requiere
   GDML. Importa materiales y geometría, independientemente del campo; valida
@@ -121,6 +131,17 @@ de sus propios comandos `/vis/...`. Ver
 - `fieldScale 0`: mismo mapa y dominio, campo apagado; útil como control.
   Un factor distinto de 1 solo representa un cambio de corriente proporcional
   si el modelo electromagnético es lineal y la geometría permanece fija.
+- `addPassiveLayerCm <G4_Al|G4_POLYETHYLENE> <espesor_cm>`: agrega una capa
+  pasiva fuera del casco, de adentro hacia afuera en el orden en que se
+  llama. Legado del blindaje pasivo comparativo, desactivado si no se usa.
+- `phantomOffsetX`/`phantomOffsetY` (2026-09-10): desplaza el fantoma
+  dentro de `ShipInterior`, en el plano perpendicular al eje de la nave.
+  Por defecto 0 (fantoma centrado en el eje, comportamiento histórico sin
+  cambios). Habilita un barrido de posición — reversión de la decisión
+  "sin barrido de posición" documentada en AGENTS.md, motivada por que el
+  campo Halbach de CREW HaT ya validado es no uniforme. Un offset que
+  saque el fantoma de `ShipInterior` se detecta por el chequeo de
+  solapamiento nativo de Geant4, no por una validación propia.
 - Los parámetros están restringidos a PreInit: usar un proceso por configuración.
 - `phantomPositionCm`: desplazamiento del fantoma a lo largo del **eje Z**
   (eje largo del cilindro `ShipInterior`, un `G4Tubs` sin rotación) — no es

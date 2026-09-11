@@ -76,6 +76,8 @@ ICRP110PhantomConstruction::ICRP110PhantomConstruction():
   fShipRadius = 2.8*m;     // ARSSEM/Geom14 default; CREW HaT's own reference is 4.5 m (Starship).
   fShipHalfLength = 5.*m;  // Kept as the default so existing Geom14 macros are unaffected.
   fPhantomPositionCm = 0.; // Centred on the ship's cylinder axis (Z) by default; swept for the organ-dose study.
+  fPhantomOffsetX = 0.;    // Default reproduces the old fixed-on-axis placement exactly.
+  fPhantomOffsetY = 0.;
   fSpacecraftMessenger = new G4GenericMessenger(this, "/spacecraft/", "Spacecraft and field setup");
   auto& size = fSpacecraftMessenger->DeclarePropertyWithUnit("worldHalfSize", "m", fWorldHalfSize);
   size.SetParameterName("size", false);
@@ -109,6 +111,23 @@ ICRP110PhantomConstruction::ICRP110PhantomConstruction():
   scale.SetParameterName("scale", false);
   scale.SetRange("scale>=0");
   scale.SetStates(G4State_PreInit);
+  // Phantom position sweep (2026-09-10): reverses the earlier "fixed
+  // phantom, no position sweep" team decision (see AGENTS.md) now that the
+  // validated CREW HaT Halbach field is measurably non-uniform (0.42-0.72 T
+  // across the protection region, 8-fold discrete asymmetry) -- unlike
+  // whatever simpler field assumption motivated the original decision.
+  // Offsets the phantom container within ShipInterior's XY cross-section,
+  // same placement axis convention as GCR_SEP_Sim's /detector/astronautX.
+  // Default 0,0 reproduces the previous fixed-on-axis placement exactly.
+  // Geant4's own overlap check on fPhantomContainer's G4PVPlacement (see
+  // below) catches an offset that pushes the phantom outside ShipInterior;
+  // no separate bounds check is added here.
+  auto& offX = fSpacecraftMessenger->DeclarePropertyWithUnit("phantomOffsetX", "m", fPhantomOffsetX);
+  offX.SetParameterName("x", false);
+  offX.SetStates(G4State_PreInit);
+  auto& offY = fSpacecraftMessenger->DeclarePropertyWithUnit("phantomOffsetY", "m", fPhantomOffsetY);
+  offY.SetParameterName("y", false);
+  offY.SetStates(G4State_PreInit);
   // Register field accuracy commands before /run/initialize; setup is thread local.
   G4FieldBuilder::Instance();
 }
@@ -449,16 +468,24 @@ G4VPhysicalVolume* ICRP110PhantomConstruction::Construct()
   fMinY = -fNVoxelY*fVoxelHalfDimY*mm;// Min Y
   fMinZ = -fNVoxelZ*fVoxelHalfDimZ*mm;// Min Z
 
-  G4ThreeVector posCentreVoxels((fMinX+fMaxX)/2.,(fMinY+fMaxY)/2.,
-                                 (fMinZ+fMaxZ)/2. + fPhantomPositionCm*cm);
+  // fPhantomPositionCm/fPhantomOffsetX/Y are already in G4 internal units
+  // here (DeclarePropertyWithUnit converts at parse time) -- do NOT
+  // multiply by cm/m again, that was a real double-conversion bug caught
+  // by a merge smoke test (50 cm macro input placed the phantom at 500 cm).
+  G4ThreeVector posCentreVoxels((fMinX+fMaxX)/2.+fPhantomOffsetX,
+                                 (fMinY+fMaxY)/2.+fPhantomOffsetY,
+                                 (fMinZ+fMaxZ)/2. + fPhantomPositionCm);
 
   G4cout << " placing voxel container volume at " << posCentreVoxels << G4endl;
 
   // Fantoma colgado del interior de la nave (ShipInterior), no directo del
-  // World -- centrado en X/Y, desplazable a lo largo del eje del cilindro (Z)
-  // via /spacecraft/phantomPositionCm para el barrido de dosis por organo
-  // (decision revertida respecto al "sin barrido de posicion" original de
-  // AGENTS.md; ver seccion ActiveShield_Sim de AGENTS.md para el porque).
+  // World -- centrado por defecto (eje a media longitud), desplazable en XY
+  // via /spacecraft/phantomOffsetX|Y (radial/azimutal, relevante para el
+  // campo Halbach de CREW HaT, no uniforme) y a lo largo del eje Z via
+  // /spacecraft/phantomPositionCm (a lo largo de la nave, para el barrido
+  // de dosis por organo) -- ambos ejes son independientes y se combinan
+  // sin conflicto. Revierte el "sin barrido de posicion" original de
+  // AGENTS.md; ver esa seccion para el porque de cada uno.
   fPhantomContainer
   = new G4PVPlacement(nullptr,                     // rotation
                       posCentreVoxels,
