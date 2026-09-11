@@ -337,6 +337,38 @@ resolución **gradualmente y bajo los mismos límites de cgroup**, no saltar
 directo a una malla fina. Solo se validó la bobina individual de cinta
 12mm — CORC y el arreglo completo de 8 bobinas siguen sin probar en Elmer.
 
+### Barrido de convergencia parcial (2026-09-10), detenido por precaución de memoria
+
+Tres configuraciones, todas bajo el mismo límite de cgroup, midiendo pico
+real de memoria vía contabilidad de systemd (no estimado):
+
+| padding (m) | air-size (m) | tetraedros de aire | pico mallado | pico ElmerSolver | tiempo solve | error rel. [0,0,0] | error rel. [6,0,0] (más lejano) |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 2,0 | 0,30 | 108.946 | 186MB | 471,5MB | 16,9s | 15,6% | 54,8% |
+| 2,0 | 0,15 | 772.544 | 1,0GB | 2,5GB | 105,2s | 15,6% | 54,8% |
+| **3,0** | **0,15** | **1.494.641** | **1,9GB** | **4,7GB** | **222,4s** | **7,6%** | **33,5%** |
+
+**Mismo patrón que el piloto DH**: refinar solo `air-size` (fila 2 vs. 1)
+apenas cambió el error — algunos puntos incluso empeoraron levemente.
+Combinar `air-size` más fino **con** `padding` más grande (fila 3) sí dio
+una mejora real, aproximadamente a la mitad del error en todos los puntos.
+
+**Detenido aquí por precaución, no por un límite alcanzado**: el
+siguiente paso natural (`air-size=0,10` manteniendo `padding=3,0`)
+extrapola, según cómo escaló la memoria en los tres pasos de arriba
+(~3,1KB/tetraedro en el solve de la fila 3), a unos 5 millones de
+tetraedros y **~15GB de pico** — peligrosamente cerca del total de RAM+
+swap de esta VM (15GB+12GB). No se intentó. Refinar más allá de la fila 3
+requeriría una VM con más recursos, o un enfoque de mallado más eficiente
+en memoria (fuera del alcance de este documento).
+
+**Estado**: 7,6% de error en el punto central es un resultado razonable
+para una validación de método, no una cifra de producción aceptada — el
+equipo debe fijar su propio presupuesto de error antes de usar este mapa
+para dosimetría. Los tres pilotos completos (mesh + solve + comparación)
+quedan en `field/generated/crewhat_elmer_tape12mm{,_r2,_r3}/`
+(no versionado, regenerable con los comandos de este documento).
+
 ## Lo que aún no existe
 - **Nave/hábitat**: `shipRadius`/`shipHalfLength` ya son configurables
   (ver AGENTS.md) y se decidió escalar a 4,5m, pero la longitud axial del
