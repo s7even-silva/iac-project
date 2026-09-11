@@ -72,29 +72,71 @@ de calidad de malla que confirme que ese margen es suficiente en la
 práctica (¿la sección se deforma o autointerseca sutilmente cerca de los
 extremos, aunque el sólido global se cierre sin error?).
 
+## Mallado y conversión: implementado y validado (2026-09-10)
+
+Confirmada la hipótesis de más arriba: el pipeline estándar de Gmsh 2D/3D
+(`generate_mesh.py`, el mismo mallador simple usado antes de que
+`mesh_swept.py` existiera para sortear el atasco de la Double Helix)
+**completa sin problema** sobre esta geometría — no hace falta ningún
+workaround de tetraedros estructurados, porque una sola elipse no tiene la
+curvatura cerrada que atasca la triangulación 2D de OpenCASCADE en la
+Double Helix de muchas vueltas.
+
+| Variante | Tetraedros | Tiempo 3D | Volumen malla vs. CAD |
+|---|---:|---:|---:|
+| Cinta 12mm | 38.513 | 0,087 s | 39,6176 vs 39,6240 m³ (0,016% de diferencia) |
+| CORC | 57.190 | 0,102 s | — (mismo orden de magnitud de error) |
+
+0,016% es sustancialmente mejor que el 3,06% documentado para el piloto DH
+— esperable: una sección cuadrada es fácil de representar exactamente con
+tetraedros lineales, a diferencia de una sección circular aproximada por
+facetas.
+
+**Conversión a GDML e importación en Geant4, validadas de punta a punta**:
+`mesh_to_gdml.py` convierte sin cambios (mismo contrato que Geom14).
+Importado con éxito vía `/spacecraft/coilGeometry`
+(`field/examples/import_crewhat_ellipse.mac`), con validación cruzada en
+cada paso:
+- Sin solapamientos (`Checking overlaps for volume coil_placement_1
+  (G4TessellatedSolid) ... OK!`).
+- Masa importada por Geant4 (354.974 kg, cobre placeholder) coincide con
+  volumen CAD × densidad (39,62 m³ × 8960 kg/m³ ≈ 355.000 kg) dentro del
+  mismo margen de discretización de la malla.
+- Sonda geantino cruzando el conductor real (no el hueco central de la
+  elipse) mide exactamente 1,43 m de trayecto dentro de `coil_placement_1`
+  — coincide exactamente con el grosor del winding pack configurado.
+
+**Ubicación de prueba, no arreglo final validado**: la bobina se colocó
+con su centro desplazado 8m del eje de la nave (`center_m: [8,0,0]`),
+coherente con el radio Halbach verificado (R_Halbach=8m es el radio del
+círculo donde se ubican los **centros** de las 8 bobinas, no el tamaño de
+cada bobina — interpretación razonada del término "Halbach Torus", no un
+dato literal de una tabla). La orientación (plana en XY, normal a lo largo
+del eje de la nave) y el ángulo de las otras 7 bobinas siguen sin
+definir — ver más abajo. Con `shipRadius` escalado a 4,5m (el valor
+decidido para CREW HaT), esta ubicación específica SÍ se solaparía con el
+casco (punto más cercano de la bobina al eje ≈3,29m, menor que 4,5m) — la
+macro de prueba usa deliberadamente la nave por defecto (2,8m) para
+aislar la validación de importación del problema, todavía pendiente, del
+arreglo completo de 8 bobinas.
+
 ## Lo que aún no existe
 
 - **Arreglo de las 8 bobinas** (análogo a `generate_array.py`/
-  `geom14_array_pilot.json`): no implementado. Requiere, además del
-  generador de una bobina (ya hecho), el patrón angular de las 8 bobinas
-  en el toro Halbach — no dado por ninguna fuente (ver
+  `geom14_array_pilot.json`): no implementado. Requiere el patrón angular
+  de las 8 bobinas en el toro Halbach — no dado por ninguna fuente (ver
   `ELMER_VALIDATION.md`), tendría que aplicarse como fórmula estándar de
-  Halbach dipolar, marcada explícitamente como tal.
-- **Mallado swept / Elmer**: no probado sobre esta geometría. `mesh_swept.py`
-  está acoplado a `generate_dh.py` específicamente (importa su `controls()`
-  y `has_tape_section()`) — necesita el mismo tipo de generalización que ya
-  se aplicó aquí (reutilizar `_conductor_profile`), no reescribirse desde
-  cero, antes de poder mallar esta bobina con tetraedros estructurados en
-  vez de mallar todo el sólido vía Gmsh 2D/3D estándar (que, al ser una
-  sola elipse sin curvatura tan cerrada como la Double Helix, quizás sí
-  complete sin el workaround de `mesh_swept.py` — no probado todavía).
+  Halbach dipolar, marcada explícitamente como tal — y resolver la
+  ubicación real relativa al casco de 4,5m (ver arriba).
+- **Cálculo de campo (Biot-Savart/Elmer)**: no probado sobre esta
+  geometría todavía, ni para cinta ni para CORC. El esquema de
+  regularización de Biot-Savart (radio de núcleo = 10% del winding pack)
+  sigue sin validar contra un caso de referencia — ver la sección de
+  decisiones de modelado más arriba.
 - **Material HTS real**: el CAD usa cobre puro placeholder, no el material
   homogeneizado de la cinta YBCO/CORC (análogo a
   `hts_tape_materials.json` de Geom14, con su propia composición).
 - **Nave/hábitat**: `shipRadius`/`shipHalfLength` ya son configurables
   (ver AGENTS.md) y se decidió escalar a 4,5m, pero la longitud axial del
-  hábitat no está dada por ninguna fuente — sigue siendo una decisión
-  pendiente del equipo, no resuelta por este generador.
-- **Comparación cinta vs. CORC**: ambas variantes generan geometría
-  correctamente (este documento), pero no se ha corrido ningún cálculo de
-  campo (Biot-Savart ni Elmer) sobre ninguna de las dos todavía.
+  hábitat no está dada por ninguna fuente, y la ubicación de las bobinas
+  relativa a ese casco más grande sigue sin resolver — ver arriba.

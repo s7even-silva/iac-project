@@ -1,0 +1,25 @@
+# Run from geant4/ActiveShield_Sim/build after the field/README.md-style
+# sequence for the CREW HaT ellipse pilot (generate_ellipse.py -> mesh ->
+# GDML). Import-mechanics check only, NOT a validated Halbach-array
+# placement: this single coil is offset 8m from the ship axis (matching
+# CREW HaT's verified R_Halbach=8m, see field/ELMER_VALIDATION.md), but
+# its orientation and the other 7 coils' angular pattern are not yet
+# determined (see field/CREWHAT_STATUS.md). Default ship (2.8m/5m) is used
+# deliberately: this coil's closest point to the ship axis (~3.29m) would
+# overlap a 4.5m-radius CREW HaT-scaled ship at this placement -- resolving
+# that is part of the still-pending 8-coil layout, not this import test.
+/run/numberOfThreads 1
+/spacecraft/worldHalfSize 14 m
+/spacecraft/coilGeometry ../../../field/generated/crewhat_ellipse_import_demo/ellipse.gdml
+/phantom/setPhantomSex male
+/phantom/setPhantomSection head
+/run/initialize
+/gps/particle geantino
+/gps/ene/mono 1 MeV
+# (8,2,-1)m is near the ellipse's semi-minor vertex (local (0,2) relative
+# to the coil's center at (8,0,0)) -- straight through the winding pack,
+# unlike (8,0,z) which passes through the coil's empty center hole.
+/gps/pos/centre 8 2 -1 m
+/gps/direction 0 0 1
+/tracking/verbose 1
+/run/beamOn 1
