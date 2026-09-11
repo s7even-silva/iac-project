@@ -9,9 +9,22 @@ cargue las mismas instrucciones sin duplicar su contenido.
 `geant4/ActiveShield_Sim` es el proyecto del modelo realista: exterior en vacío,
 casco de referencia Al de 1.5 cm, envolvente para bobinas externas y lector de
 campo global. Existe un [piloto Double Helix y campo de referencia](field/README.md);
-el ensamblaje Geom14 y el mapa físico validado aún faltan. **El equipo ya decidió
-simular por bins de energía y reponderar**, no usar el barrido continuo del
-piloto como producción. Véanse [estado e interfaces](geant4/ActiveShield_Sim/README.md)
+el ensamblaje Geom14 y su mapa físico validado aún faltan. **CREW HaT** (8 bobinas
+Halbach elípticas) avanza en paralelo a Geom14 y está más adelantado: geometría,
+mallado, GDML, importación y campo Biot-Savart validados de punta a punta, con
+comparación cuantitativa contra Elmer FEM y un ablation del patrón angular —
+pero **todavía no listo para dosimetría de producción**: la sección del
+conductor y el radio de regularización del campo son supuestos propios sin
+validar (ver `field/CREWHAT_STATUS.md`).
+
+Ya existe un [lanzador de producción](geant4/ActiveShield_Sim/README.md#lanzador-de-producción-segundo-grupo-de-datos-15-corridas-2026-09-11)
+para el segundo grupo de datos del equipo (15 corridas: 3 especies más
+peligrosas × 5 posiciones del fantoma, campo CREW HaT a intensidad de
+diseño, dosis equivalente por órgano de mayor riesgo estocástico) — bloqueado
+hasta generar el mapa de campo del arreglo completo (ver ese README). Physics
+list de producción: `Shielding` (decidido, 2026-09-11, mismo que el piloto).
+
+Véanse [estado e interfaces](geant4/ActiveShield_Sim/README.md)
 y [decisiones y justificación](geant4/ActiveShield_Sim/docs/modelo_realista.md).
 
 La generación de mallas y conversión de componentes con materiales a GDML
@@ -88,7 +101,7 @@ Compilación (fuera de fuente, con el toolchain de conda):
 
 ### Parámetros de simulación
 
-- Physics list: (por definir — `Shielding` / `QGSP_BIC_HP`)
+- Physics list: `Shielding` (ambos proyectos, GCR_SEP_Sim y ActiveShield_Sim)
 - Stepper de campo: (por definir)
 - Cortes de producción: (por definir)
 - Semillas: registradas por corrida en `output/`

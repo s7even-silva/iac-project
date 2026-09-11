@@ -372,8 +372,13 @@ fuentes y pendientes en
   su campo físico validado (Elmer) **todavía no están implementados**.
 - Comparación pasiva adicional reevaluada: A nave sola, B nave+material de
   bobinas sin campo, C con campo, D nave+capa pasiva, E híbrido opcional.
-  No se ha añadido aún la capa ni una interfaz de escenarios.
-- Elegir física de producción (`QGSP_BIC_HP` actual vs `Shielding` del piloto).
+  **Confirmado factible sin código nuevo (2026-09-11)**: `addPassiveLayerCm`,
+  `coilGeometry`/`fieldMap` vacíos y `fieldScale` ya cubren los 5 casos como
+  combinaciones de macro — falta solo escribir las 5 macros de ejemplo, no
+  una interfaz de escenarios nueva.
+- **Física de producción decidida (2026-09-11): `Shielding`**, no
+  `QGSP_BIC_HP` — mismo physics list que el piloto GCR_SEP_Sim, vía
+  `G4PhysListFactory` en `ICRP110phantoms.cc`.
 - La posible novedad del artículo requiere revisión bibliográfica; calcular B
   dentro o fuera de Geant4 no demuestra por sí mismo una contribución novedosa.
 - **CREW HaT (2026-09-10): decidido desarrollar en paralelo a Geom14, no
@@ -602,6 +607,83 @@ fuentes y pendientes en
   una caracterización explícita de cuándo la fase de instalación
   importaría. Ninguna configuración de producción cambió. Detalle, tabla
   y comandos reproducibles en `field/CREWHAT_STATUS.md`.
+
+### Segundo grupo de datos: lanzador de ActiveShield_Sim (2026-09-11)
+
+**Implementado:** `geant4/ActiveShield_Sim/scripts/run_sweep.py` — lanza
+las 15 corridas del segundo grupo del equipo (3 especies más peligrosas
+× 5 posiciones del fantoma, campo del arreglo Halbach de CREW HaT a su
+intensidad de diseño, ~10T de pico). A diferencia de `gcrsim`,
+`ICRP110phantoms` usa `G4GeneralParticleSource` en vez de un
+`SpectrumSampler` propio — `scripts/spectrum_to_gps.py` puentea los
+mismos 3 CSV reales de OLTARIS ya exportados para GCR_SEP_Sim
+(`gcr_proton_solarmin`, `gcr_alpha_solarmin`, `sep_proton_solarmax` —
+reutilizados como "especies más peligrosas", ya priorizados por ser los
+casos de mayor dosis por especie) hacia `/gps/ene/type Arb` +
+`/gps/hist/point`, escalando energía MeV/amu→MeV total por número de
+masa para iones (igual conversión que `PrimaryGeneratorAction.cc` de
+GCR_SEP_Sim). La dosis por órgano usa el scorer original del ejemplo
+ICRP110 (`ICRP110UserScoreWriter`, ya funcional — no hubo que construir
+mapeo vóxel→órgano). `scripts/aggregate_organ_dose.py` postprocesa el
+`ICRP110.out` de cada corrida a dosis equivalente (Sv) en los órganos de
+mayor riesgo estocástico (ICRP 103: médula ósea roja vía "medullary
+cavity" — único proxy que da ICRP110 —, colon, pulmón, estómago, mama,
+gónadas), con wR fijo por partícula (protón=2, alfa=20) — **sin curva
+Q(L) por energía, marcado explícitamente como supuesto propio sin fijar
+por el equipo**, igual que la posición del fantoma en X (0-4m; solo 0 y
+2m tienen solapamiento confirmado por `tests/phantom_offset.mac`, 3-4m
+sin confirmar).
+
+**Bloqueante real antes de poder correr esto:** el `.map` de campo del
+arreglo Halbach de 8 bobinas **no existe todavía en este repo**
+(`field/generated/crewhat_halbach_array/` solo tiene la geometría
+`.gdml`, no un `.map` — `compute_field_ellipse_array.py` se usó hasta
+ahora solo para comparar puntos contra Elmer, nunca para generar la
+grilla completa que `/spacecraft/fieldMap` necesita). El lanzador aborta
+con un mensaje explícito si falta. Tampoco existe todavía ninguna macro
+que combine geometría+campo+fantoma+scorer de este arreglo — las únicas
+macros previas (`import_crewhat_halbach_array.mac`,
+`import_crewhat_ellipse_field.mac`) prueban geometría o campo por
+separado, nunca los cuatro elementos juntos — así que la primera corrida
+del lanzador será también la primera validación de esa combinación
+completa; correr con `--limit 1` antes del barrido completo.
+
+**Physics list cambiado a `Shielding`** (`ICRP110phantoms.cc`, antes
+`QGSP_BIC_HP`) — decisión de equipo, mismo physics list que ya usa
+`GCR_SEP_Sim` (vía `G4PhysListFactory`, mismo patrón). Recompilado y
+verificado con `ctest` (2 tests, ambos pasan, incluido `passive_layers`).
+
+**Corrección de estado, CREW HaT no está "completamente validado" para
+dosimetría de producción** (aclarando la bitácora previa): geometría,
+mallado, GDML, importación en Geant4, comparación Biot-Savart-vs-Elmer y
+el ablation del patrón angular sí están hechos y son sólidos. El error
+relativo Elmer-vs-Biot-Savart medido tiene dos cifras, no confundir
+cuál es cuál: **7,6%-33,5% es la bobina individual sola** (malla
+`padding=3,0/air-size=0,15`, validación de método) — **2,3%-11,2% es el
+arreglo completo de 8 bobinas** (`padding=2,5/air-size=0,20`), que es la
+geometría real de producción y da mejor error, no peor (el régimen
+dentro del anillo está dominado por la contribución conjunta de las 8
+bobinas, más favorable que una bobina aislada). Ninguna de las dos es
+"la mejor cifra Elmer del proyecto" sin más: son dos geometrías
+distintas con presupuestos de memoria distintos, y `CREWHAT_STATUS.md`
+solo pone la advertencia explícita ("no una cifra de producción
+aceptada — el equipo debe fijar su propio presupuesto de error antes de
+usar este mapa para dosimetría") sobre la primera. Lo que sigue sin
+resolver para ambas geometrías: la sección transversal cuadrada del
+winding pack (supuesto propio, ninguna fuente la da) y el radio de
+regularización de Biot-Savart (10% arbitrario, "sin ninguna validación
+de que esto dé un campo razonable cerca de la bobina"). Es la geometría
+más avanzada del proyecto, no la geometría ya certificada para publicar
+dosis.
+
+**Matriz pasiva/activa A-E (ver `docs/modelo_realista.md`) confirmada
+como fácil de realizar sin código nuevo:** `ICRP110PhantomConstruction`
+ya expone `/spacecraft/addPassiveLayerCm <material> <espesor_cm>`
+(capas pasivas concéntricas), `/spacecraft/coilGeometry` y
+`/spacecraft/fieldMap` (vacíos = sin bobinas/sin campo) y `fieldScale`
+— los 5 casos de la matriz son combinaciones de macro de comandos ya
+existentes, no requieren tocar C++. Pendiente: solo escribir las 5
+macros de ejemplo (no hecho todavía en este cambio).
 
 ## Estructura de `geant4/GCR_SEP_Sim/`
 
