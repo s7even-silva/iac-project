@@ -515,7 +515,22 @@ fuentes y pendientes en
   misma malla gruesa (dentro del anillo el campo está dominado por la
   contribución conjunta de las 8, un régimen más favorable). Esto también
   confirma indirectamente que las 8 señales de `Coil Normal` son
-  correctas. Elmer **todavía no probado** para CORC en solitario — ver
+  correctas.
+
+  **Refinamiento del arreglo completo, mismo día**: con memoria de sobra
+  confirmada (3,4GB de 27GB), se intentó `padding=3,0/air-size=0,15`
+  (lo que funcionó bien para la bobina individual) — esta vez sí se
+  encontró un límite real: 10,26 millones de tetraedros de aire, con el
+  **mallado solo ya en 11,9GB**, demasiado cerca del límite para
+  arriesgar el solve. Un paso intermedio (`padding=2,5/air-size=0,20`,
+  3,77M tetraedros) sí fue seguro: 12GB de pico confirmado por
+  seguimiento directo del proceso durante los ~10 minutos que tardó, sin
+  usar swap de forma significativa. Mejora real: **2,4%-15,4% → 2,3%-
+  11,2%** — más modesta que en la bobina individual porque el resultado
+  grueso ya estaba en un régimen favorable (dominado por la contribución
+  conjunta de las 8 bobinas). Esta configuración es la más fina que se
+  puede correr con margen de seguridad real en esta VM. Elmer **todavía
+  no probado** para CORC en solitario — ver
   [`field/CREWHAT_STATUS.md`](field/CREWHAT_STATUS.md) para el detalle
   completo de brechas y las decisiones de modelado propias marcadas
   explícitamente (sección cuadrada sin segunda dimensión de la fuente,
