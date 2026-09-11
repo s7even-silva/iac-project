@@ -28,6 +28,17 @@ Each coil's semi-major axis (a) is oriented along the ship's own length
 own magnetic moment (normal to its plane) pointing radially at theta_k in
 the global XY plane -- one reasonable, buildable 3D realization of
 "Halbach Torus", not the only possible one.
+
+**Angular-pattern ablation (2026-09-10, field/CREWHAT_STATUS.md):** an
+optional top-level `theta_deg_pattern` (list of N angles in degrees, one
+per coil) overrides the order_k formula's theta_k with an explicit,
+per-coil moment angle -- e.g. to test a literal "alternating radial/
+tangential" reading of NIAC Sec. 5.3.3 against the smooth K=1 formula
+above. Position angle phi_k (and therefore each coil's center on the
+ring) is unaffected either way. Omit the key to keep today's exact
+behaviour; halbach_order_k stays a required field either way, purely as
+a record of which formula the config is deviating from when an override
+is present.
 """
 import argparse
 import json
@@ -44,13 +55,17 @@ from provenance import digest
 from cad_cleanup import remove_construction_entities
 
 
-def halbach_orientation(k, n, order_k, radius):
+def halbach_orientation(k, n, order_k, radius, theta_override=None):
     """Position angle, moment angle, this coil's center/normal, and the
     3x3 rotation mapping generate_ellipse.py's local convention (semi-major
     along local x, semi-minor along local y, normal along local z, flat in
-    local XY) into this coil's place in the ring."""
+    local XY) into this coil's place in the ring.
+
+    theta_override (radians), when given, replaces the order_k formula for
+    THIS coil's moment angle only -- phi/center (the ring position) are
+    always the regular n-fold spacing, regardless of theta_override."""
     phi = 2*np.pi*k/n
-    theta = (order_k+1)*phi
+    theta = (order_k+1)*phi if theta_override is None else theta_override
     center = radius*np.array([np.cos(phi), np.sin(phi), 0.0])
     normal = np.array([np.cos(theta), np.sin(theta), 0.0])
     u = np.array([0.0, 0.0, 1.0])                         # semi-major -> ship's length axis
@@ -106,8 +121,13 @@ def _validate(array):
         raise ValueError('Need at least 2 integer coils for a Halbach array')
     if array['halbach_radius_m'] <= 0 or not np.isfinite(array['halbach_radius_m']):
         raise ValueError('Invalid halbach_radius_m')
-    if array['halbach_order_k'] != 1:
-        raise ValueError('Only the K=1 dipole Halbach order is implemented')
+    override = array.get('theta_deg_pattern')
+    if override is None:
+        if array['halbach_order_k'] != 1:
+            raise ValueError('Only the K=1 dipole Halbach order is implemented')
+    elif (not isinstance(override, list) or len(override) != array['n_coils']
+          or not all(isinstance(v, (int, float)) and np.isfinite(v) for v in override)):
+        raise ValueError('theta_deg_pattern must have one finite angle in degrees per coil')
     ellipse_controls({**array['coil_template'], 'center_m': [0.0, 0.0, 0.0]})
 
 
@@ -115,6 +135,7 @@ def generate(config, directory):
     array = json.loads(config.read_text())
     _validate(array)
     n, radius, order_k = array['n_coils'], array['halbach_radius_m'], array['halbach_order_k']
+    theta_deg_pattern = array.get('theta_deg_pattern')
     template = array['coil_template']
     directory.mkdir(parents=True, exist_ok=True)
     gmsh.initialize([], readConfigFiles=False)
@@ -122,7 +143,8 @@ def generate(config, directory):
         occ = gmsh.model.occ
         names, solids, paths, angles, bounds_per_coil = [], [], [], [], []
         for k in range(n):
-            phi, theta, center, normal, rotation = halbach_orientation(k, n, order_k, radius)
+            theta_override = None if theta_deg_pattern is None else math.radians(theta_deg_pattern[k])
+            phi, theta, center, normal, rotation = halbach_orientation(k, n, order_k, radius, theta_override)
             solid, path = _coil_solid(occ, template, rotation, center, normal)
             name = f'crewhat_coil_{k}'
             names.append(name)
@@ -171,6 +193,9 @@ def generate(config, directory):
               'cleanup_sha256': digest(Path(__file__).with_name('cad_cleanup.py')),
               'bounds_m': overall_bounds,
               'halbach_radius_m': radius, 'n_coils': n, 'halbach_order_k': order_k,
+              'angular_pattern': 'explicit_theta_deg_pattern' if theta_deg_pattern is not None
+                                  else 'halbach_order_formula',
+              'theta_deg_pattern': theta_deg_pattern,
               'coils': [
                   {'name': names[i], 'current_A': template['current_A'], 'path_m': paths[i],
                    'cad_volume_m3': cad_volume_by_name[names[i]], 'bounds_m': bounds_per_coil[i], **angles[i]}

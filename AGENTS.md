@@ -306,7 +306,17 @@ fuentes y pendientes en
   las macros originales son historias de partículas, no 1000 corridas.
 
 **Decisiones confirmadas por el equipo:**
-- Fantoma fijo, centrado en el eje a media longitud; no barrido de posición.
+- **Revertida 2026-09-10** (antes: "fantoma fijo, centrado en el eje a
+  media longitud; no barrido de posición"): reconsiderada porque el campo
+  Halbach de CREW HaT ya validado es genuinamente no uniforme
+  (0,42-0,72T dentro del anillo, asimetría discreta de 8 pliegues), a
+  diferencia de lo que probablemente motivó la decisión original. Ahora:
+  fantoma centrado a media longitud por defecto (retrocompatible, cero
+  cambio de comportamiento sin macro nueva), con
+  `/spacecraft/phantomOffsetX|Y <m>` disponibles para desplazarlo dentro
+  de `ShipInterior` — infraestructura para un barrido de posición, no el
+  barrido en sí (faltan rango/N de puntos y su integración con el
+  pipeline de bins de dosimetría). Detalle en `field/CREWHAT_STATUS.md`.
 - **Bins de energía + reponderación** para producción. La decisión ya está
   tomada; faltan bordes/rango, especies, N/bin, orquestador y estimación de
   incertidumbre por órgano. No portar muestreo continuo como plan de producción.
@@ -538,6 +548,60 @@ fuentes y pendientes en
   de la elipse). Cifras exactas con cita de página en
   [`field/ELMER_VALIDATION.md`](field/ELMER_VALIDATION.md) y comparación
   con Geom14 en [`field/GEOM14_STATUS.md`](field/GEOM14_STATUS.md).
+
+  **Dos pendientes chicos resueltos el mismo día (2026-09-10):**
+  - **Ubicación bobina-nave verificada a escala real**: se corrió el
+    chequeo de solapamiento de `import_crewhat_halbach_array.mac` con
+    `/spacecraft/shipRadius 4,5 m` explícito (antes solo probado con el
+    valor por defecto de 2,8m) — las 8 bobinas siguen sin solaparse entre
+    sí ni con el casco a la escala real decidida para CREW HaT (margen
+    ~1,8m en el punto más cercano). El macro ya quedó actualizado con ese
+    valor.
+  - **Longitud axial del hábitat**: confirmado que ningún documento la
+    da (NIAC Phase I la deja explícitamente indeterminada) — no es un
+    dato pendiente de buscar más, ya se agotó la búsqueda. Se fija como
+    supuesto propio explícito: `shipHalfLength=5m` (10m total), el mismo
+    valor heredado de Geom14/ARSSEM, documentado como decisión consciente
+    en vez de pendiente abierto.
+
+  **Barrido de posición del fantoma: infraestructura agregada (2026-09-10),
+  revierte la decisión anterior de "sin barrido de posición"** — ver la
+  entrada correspondiente en "Decisiones confirmadas por el equipo" más
+  abajo. `ICRP110PhantomConstruction` gana `/spacecraft/phantomOffsetX|Y
+  <m>` (mismo patrón `G4GenericMessenger` que `shipRadius`), por defecto
+  0 (retrocompatible, sin cambiar ninguna corrida existente). Probado con
+  `geant4/ActiveShield_Sim/tests/phantom_offset.mac` a la escala real de
+  nave (4,5m) con un offset de 2m: sin solapamientos. Solo la
+  infraestructura de posicionamiento — el barrido en sí (rango, N de
+  puntos, integración con el pipeline de bins de dosimetría) sigue sin
+  implementar.
+
+  **Ablation de patrón angular (2026-09-10), roadmap de 8 fases
+  completo**: comparación del patrón dipolar K=1 suave (actual) contra
+  una lectura literal "radial/tangencial alternante" de NIAC. Fase 0-1:
+  `uniformity_metric.py` (nuevo) fija el criterio de comparación —
+  coeficiente de variación de `|B|` sobre una grilla de la región de
+  protección; `generate_ellipse_array.py` generalizado con
+  `theta_deg_pattern` opcional, retrocompatible, para generar patrones
+  explícitos. Baseline K=1 real (8 bobinas, escala 4,5m): media 0,571T,
+  CV 0,179, máximo 0,970T (más alto que el rango 0,42-0,72T reportado
+  antes, porque esta grilla más completa sí muestrea Z distinto de cero).
+  Fase 2-4: se generó el patrón alternante crudo y se comparó con la
+  misma grilla — **~4,5x peor en uniformidad** (CV 0,799), con un punto de
+  campo casi nulo dentro de la región de protección, e igual de libre de
+  solapamientos a 4,5m. **Se decidió omitir la Fase 5 (Elmer)** para este
+  candidato: el margen del resultado barato ya es concluyente, no amerita
+  el costo de memoria de un FEM completo (Fase 6 no aplica en consecuencia).
+  **Fase 7 (gratis, sin remallar)**: `field/phase_sensitivity.py` (nuevo)
+  reutiliza el campo K=1 ya calculado para medir si la fase de instalación
+  del arreglo importa relativa al barrido de posición del fantoma —
+  resultado: irrelevante cerca del eje (CV 0,004 a 1m), relevante cerca
+  del casco (CV 0,168, hasta 64% de diferencia entre el mejor y el peor
+  ángulo, a 4,5m). El patrón K=1 de producción queda respaldado
+  cuantitativamente, no solo por analogía con la teoría de imanes, y con
+  una caracterización explícita de cuándo la fase de instalación
+  importaría. Ninguna configuración de producción cambió. Detalle, tabla
+  y comandos reproducibles en `field/CREWHAT_STATUS.md`.
 
 ## Estructura de `geant4/GCR_SEP_Sim/`
 
