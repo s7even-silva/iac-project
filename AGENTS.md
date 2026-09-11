@@ -463,7 +463,26 @@ fuentes y pendientes en
   placeholder en ambos generadores (retrocompatible), validado
   reimportando en Geant4 (`material=coil_mat_crewhat_tape_homogenized`/
   `_corc_homogenized` con las densidades correctas, sin solapamientos
-  nuevos). Elmer FEM **todavía no existe** para esta topología — ver
+  nuevos). **Primera corrida de Elmer FEM sobre esta geometría, el mismo
+  día, con precauciones reales de memoria**: esta VM (VirtualBox en la
+  laptop del usuario) ya había forzado apagados con el barrido de
+  convergencia del piloto DH al agotar RAM+swap con mallas de 13-28M
+  tetraedros — con la elipse (volumen mucho mayor que el conductor DH) se
+  usó un límite duro de memoria vía cgroups (`systemd-run -p MemoryMax=6G
+  -p MemorySwapMax=4G`) y parámetros deliberadamente gruesos para el
+  primer intento. Resultado real, confirmado por la contabilidad de
+  systemd: picos de 186MB (mallado) y 471,5MB (`ElmerSolver`, 16,9s) —
+  muy por debajo del límite y lejísimos de los apagados anteriores.
+  **Bug real encontrado**: `Coil Normal(3) = 0 0 1` (copiado del piloto
+  DH) daba el campo con el signo exactamente invertido en las 6 sondas de
+  validación frente a Biot-Savart — corregido a `0 0 -1`
+  (`field/examples/crewhat_ellipse_pilot.sif`), bajando el error relativo
+  de ~150-250% a 16%-54% (coherente con la malla deliberadamente gruesa
+  de este primer intento). Cada una de las 8 bobinas del arreglo tiene
+  orientación distinta — el signo correcto no se puede asumir igual para
+  las 8 sin verificarlo por separado. Ver `field/CREWHAT_STATUS.md` para
+  el detalle completo. Elmer **todavía no probado** para CORC ni para el
+  arreglo completo — ver
   [`field/CREWHAT_STATUS.md`](field/CREWHAT_STATUS.md) para el detalle
   completo de brechas y las decisiones de modelado propias marcadas
   explícitamente (sección cuadrada sin segunda dimensión de la fuente,
