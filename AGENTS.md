@@ -499,17 +499,23 @@ fuentes y pendientes en
   también para una rotación genuina, no solo el caso sin rotar. Regla
   aplicable a las 8 sin necesitar validar cada una por separado.
 
-  **Arreglo completo de 8 bobinas: riesgo de memoria estimado, no
-  intentado**. Extrapolando de los datos medidos (~3,1KB/tetraedro en el
-  solve, dominio del arreglo ~42x el de una sola bobina): incluso los
-  parámetros más gruesos ya usados con seguridad para una bobina
-  extrapolan a **~14,5GB de pico** para las 8 juntas — demasiado cerca del
-  límite de esta VM para intentarlo. **Camino recomendado en su lugar**:
-  explotar que la magnetostática es lineal (ya usado para Biot-Savart)
-  resolviendo Elmer solo para una bobina aislada y obteniendo las otras 7
-  por simetría rotacional de esa misma solución, evitando mallar el
-  dominio combinado — no implementado todavía. Elmer
-  **todavía no probado** para CORC ni para el arreglo completo — ver
+  **Arreglo completo de 8 bobinas: intentado directamente, la estimación
+  de memoria anterior era incorrecta.** La extrapolación de ~14,5GB se
+  basaba en la razón de envolventes geométricas (~42x) entre una bobina y
+  el arreglo — error real de método: el padding (2,0m) se suma fijo, no
+  proporcional, así que la razón de volumen de dominio **ya mallado** es
+  mucho menor (~9,9x, no 42x). Al intentarlo con el límite de cgroup como
+  red de seguridad: mallado del aire en 8,9s con 1,3GB de pico;
+  `ElmerSolver` con las 8 bobinas (8 `Component`, cada uno con el `Coil
+  Normal` correcto de la fórmula ya confirmada) completó "ALL DONE" en
+  148s con **3,4GB de pico** — muy por debajo de cualquier límite.
+  Comparado contra la superposición de Biot-Savart de las 8 bobinas
+  (`compare_elmer_array.py`, nuevo): **2,4%-15,4% de error** en 7 puntos
+  de la región de protección, mejor que la bobina individual sola con la
+  misma malla gruesa (dentro del anillo el campo está dominado por la
+  contribución conjunta de las 8, un régimen más favorable). Esto también
+  confirma indirectamente que las 8 señales de `Coil Normal` son
+  correctas. Elmer **todavía no probado** para CORC en solitario — ver
   [`field/CREWHAT_STATUS.md`](field/CREWHAT_STATUS.md) para el detalle
   completo de brechas y las decisiones de modelado propias marcadas
   explícitamente (sección cuadrada sin segunda dimensión de la fuente,
