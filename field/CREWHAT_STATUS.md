@@ -286,6 +286,57 @@ retrocompatible: sin esas claves, siguen generando el placeholder.
   relevante para producción de secundarios y pérdida de energía en el
   transporte de Geant4 aunque la densidad global cambie poco.
 
+## Elmer FEM: primera corrida sobre esta geometría, con precauciones de memoria (2026-09-10)
+
+Esta VM es Oracle VirtualBox corriendo en la laptop del usuario, con
+15GB RAM + 12GB swap asignados — el barrido de convergencia del piloto DH
+(ver `ELMER_VALIDATION.md`) ya había forzado apagados/reinicios reales al
+agotar esos recursos con mallas de 13-28M tetraedros. Dado que esta bobina
+elíptica abarca un volumen mucho mayor que el piloto DH (semieje mayor 4m
++ winding pack, frente a las pocas decenas de cm del conductor DH), se
+usaron dos medidas de seguridad antes de correr nada:
+
+1. **Límite duro de memoria vía cgroups** (`systemd-run --scope -p
+   MemoryMax=6G -p MemorySwapMax=4G`): si el proceso se descontrola, muere
+   contenido y rápido, sin arriesgar el resto de la VM — en vez de esperar
+   al OOM killer global, que en los incidentes anteriores no evitó que la
+   VM completa quedara inutilizable.
+2. **Parámetros deliberadamente gruesos para el primer intento**
+   (`--padding 2.0 --air-size 0.3`, mucho más grueso que cualquier
+   configuración usada para DH) en vez de partir de una malla fina.
+
+**Resultado real, muy por debajo de cualquier riesgo**: mallado del
+dominio de aire (108.946 tetraedros) en 1,3s con pico de 186MB;
+`ElmerSolver` en 16,9s con pico de **471,5MB** — confirmado con la
+contabilidad de systemd, no una estimación. Ambos muy por debajo del
+límite de 6GB impuesto y lejísimos de los varios GB que causaron los
+apagados con el piloto DH.
+
+**Bug real encontrado y corregido, específico de esta geometría**: usando
+`Coil Normal(3) = 0 0 1` (copiado tal cual del `.sif` del piloto DH), el
+campo de Elmer salió con el **signo exactamente invertido** en todas las
+componentes frente a Biot-Savart (no un error de magnitud — un vector
+opuesto, confirmado en los 6 puntos de sonda). Corregido a
+`Coil Normal(3) = 0 0 -1`: el error relativo bajó de ~150-250% (vectores
+casi opuestos) a **16%-54%**, con las direcciones ahora coincidiendo. El
+error restante, creciente con la distancia (16% en el centro, 54% a 6m),
+es coherente con una malla deliberadamente gruesa para este primer
+intento seguro — mismo patrón de necesitar refinamiento ya documentado
+para el piloto DH, no un problema nuevo.
+
+**Advertencia para el arreglo de 8 bobinas**: cada una de las 8 bobinas
+tiene una orientación distinta (rotada según el ángulo Halbach) — el signo
+correcto de `Coil Normal` para cada una no es necesariamente el mismo, y
+habría que verificarlo por separado para cada bobina antes de intentar
+Elmer sobre el arreglo completo, no asumir que la misma corrección aplica
+igual a las 8.
+
+**Sigue pendiente**: repetir el mismo tipo de barrido de convergencia
+(padding × air-size) ya hecho para el piloto DH, pero incrementando la
+resolución **gradualmente y bajo los mismos límites de cgroup**, no saltar
+directo a una malla fina. Solo se validó la bobina individual de cinta
+12mm — CORC y el arreglo completo de 8 bobinas siguen sin probar en Elmer.
+
 ## Lo que aún no existe
 - **Nave/hábitat**: `shipRadius`/`shipHalfLength` ya son configurables
   (ver AGENTS.md) y se decidió escalar a 4,5m, pero la longitud axial del

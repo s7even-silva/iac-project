@@ -1,0 +1,191 @@
+! CREW HaT single ellipse coil pilot, 1e7 A (total ampere-turns, not a
+! single-wire current -- see field/CREWHAT_STATUS.md). Adapted from
+! field/examples/elmer_pilot.sif (Double Helix): same CoilSolverRestricted
+! setup, only Desired Coil Current and Coil Normal differ.
+! Build field/build_coilsolver.py and copy CoilSolverRestricted.so beside
+! this case before running. See field/README.md (Elmer exterior).
+! Physical IDs from mesh_exterior.py for ONE conductor:
+! conductor=1, air=2, outer_boundary=3. Check ElmerGrid mesh.names.
+! This is the UNROTATED single-coil pilot (crewhat_ellipse_tape12mm_pilot.json,
+! center_m=[0,0,0], lying flat in the XY plane). Coil Normal = 0 0 -1 is
+! specific to this coil's own path direction/orientation -- each of the 8
+! coils in the Halbach array has a DIFFERENT orientation (see
+! generate_ellipse_array.py's halbach_orientation()) and its own correct
+! Coil Normal sign must be checked separately, not assumed to be the same.
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "elmer_mesh"
+End
+
+Simulation
+  Coordinate System = Cartesian
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Max Output Level = 7
+End
+
+Constants
+  Permittivity of Vacuum = 8.8542e-12
+End
+
+Body 1
+  Target Bodies(1) = 2
+  Name = "Air"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Target Bodies(1) = 1
+  Name = "Conductor"
+  Equation = 2
+  Material = 2
+  Body Force = 1
+End
+
+Solver 1
+  Equation = "CoilSolver"
+  Procedure = "CoilSolverRestricted" "CoilSolver"
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = ILU2
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1e-8
+  Linear System Iterative Method = BiCGStab
+  Linear System Residual Output = 20
+
+  Coil Closed = Logical True
+  Single Coil Cut = Logical True
+  Narrow Interface = Logical True
+  Save Coil Set = Logical True
+  Save Coil Index = Logical True
+  Calculate Elemental Fields = Logical True
+
+  Fix Input Current Density = True
+  ! Scale the potential by integrated circuit current. Pointwise |J|
+  ! normalization changes the solution and is unnecessary here.
+  Normalize Coil Current = Logical False
+End
+
+Solver 2
+  Equation = MGDynamics
+  Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+
+  Fix Input Current density = True
+  jfix: linear system iterative method = idrs
+  jfix: Linear System Preconditioning = ILU1
+
+  Use Elemental CoilCurrent = True
+
+  Nonlinear System Max Iterations = 1
+
+  Linear System Solver = iterative
+  Linear System Iterative Method = BiCGStabl
+
+  Linear System GCR Restart = 100
+  BiCGStabl Polynomial Degree = 6
+  Idrs Parameter = Integer 6
+  Linear System Robust = Logical True
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = none
+  Linear System Residual Output = 10
+  Linear System Abort Not Converged = True
+End
+
+Solver 3
+  Equation = MGDynamicsCalc
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+
+  Steady State Convergence Tolerance = 1.0e-5
+  Nonlinear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Max Iterations = 20
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 1
+
+  Linear System Solver = Iterative
+  Linear System Symmetric = True
+  Linear System Iterative Method = CG
+  Linear System Max Iterations = 5000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU0
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = True
+  Linear System Residual Output = 1
+  Linear System Precondition Recompute = 1
+
+  Nonlinear System Consistent Norm = Logical True
+  Discontinuous Bodies = True
+
+  Calculate Magnetic Field Strength = Logical True
+End
+
+Solver 4
+  Exec Solver = after all
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = elmer_pilot
+  Vtu format = Logical True
+  Discontinuous Bodies = Logical True
+  Save Geometry Ids = True
+  Save Bulk Only = True
+  Vtu Part Collection = True
+  Ascii Output = True
+End
+
+Equation 1
+  Name = "MGDyn for air"
+  Active Solvers(2) = 2 3
+End
+
+Equation 2
+  Name = "MGDyn for coil"
+  Active Solvers(3) = 1 2 3
+End
+
+! See field/examples/elmer_pilot.sif for why "Relative Permeability" (not
+! "Permeability") is the required keyword.
+Material 1
+  Name = "Vacuum"
+  Relative Permeability = 1.0
+  Relative Permittivity = 1.0
+End
+
+Material 2
+  Name = "Conductor"
+  Relative Permeability = 1.0
+  Relative Permittivity = 1.0
+  Electric Conductivity = 1.0
+End
+
+! crewhat_ellipse_tape12mm_pilot.json: 1e7 A total ampere-turns through the
+! homogenized winding pack (not a single-wire current, see
+! field/CREWHAT_STATUS.md).
+!
+! Coil Normal = 0 0 -1, NOT 0 0 1 as copied from the DH pilot: found
+! 2026-09-10 that with 0 0 1, every field component came out with the
+! EXACT OPPOSITE SIGN from the regularized Biot-Savart reference at all 6
+! validation probes (not a magnitude error -- a fully inverted vector).
+! Flipping the sign brought relative vector error down from ~150-250%
+! (near-opposite vectors) to 16%-54% (direction now matching, remaining
+! error consistent with this pilot's deliberately coarse first-pass mesh,
+! --padding 2.0 --air-size 0.3, chosen to keep memory low on a
+! resource-limited VM -- see field/CREWHAT_STATUS.md for the full
+! investigation and memory-safety measures used).
+Component 1
+  Name = String "CrewHatCoil"
+  Coil Type = String "test"
+  Master Bodies(1) = Integer 2
+  Desired Coil Current = Real 1.0e7
+  Coil Normal(3) = 0 0 -1
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 3
+  Name = "outer_boundary"
+  AV {e} = 0.0
+  AV = 0.0
+  jfix = Real 0.0
+End
