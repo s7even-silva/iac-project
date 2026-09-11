@@ -446,6 +446,45 @@ riesgo real. La estrategia de seguridad (límite de cgroup) seguía siendo
 correcta como red de contención — pero no debió usarse como razón para
 no intentarlo directamente cuando el costo de comprobarlo era bajo.
 
+### Refinamiento del arreglo completo: límite real encontrado (2026-09-10)
+
+Con memoria de sobra confirmada por la corrida gruesa (3,4GB de 27GB
+disponibles), se intentó refinar como ya funcionó para la bobina
+individual (`padding=3,0/air-size=0,15`). Esta vez sí se encontró un
+límite real, no una sobreestimación:
+
+| padding (m) | air-size (m) | tetraedros de aire | pico mallado | pico solve | resultado |
+|---|---:|---:|---:|---:|---|
+| 2,0 | 0,30 | 1.003.567 | 1,3GB | 3,4GB | 2,4%-15,4% de error (referencia) |
+| **3,0** | **0,15** | **10.262.870** | **11,9GB** | **no intentado** | **demasiado grande — el mallado solo ya casi agota el límite de 13GB** |
+| **2,5** | **0,20** | **3.773.365** | **4,9GB** | **12GB, 596s (~10 min)** | **2,3%-11,2% de error** |
+
+`padding=3,0/air-size=0,15` (la combinación que funcionó bien para una
+sola bobina) generó **10 veces más tetraedros** que la configuración
+gruesa para el arreglo completo — el mallado por sí solo llegó a 11,9GB,
+y por la misma razón de escala ya observada (el solve necesita ~2-2,5x lo
+que necesita el mallado para un conteo de tetraedros comparable), intentar
+el solve ahí habría apuntado a ~25-30GB, superando la capacidad total de
+la VM. **No se intentó el solve con esa malla.**
+
+`padding=2,5/air-size=0,20` (paso intermedio) sí fue seguro: pico de
+12GB durante el solve, confirmado por seguimiento directo del proceso
+(no solo contabilidad de systemd al final, dado que el proceso tardó
+~10 minutos) — dentro del límite de cgroup de 14GB, sin llegar a usar
+swap de forma significativa (700MB de 10GB disponibles). Mejora real
+pero más modesta que en la bobina individual: **2,4%-15,4% → 2,3%-11,2%**
+(~25-30% de reducción relativa en cada punto, no a la mitad). Tiene
+sentido: el resultado grueso ya era bueno porque los puntos de la región
+de protección están en un régimen dominado por la contribución conjunta
+de las 8 bobinas — hay menos margen de mejora ahí que cerca de una sola
+bobina aislada.
+
+**Conclusión práctica**: para este arreglo, en esta VM, `padding=2,5m/
+air-size=0,20m` es la configuración más fina que se puede correr con
+margen de seguridad real — no un límite artificial, sino el punto donde
+el costo de memoria empieza a crecer más rápido que la mejora de
+precisión que aporta.
+
 ## Lo que aún no existe
 - **Nave/hábitat**: `shipRadius`/`shipHalfLength` ya son configurables
   (ver AGENTS.md) y se decidió escalar a 4,5m, pero la longitud axial del
