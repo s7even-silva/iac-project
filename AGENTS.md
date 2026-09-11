@@ -453,7 +453,17 @@ fuentes y pendientes en
   campo razonablemente uniforme (0,42-0,72 T) dentro del radio de la nave
   escalada (4,5m) y cayendo a 0,09 T en el borde del dominio (14m), con
   simetría de 180° exacta. Sigue siendo Biot-Savart regularizado, no
-  Elmer/FEM. Elmer FEM y el material HTS real **todavía no existen** — ver
+  Elmer/FEM. **Material HTS real implementado el mismo día**
+  (`field/examples/crewhat_hts_materials.json` — archivo separado de
+  `hts_tape_materials.json` de Geom14, mismos tipos de capa pero espesores
+  de la propia tesis de CREW HaT): compuesto homogeneizado para cinta
+  12mm (Hastelloy+YBCO+Ag+Cu, 94,8µm) y para CORC (núcleo de Cu sólido
+  3,2mm + región anular de cinta hasta 8mm, sin factor de relleno dado por
+  la fuente — supuesto propio marcado explícitamente). Reemplaza el cobre
+  placeholder en ambos generadores (retrocompatible), validado
+  reimportando en Geant4 (`material=coil_mat_crewhat_tape_homogenized`/
+  `_corc_homogenized` con las densidades correctas, sin solapamientos
+  nuevos). Elmer FEM **todavía no existe** para esta topología — ver
   [`field/CREWHAT_STATUS.md`](field/CREWHAT_STATUS.md) para el detalle
   completo de brechas y las decisiones de modelado propias marcadas
   explícitamente (sección cuadrada sin segunda dimensión de la fuente,
