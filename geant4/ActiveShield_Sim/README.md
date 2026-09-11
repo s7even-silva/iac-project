@@ -10,7 +10,11 @@ conservado en `README_ICRP110_original.md`; datos descargados durante CMake.
   exterior **10 m**, eje Z. Casco de **G4_Al, 1.5 cm**, tapas planas del mismo
   espesor. Es una referencia radiológica, no un diseño estructural de vuelo.
 - Exterior **G4_Galactic** (vacío); aire del hábitat y materiales ICRP110
-  conservados. Fantoma masculino o femenino centrado, posición fija.
+  conservados. Fantoma masculino o femenino, centrado en X/Y; desplazable a
+  lo largo del eje Z de la nave vía `/spacecraft/phantomPositionCm` desde
+  2026-09-10 (ver sección "Dosis por órgano y equivalente" más abajo) —
+  revierte la decisión previa de "sin barrido de posición" para el análisis
+  de riesgo estocástico.
 - Casco y cabina son hermanos bajo `MagnetEnvelope`, un volumen en vacío
   que también alojará bobinas y crióstatos externos. No colocar bobinas
   externas como hijas de `ShipInterior`.
@@ -64,12 +68,15 @@ cd build
 ./ICRP110phantoms male.in
 ```
 
-`male.in` y `female.in` mantienen el scorer original por órgano. El haz de
-`primary.mac` ahora nace en **(-6, 0, 0) m**, en el exterior, y apunta hacia
-+X con protones de 250 MeV. Antes nacía a -27 cm, dentro de la cabina: las
-corridas anteriores no probaban el cruce del casco por el primario.
-Son pruebas de funcionamiento; sus 1000 eventos no fijan el presupuesto
-estadístico de producción ni representan 1000 corridas independientes.
+`male.in` y `female.in` mantienen el scorer original por órgano, sin
+modificar. `primary.mac` (2026-09-10) ya **no** usa `/gps/...` —
+`ICRP110PhantomPrimaryGeneratorAction` dejó de envolver un
+`G4GeneralParticleSource` y ahora muestrea espectros reales de OLTARIS,
+igual que `GCR_SEP_Sim`; ver la sección "Dosis por órgano y equivalente"
+para los comandos nuevos (`/gun/species`, `/gun/phase`). Por defecto
+`primary.mac` corre `GCR_H` en fase mínima. Son pruebas de funcionamiento;
+sus 1000 eventos no fijan el presupuesto estadístico de producción ni
+representan 1000 corridas independientes.
 
 ### Visualizar una geometría/campo importado (`--vis`, 2026-09-09)
 
@@ -99,6 +106,7 @@ de sus propios comandos `/vis/...`. Ver
 /spacecraft/coilGeometry /ruta/absoluta/componentes.gdml
 /spacecraft/fieldMap /ruta/absoluta/geom14.map
 /spacecraft/fieldScale 1
+/spacecraft/phantomPositionCm 0
 ```
 
 - `hullThickness`: positivo y menor de 100 cm, dimensiones exteriores fijas.
@@ -114,6 +122,13 @@ de sus propios comandos `/vis/...`. Ver
   Un factor distinto de 1 solo representa un cambio de corriente proporcional
   si el modelo electromagnético es lineal y la geometría permanece fija.
 - Los parámetros están restringidos a PreInit: usar un proceso por configuración.
+- `phantomPositionCm`: desplazamiento del fantoma a lo largo del **eje Z**
+  (eje largo del cilindro `ShipInterior`, un `G4Tubs` sin rotación) — no es
+  el mismo eje que `/detector/astronautX` de `GCR_SEP_Sim` (ahí
+  `ShipInterior` es una esfera, así que "X" era una convención arbitraria).
+  No negativo (`positionCm>=0`), acotado en la práctica por `shipHalfLength`
+  menos la mitad del fantoma; un valor demasiado grande produce solapamiento
+  geométrico (`G4PVPlacement` con `checkOverlaps=true` lo reporta en el log).
 
 ## Contrato del mapa
 
@@ -153,16 +168,66 @@ La prueba CTest verifica un campo afín con divergencia nula sobre grilla no
 cúbica, unidades, interpolación interior, caras, exterior, escala y entradas
 inválidas. No sustituye validar el mapa físico contra Elmer/Biot-Savart.
 
-## Qué se reutiliza de GCR_SEP_Sim
+## Dosis por órgano y equivalente (2026-09-10)
 
-Se reutilizan las ideas de manifiesto, semillas, reanudación y agregación;
-**no basta `run_sweep.py --build-dir ...`**. Ese script ejecuta `gcrsim`, usa
-`/detector/...` y `/gun/model`, y espera una fila de dosis por corrida.
-Aquí el ejecutable es `ICRP110phantoms`, la fuente es `/gps/...` y el scorer
-es por órgano. El nuevo esquema necesitará especie × energía × configuración
-× repetición, además de un identificador del mapa y de los materiales.
+Objetivo: dosis equivalente (Sv) en los órganos de mayor riesgo estocástico
+de cáncer (ICRP 103 Tabla A.1, los `w_T=0.12` más altos: médula ósea roja,
+colon, pulmón, estómago, mama), en función de **dónde está el fantoma
+dentro de la nave**, en el escenario de **blindaje magnético máximo** (10 T,
+el tope del barrido de `GCR_SEP_Sim`) y **el evento más peligroso de cada
+especie** (GCR en mínimo solar — mayor flujo GCR — y SEP en Oct 1989, el
+peor caso ya documentado). Ver `AGENTS.md` para el porqué de este alcance
+reducido (no es un barrido de campo/fase completo).
 
-`QGSP_BIC_HP` sigue siendo la physics list de este proyecto; `Shielding` es
-la del piloto. Elegir y documentar una lista para los resultados definitivos.
-Los espectros SPENVIS se usarán como **pesos posteriores** de la respuesta por
-bin; no es necesario portar `SpectrumSampler` para elegir energías al azar.
+**`ICRP110PhantomPrimaryGeneratorAction` reescrito:** ya no envuelve un
+`G4GeneralParticleSource` — muestrea los mismos 6 CSV reales de OLTARIS que
+`GCR_SEP_Sim` (copiados a `data/`, no symlink, mismo motivo que allá:
+Windows), vía `SpectrumSampler.hh/.cc` (copiado sin modificar, archivo
+autocontenido, mismo criterio de no compartir código entre los dos
+proyectos Geant4). Comandos nuevos (`ICRP110PhantomGeneratorMessenger`,
+directorio `/gun/`, disponibles en Idle, después de `/run/initialize`):
+
+```text
+/gun/species GCR_H|GCR_He|SEP_p
+/gun/phase max|min
+```
+
+**Una sola especie por corrida:** a diferencia de `GCR_SEP_Sim` (que mezcla
+H+He estocásticamente dentro de una corrida), aquí el scoring de dosis por
+órgano pasa por `G4ScoringManager`/`ICRP110UserScoreWriter` (sin tocar),
+que no distingue especies dentro de una misma corrida. Combinar especies
+con sus pesos físicos `W[s] = π·R_esfera²·flujo_integrado[s]` (misma
+fórmula que `RunAction.cc` de `GCR_SEP_Sim`, radio de esfera fuente ahora
+vía `ICRP110PhantomConstruction::GetSourceSphereRadius()`, adaptado de
+esfera a la media diagonal del cilindro) se hace **en Python**, leyendo el
+`ICRP110.out` de cada corrida — ver `scripts/aggregate_organ_doses.py`.
+
+**`scripts/run_organ_sweep.py`:** corre las 15 combinaciones fijas (3
+especies/fase × 5 posiciones, ver el propio script) de forma secuencial —
+`ICRP110UserScoreWriter` siempre escribe su salida en un nombre **fijo**
+(`ICRP110.out`), así que cada corrida se archiva antes de lanzar la
+siguiente. Requiere un `.map` uniforme ya generado con
+`field/generate_uniform_map.py` (entorno `field/.venv`, no `geant4_env`):
+un solo archivo de referencia a 1 T sirve para cualquier intensidad vía
+`/spacecraft/fieldScale` (aquí, 10). Manifiesto + resume, mismo patrón que
+`GCR_SEP_Sim/scripts/run_sweep.py` (ver advertencia de `--n-events` en el
+docstring del script). Salida: `resultados_organo_sweep.csv`.
+
+**`scripts/aggregate_organ_doses.py`:** reimplementa la integral trapezoidal
+de `SpectrumSampler.cc` en Python puro (sin numpy) para `W[s]`, aplica
+`w_R` (ICRP 103 Tabla A.3: protón/pion cargado = 2, alfa = 20 — **pondera
+por la partícula primaria de la corrida, no por partícula-en-cada-paso**;
+un neutrón secundario hereda el `w_R` del primario) y produce
+`resultados_organo_agregados.csv` (dosis absorbida/equivalente por
+`organo_id` y posición, GCR y SEP por separado — distinta semántica
+temporal, Gy/día vs Gy/evento, no se suman) más
+`resultados_riesgo_estocastico.csv` (la misma vista, filtrada a los 5
+órganos de interés, emparejados por palabra clave sobre el nombre real de
+`ICRPdata/.../AM_organs.dat` — advierte explícitamente si alguna palabra
+clave no matchea nada, en vez de fallar en silencio). **Limitación:** el
+fantoma es masculino; la dosis en tejido mamario de un fantoma masculino es
+una referencia dosimétrica/geométrica, no equivalente al riesgo
+epidemiológico de cáncer de mama documentado en mujeres.
+
+`QGSP_BIC_HP` sigue siendo la physics list de este proyecto (no `Shielding`,
+la del piloto `GCR_SEP_Sim`).

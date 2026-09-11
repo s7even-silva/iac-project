@@ -72,6 +72,13 @@ class ICRP110PhantomConstruction : public G4VUserDetectorConstruction
      void SetPhantomSection(G4String);
      void AddPassiveLayer(G4String material, G4double thicknessCm);
 
+     // Radio de la esfera fuente que envuelve toda la nave (cilindro), para
+     // el muestreo isotropico del generador de primarios: media diagonal del
+     // cilindro (shipRadius, shipHalfLength) + casco + margen -- mismo
+     // criterio que GCR_SEP_Sim::DetectorConstruction::GetSourceSphereRadius,
+     // adaptado de esfera a cilindro. Ver ICRP110PhantomPrimaryGeneratorAction.
+     G4double GetSourceSphereRadius() const;
+
  private:
   void ReadPhantomData(const G4String& sex, const G4String& section);
   void ReadPhantomDataFile(const G4String& sex, const G4String& fname, G4int);
@@ -86,6 +93,7 @@ class ICRP110PhantomConstruction : public G4VUserDetectorConstruction
   G4double fHullThickness;
   G4double fShipRadius;
   G4double fShipHalfLength;
+  G4double fPhantomPositionCm; // Offset along the ship's cylinder axis (Z; see ICRP110PhantomConstruction.cc)
   std::vector<std::pair<G4String, G4double>> fPassiveLayers;
   std::shared_ptr<const MagneticFieldMap> fFieldMap;
  // std::vector<G4Material*> fMaterials;
