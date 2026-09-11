@@ -176,14 +176,72 @@ inválidas. No sustituye validar el mapa físico contra Elmer/Biot-Savart.
 
 ## Qué se reutiliza de GCR_SEP_Sim
 
-Se reutilizan las ideas de manifiesto, semillas, reanudación y agregación;
-**no basta `run_sweep.py --build-dir ...`**. Ese script ejecuta `gcrsim`, usa
-`/detector/...` y `/gun/model`, y espera una fila de dosis por corrida.
-Aquí el ejecutable es `ICRP110phantoms`, la fuente es `/gps/...` y el scorer
-es por órgano. El nuevo esquema necesitará especie × energía × configuración
-× repetición, además de un identificador del mapa y de los materiales.
+Se reutilizaron las ideas de manifiesto, semillas y reanudación (no el
+script en sí: `GCR_SEP_Sim/scripts/run_sweep.py` ejecuta `gcrsim`, usa
+`/detector/...` y `/gun/model`, y espera una fila de dosis por corrida —
+aquí el ejecutable es `ICRP110phantoms`, la fuente es `/gps/...` y el
+scorer es por órgano). Ver `scripts/run_sweep.py` de este proyecto abajo.
 
-`QGSP_BIC_HP` sigue siendo la physics list de este proyecto; `Shielding` es
-la del piloto. Elegir y documentar una lista para los resultados definitivos.
-Los espectros SPENVIS se usarán como **pesos posteriores** de la respuesta por
-bin; no es necesario portar `SpectrumSampler` para elegir energías al azar.
+`Shielding` es la physics list de este proyecto desde 2026-09-11 (antes
+`QGSP_BIC_HP`) — decisión de equipo, misma lista que ya usaba el piloto
+`GCR_SEP_Sim`, vía `G4PhysListFactory` en `ICRP110phantoms.cc`.
+
+## Lanzador de producción: segundo grupo de datos (15 corridas, 2026-09-11)
+
+`scripts/run_sweep.py` corre las 15 combinaciones acordadas por el
+equipo para el segundo grupo de datos: **3 especies más peligrosas ×
+5 posiciones del fantoma**, con el campo del arreglo Halbach de 8
+bobinas de CREW HaT a su intensidad de diseño (`fieldScale=1`, ~10T de
+pico) — no un barrido de intensidad de campo como el de GCR_SEP_Sim.
+
+```bash
+cd build
+python3 ../scripts/run_sweep.py --limit 1   # piloto: confirma que compila/corre y mide tiempo real
+python3 ../scripts/run_sweep.py             # las 15 combinaciones
+python3 ../scripts/aggregate_organ_dose.py activeshield_manifest.csv \
+    -o resultados_organo.csv
+```
+
+**Antes de poder correr esto hace falta generar el mapa de campo del
+arreglo completo** (no versionado, `field/generated/` está en
+`.gitignore`):
+
+```bash
+cd ../../../field && source .venv/bin/activate
+python3 compute_field_ellipse_array.py \
+    generated/crewhat_halbach_array/array_current_paths.json \
+    generated/crewhat_halbach_array/halbach_array.map \
+    --half-size 14 --spacing 0.5
+```
+
+(la geometría `halbach_array.gdml` de ese mismo directorio ya existe;
+solo falta el `.map`). El lanzador aborta con un mensaje explícito si no
+lo encuentra.
+
+**Especies:** `scripts/spectrum_to_gps.py` reutiliza los 3 CSV reales de
+OLTARIS ya exportados para GCR_SEP_Sim (GCR-protón-mínimo,
+GCR-alfa-mínimo, SEP-protón-máximo — ver
+`GCR_SEP_Sim/docs/checklist_espectros_reales.md`) y los convierte a
+`/gps/ene/type Arb` + `/gps/hist/point`, escalando energía MeV/amu→MeV
+total por número de masa para iones. **No validado todavía** contra el
+muestreo de `SpectrumSampler.cc` de GCR_SEP_Sim — comparar un histograma
+de energías muestreadas antes de confiar en resultados de producción.
+
+**Posiciones:** `/spacecraft/phantomOffsetX` de 0 a 4m. Solo 0m y 2m
+tienen solapamiento confirmado (`tests/phantom_offset.mac`); 3-4m se
+validan con la corrida misma (Geant4 aborta si no caben).
+
+**Salida:** dosis absorbida por órgano (scorer original ICRP110, ya
+funcional, sin mapeo vóxel→órgano que construir). `aggregate_organ_dose.py`
+la convierte a dosis equivalente (Sv) en los órganos de mayor riesgo
+estocástico (ICRP 103: médula ósea roja, colon, pulmón, estómago, mama,
+gónadas) con un factor de ponderación radiológica (wR) **fijo por
+partícula (protón=2, alfa=20), sin curva Q(L) por energía** — supuesto
+propio explícito, no una cifra de producción aceptada; ver el docstring
+del script y `AGENTS.md` para el detalle completo.
+
+**Riesgo operativo:** a diferencia de `gcrsim`, `ICRP110phantoms` no
+tiene `G4UserLimits`/`G4StepLimiterPhysics` contra partículas atrapadas
+en el campo (ver AGENTS.md, "partículas atrapadas"). El lanzador aplica
+un timeout por corrida (`--timeout-s`, default 600s) como red de
+seguridad, no como corrección de la causa.

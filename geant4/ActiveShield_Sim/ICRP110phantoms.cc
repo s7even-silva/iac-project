@@ -37,7 +37,7 @@
 #include "G4ScoringManager.hh"
 #include "ICRP110UserScoreWriter.hh"
 #include "ICRP110PhantomVisAction.hh"
-#include "QGSP_BIC_HP.hh"
+#include "G4PhysListFactory.hh"
 #include "G4RunManagerFactory.hh"
 
 int main(int argc,char** argv)
@@ -59,7 +59,12 @@ int main(int argc,char** argv)
   auto userPhantom = new ICRP110PhantomConstruction();
   runManager -> SetUserInitialization(userPhantom);
   
-  runManager -> SetUserInitialization(new QGSP_BIC_HP());
+  // Shielding en vez de QGSP_BIC_HP: decision de equipo para produccion,
+  // mismo physics list que GCR_SEP_Sim (ver main.cc de ese proyecto y
+  // AGENTS.md) -- factory en vez de "new Shielding()" directo, mismo
+  // patron ya usado ahi.
+  G4PhysListFactory physListFactory;
+  runManager -> SetUserInitialization(physListFactory.GetReferencePhysList("Shielding"));
 
  // runManager -> SetUserInitialization(new ICRP110PhantomPhysicsList);
 
