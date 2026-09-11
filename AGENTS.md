@@ -425,8 +425,16 @@ fuentes y pendientes en
   conductor con las cifras reales verificadas (winding pack de 1,43 m para
   cinta 12mm, 0,67 m para CORC) — volumen CAD validado contra la
   estimación analítica perímetro×área en <0,1% para ambas
-  (`field/tests/test_ellipse.py`). El arreglo de las 8 bobinas, el mallado
-  swept, Elmer y el material HTS real **todavía no existen** — ver
+  (`field/tests/test_ellipse.py`). **Mallado, GDML e importación en Geant4
+  validados de punta a punta el mismo día**: a diferencia de la Double
+  Helix, esta elipse **no necesita** el workaround de `mesh_swept.py` —
+  el mallador Gmsh 2D/3D estándar (`generate_mesh.py`) completa sin
+  atascarse (curvatura mucho más suave), con solo 0,016% de diferencia
+  entre volumen de malla y CAD. Importado en `ActiveShield_Sim` vía
+  `/spacecraft/coilGeometry` sin solapamientos, con masa y trayecto de
+  sonda geantino coincidiendo exactamente con lo esperado. El arreglo de
+  las 8 bobinas, el cálculo de campo (Biot-Savart/Elmer) y el material
+  HTS real **todavía no existen** — ver
   [`field/CREWHAT_STATUS.md`](field/CREWHAT_STATUS.md) para el detalle
   completo de brechas y las decisiones de modelado propias marcadas
   explícitamente (sección cuadrada sin segunda dimensión de la fuente,
