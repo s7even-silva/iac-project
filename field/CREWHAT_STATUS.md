@@ -120,6 +120,50 @@ macro de prueba usa deliberadamente la nave por defecto (2,8m) para
 aislar la validación de importación del problema, todavía pendiente, del
 arreglo completo de 8 bobinas.
 
+## Campo Biot-Savart: calculado y validado sobre esta geometría (2026-09-10)
+
+`compute_field.py` no necesitó ningún cambio (mismo esquema genérico ya
+confirmado) — genera el mapa `.map` directamente desde el
+`current_path.json` de la elipse. Validaciones hechas:
+
+- **Orden de magnitud correcto**: campo en el centro de la bobina de cinta
+  12mm, 2,41 T, frente a 2,22 T de la estimación analítica de un lazo
+  circular equivalente (radio `sqrt(a·b)`) — ~8% de diferencia, razonable
+  dado que una elipse real no es exactamente ese lazo circular. Dirección
+  puramente axial (Z), como corresponde al centro de una espira plana.
+  Caída de campo fuera de eje también sensata (2,41 T en el centro → 1,16 T
+  a 2m de altura). Regresión capturada en `test_field_at_center_matches_
+  equivalent_loop_estimate` (`field/tests/test_ellipse.py`).
+- **Propiedad geométrica real, no un bug**: cualquier punto en el mismo
+  plano que la espira (Z=0 global aquí, esté o no sobre el eje de simetría)
+  tiene campo puramente perpendicular a ese plano — cada contribución de
+  Biot-Savart `dl × r̂` es normal al plano cuando ambos vectores están
+  contenidos en él. Esto causó un error real de diseño de prueba (ver
+  abajo) antes de identificarse; capturado como regresión en
+  `test_field_purely_axial_within_the_loops_own_plane`.
+- **Importado y probado en Geant4 con una partícula cargada real**
+  (`field/examples/import_crewhat_ellipse_field.mac`): un protón de 9,9 GeV
+  (energía elegida para un radio de giro ~15m, mucho mayor que la escala de
+  la bobina — `ActiveShield_Sim`, a diferencia de `GCR_SEP_Sim`, **no
+  tiene** protección `G4UserLimits`/`StepLimiterPhysics` contra partículas
+  atrapadas, ver AGENTS.md; una energía baja aquí, con un campo real de
+  ~2,4 T, arriesgaba el mismo incidente de +27 minutos ya documentado)
+  muestra una deflexión real y sustancial (hasta -77,9 mm en Y) al cruzar
+  la región de campo, sin quedar atrapado. **Primer intento de prueba
+  fallido, honesto de registrar**: lanzar la sonda exactamente por el eje
+  central de la bobina (`(8,0,z)`) dio una "deflexión" de escala
+  nanométrica — no un fallo del pipeline, sino la propiedad geométrica de
+  arriba (`v` paralelo a `B` ahí, fuerza de Lorentz nula). Corregido
+  apuntando la sonda a un punto fuera de eje y fuera del plano de la
+  bobina (`(10,0,-3)`, confirmado con `field_at()` directo que ahí `B`
+  tiene una componente transversal real de ~0,4 T).
+- **Núcleo de regularización sin validar**: se generó el mapa (half-size
+  14m, spacing 0,5m) y se usó para la prueba de deflexión de arriba, pero
+  el valor elegido (10% del winding pack) sigue sin comparación contra un
+  modelo de múltiples filamentos u otra referencia — la deflexión medida
+  es una demostración de que el pipeline funciona, no una validación de
+  que esa cifra sea físicamente correcta cerca de la bobina.
+
 ## Lo que aún no existe
 
 - **Arreglo de las 8 bobinas** (análogo a `generate_array.py`/
@@ -128,11 +172,8 @@ arreglo completo de 8 bobinas.
   `ELMER_VALIDATION.md`), tendría que aplicarse como fórmula estándar de
   Halbach dipolar, marcada explícitamente como tal — y resolver la
   ubicación real relativa al casco de 4,5m (ver arriba).
-- **Cálculo de campo (Biot-Savart/Elmer)**: no probado sobre esta
-  geometría todavía, ni para cinta ni para CORC. El esquema de
-  regularización de Biot-Savart (radio de núcleo = 10% del winding pack)
-  sigue sin validar contra un caso de referencia — ver la sección de
-  decisiones de modelado más arriba.
+- **Elmer FEM**: no probado sobre esta geometría todavía. Solo Biot-Savart
+  regularizado (ver arriba).
 - **Material HTS real**: el CAD usa cobre puro placeholder, no el material
   homogeneizado de la cinta YBCO/CORC (análogo a
   `hts_tape_materials.json` de Geom14, con su propia composición).
