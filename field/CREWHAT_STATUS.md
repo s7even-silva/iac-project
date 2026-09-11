@@ -402,31 +402,49 @@ las 8 bobinas, cada `Component k` debe usar
 `halbach_orientation()`), consistente para las 8, sin necesitar validar
 cada una por separado.
 
-### Riesgo de memoria del arreglo completo: estimado, no intentado
+### Estimación de memoria del arreglo completo: incorrecta, corregida al intentarlo (2026-09-10)
 
-Extrapolando de los datos medidos arriba (bobina individual, ~3,1KB de
-memoria de solve por tetraedro) y la relación de volumen de dominio entre
-una sola bobina y el arreglo completo (bounds del arreglo ~42x el volumen
-de la envolvente de una sola bobina): mallar el aire alrededor de las 8
-bobinas con los parámetros **más gruesos ya usados con seguridad** para
-una sola bobina (padding=2,0/air-size=0,3) extrapola a **~4,6 millones de
-tetraedros y ~14,5GB de pico** — peligrosamente cerca del total de RAM+
-swap de esta VM (15GB+12GB), compitiendo además con todo lo demás en
-ejecución. **No se intentó el mallado/solve del arreglo completo por esta
-razón.**
+La estimación original de esta sección (~14,5GB de pico, basada en
+extrapolar la razón de **envolventes geométricas** entre una bobina y el
+arreglo, ~42x) resultó demasiado pesimista — el método de extrapolación
+tenía un error real: el padding (2,0m) se suma de forma **fija**, no
+proporcional, así que la razón correcta es la de **volumen de dominio ya
+mallado** (que sí incluye ese padding fijo), no la de las envolventes
+geométricas crudas del conductor. Al intentarlo directamente (con el
+límite de cgroup como red de seguridad, no como excusa para no probar):
+el dominio real del arreglo completo resultó ser solo ~9,9x el de una
+sola bobina, no 42x.
 
-**Camino recomendado, no implementado todavía**: la magnetostática con
-corrientes prescritas es lineal (ya establecido para la superposición de
-Biot-Savart del arreglo, `compute_field_ellipse_array.py`) — en vez de
-mallar y resolver las 8 bobinas juntas en un solo dominio de Elmer
-(costoso y riesgoso), se podría resolver **una sola bobina aislada** en
-Elmer (con su propio dominio, ya validado arriba y en la bobina rotada de
-prueba) y usar la **simetría rotacional del arreglo Halbach** para obtener
-la contribución de las otras 7 rotando esa misma solución, sumando las 8
-copias rotadas por superposición — evitando por completo mallar el
-dominio combinado. Esto requiere interpolar y rotar la malla/campo de
-Elmer numéricamente (no implementado), pero mantiene el costo de memoria
-igual al de una sola bobina para las 8 evaluaciones.
+**Resultado real, con los mismos parámetros gruesos ya usados con
+seguridad para una bobina** (padding=2,0/air-size=0,3): mallado del aire
+en 8,9s con **1,3GB** de pico (1.003.567 tetraedros de aire); `ElmerSolver`
+con las 8 bobinas (8 `Component`, cada uno con su propio `Coil Normal`
+correcto según la fórmula ya confirmada) completó **"ALL DONE"** en 148s
+con **3,4GB** de pico — muy por debajo de cualquier límite, y del total
+de RAM+swap de la VM (15GB+12GB). Contabilidad real de systemd, no
+estimada.
+
+**Validación física, mejor que la esperada**: comparado contra la
+superposición de Biot-Savart de las 8 bobinas (`compare_elmer_array.py`,
+mismo principio que `compute_field_ellipse_array.py` pero contra el VTU
+de Elmer), 7 puntos dentro de la región de protección (radio 0-4m) dan
+**2,4%-15,4% de error**, con las direcciones coincidiendo exactamente en
+todos — mejor que el 15,6%-54,8% de la bobina individual con la misma
+malla gruesa. Tiene sentido: dentro del anillo, el campo total está
+dominado por la contribución conjunta de las 8 bobinas (un régimen más
+parecido a campo lejano de cada una), donde tanto FEM como el modelo de
+filamento regularizado son más confiables que cerca de una sola bobina
+aislada. Este resultado también confirma indirectamente que las 8 señales
+de `Coil Normal` son correctas — un signo equivocado en cualquiera habría
+producido direcciones erráticas o errores mucho mayores, no un ajuste
+tan limpio en los 7 puntos.
+
+**Lección sobre la propia estimación**: extrapolar de una razón de
+envolventes geométricas crudas, en vez de medir directamente o razonar
+sobre cómo escala el padding fijo, llevó a una sobreestimación de ~4x del
+riesgo real. La estrategia de seguridad (límite de cgroup) seguía siendo
+correcta como red de contención — pero no debió usarse como razón para
+no intentarlo directamente cuando el costo de comprobarlo era bajo.
 
 ## Lo que aún no existe
 - **Nave/hábitat**: `shipRadius`/`shipHalfLength` ya son configurables
