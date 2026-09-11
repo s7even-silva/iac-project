@@ -210,3 +210,252 @@ confirme que el error sigue bajando monótonamente) ni cubre el máximo de
 campo sobre el conductor ni geometrías con más vueltas/curvatura — pero es
 la configuración recomendada para repetir este piloto o extenderlo a un
 arreglo mayor, en vez de cualquiera de las configuraciones anteriores.
+
+## Barrido 3×3 de convergencia y nueva configuración recomendada (2026-09-10)
+
+Extensión directa del barrido anterior: la misma matriz padding×air-size,
+ahora con `padding ∈ {2,0, 3,0, 4,0} m` y `air-size ∈ {0,10, 0,07, 0,05} m`
+(9 combinaciones), mismo conductor de tres vueltas y mismo `.sif` corregido.
+El caso `padding=2,0 / air-size=0,10` es el ya documentado arriba (734.303
+tetraedros de aire); se reutiliza como punto de control, no se repite.
+
+| padding (m) | air-size (m) | tetraedros de aire | [4,0,0] | [4,0.15,0] | [4,0,0.3] | [4,0,0.8] | [4,1,0] | [5,0,0] |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 2,0 | 0,10 | 734.303 | 2,09 % | 1,89 % | 1,85 % | 2,74 % | 2,05 % | 9,05 % |
+| 2,0 | 0,07 | — | 0,97 % | 0,97 % | 1,06 % | 6,00 % | 4,38 % | 5,85 % |
+| 2,0 | 0,05 | 5.496.760 | 0,89 % | 1,10 % | 1,77 % | 5,55 % | 2,56 % | 7,84 % |
+| 3,0 | 0,10 | — | 0,67 % | 0,97 % | 1,91 % | 3,40 % | 3,04 % | 5,51 % |
+| **3,0** | **0,07** | — | **0,27 %** | **1,43 %** | **0,94 %** | **2,26 %** | **3,46 %** | **2,32 %** |
+| 3,0 | 0,05 | 13.682.373 | **no completó** (ver abajo) | | | | | |
+| 4,0 | 0,10 | — | 1,27 % | 4,11 % | 1,99 % | 4,84 % | 3,06 % | 5,58 % |
+| 4,0 | 0,07 | 10.106.195 | **no completó** (ver abajo) | | | | | |
+| 4,0 | 0,05 | 28.095.569 | **no completó** (ver abajo) | | | | | |
+
+(Errores vectoriales relativos contra la referencia filamentaria, igual
+convención que la sección anterior. Recorrido en una VM de 14 vCPU / 15 GiB
+RAM / 12 GiB swap; conteos de tetraedros de aire omitidos con "—" cuando no
+se guardó el manifiesto de esa corrida puntual.)
+
+**Nueva configuración recomendada: `padding=3,0 m`, `air-size=0,07 m`.**
+Es el mejor resultado de las 6 combinaciones que sí completaron — el más
+bajo en 4 de los 6 puntos de diagnóstico, y el punto más lejano `[5,0,0]`
+baja a 2,32 %, mejor que el 4,6 % de la configuración anterior. Reemplaza a
+`padding=2,0 / air-size=0,10` como referencia de este documento.
+
+**Patrón de retornos decrecientes:** de padding 2→3 hay mejora clara y
+consistente; de padding 3→4 ya no la hay (`4,0/0,10` es peor que `3,0/0,10`
+en 4 de 6 puntos) — el dominio ya está en régimen asintótico alrededor de
+padding≈3 m, y seguir agrandándolo sin refinar la malla en la misma
+proporción no ayuda más. Esto es consistente con la sección anterior
+("el efecto es aproximadamente aditivo"): pasado cierto punto, agrandar
+solo un eje dejó de traducirse en menor error.
+
+**Tres combinaciones no completaron, por límite real de memoria de esta
+VM, no por un problema del método:**
+- `padding=3,0 / air-size=0,05` (13.682.373 tetraedros de aire): el proceso
+  `ElmerSolver` fue terminado por el OOM killer del kernel (`SIGKILL`,
+  código de salida 137) tanto con 14 hilos como reintentando con 4 hilos —
+  descarta que el problema fuera solo de picos de memoria por hilos de
+  OpenMP; es el tamaño absoluto de la malla en RAM+swap combinados (26 GiB
+  en esta VM) lo que no alcanza.
+- `padding=4,0 / air-size=0,07` (10.106.195 tetraedros de aire): terminó
+  por `timeout` (1800 s) en el primer intento — sobrevivió a la memoria
+  pero el ensamblaje se volvió demasiado lento, probablemente por
+  paginación a swap durante el cómputo, no por falta de núcleos.
+- `padding=4,0 / air-size=0,05` (28.095.569 tetraedros de aire, la
+  combinación más pesada del grid): el propio `mesh_exterior.py` fue
+  terminado por el OOM killer **durante la escritura del `.msh`**, antes
+  siquiera de llegar a `ElmerSolver` — con 28 millones de tetraedros el
+  paso de mallado en sí ya no cabe en esta máquina.
+
+Ninguno de estos tres casos se recuperó reintentando con menos hilos
+(`OMP_NUM_THREADS=4`): el cuello de botella es memoria total disponible,
+no paralelismo — una máquina con más RAM podría completarlos sin cambiar
+ningún parámetro del método. No se investigó bajar `--threads` en el propio
+`mesh_exterior.py` (que sigue usando 14 para el mallado con Gmsh,
+independiente de los hilos de `ElmerSolver`) como mitigación adicional.
+
+No es una convergencia formal ampliada (siguen siendo 2-3 niveles por eje,
+no una secuencia de Richardson), y sigue limitada al piloto de tres vueltas,
+sección circular, un solo circuito — las mismas limitaciones ya señaladas
+arriba. Pero con 6 puntos de este barrido más amplio, la lectura de
+`padding=3,0/air-size=0,07` como mejor configuración conocida es más sólida
+que la anterior (más combinaciones descartadas explícitamente, no solo
+mejor resultado puntual).
+
+## Búsqueda de configuraciones de bobina alternativas 100 % reproducibles (2026-09-10)
+
+Motivación: Geom14/ARSSEM (ver `GEOM14_STATUS.md`) tiene vacíos de datos
+documentados — separación entre bobinas del Double Helix, si el arreglo
+lleva endcaps, corriente de operación vinculada específicamente a Geom14,
+detalle capa-por-capa de la cinta YBCO. Se investigó si existe en la
+literatura pública una configuración de bobina(s) para blindaje magnético
+activo espacial que esté completamente especificada (sin vacíos que exijan
+extrapolar), evitando así ese problema en la raíz.
+
+**Resultado: ninguna fuente es plug-and-play, pero CREW HaT (corregido
+2026-09-10, ver nota abajo) es un candidato genuinamente mejor que Geom14.**
+El research inicial (búsqueda automatizada, sin acceso al PDF completo de
+CREW HaT) subestimó esa fuente; una segunda verificación dirigida, que sí
+descargó y leyó el reporte NIAC completo y la tesis de 2024, corrige esa
+lectura — ver el bloque de CREW HaT más abajo. El patrón de omisión de
+corriente de operación y número de vueltas que ya tiene Geom14 se repite,
+con distinto grado, en el resto de la literatura de blindaje magnético
+espacial revisada:
+
+- **Ambroglini/Battiston et al.** (*Frontiers in Oncology* 6:97, 2016;
+  PMC4896949, acceso abierto), el origen conceptual del propio diseño
+  Double Helix que adoptó ARSSEM: especifica diámetro (2 m), ancho de cinta
+  YBCO (4 mm) y campo integral objetivo (BL≈4 Tm), pero no publica
+  corriente, número de vueltas, paso de devanado ni longitud exacta — el
+  mismo vacío que Geom14, en la fuente de la que Geom14 deriva.
+- **SR2S** (proyecto FP7, toroidal MgB2 de 120 bobinas racetrack): sí
+  detalla composición de cable por capa y estructura de soporte, pero
+  tampoco publica corriente/vueltas por bobina. Es la única de esta lista
+  con un **demostrador físico real** construido y probado en corriente de
+  transporte (CERN/Columbus Superconductors) — pero los valores medidos de
+  corriente/campo de esa bobina de prueba no se pudieron confirmar desde
+  fuentes de acceso abierto (quedan en papers con paywall de IEEE/ScienceDirect).
+- **CREW HaT** (arXiv:2209.13624 es el preprint conceptual anterior, ICES
+  2022, Desiati & D'Onghia; el documento con datos reales es el **reporte
+  técnico NASA NIAC Phase I** — "Cosmic Radiation Extended Warding using
+  the Halbach Torus", D'Onghia, Univ. Wisconsin-Madison, NTRS 20250002403,
+  PDF completo de 80 páginas — más la **tesis de maestría de 2024**, Ziyang
+  Hang, "Superconducting Magnets Design for Shielding from Cosmic Rays",
+  asesor Franklin Miller, repositorio MINDS@UW handle 1793/85233).
+  **Verificado leyendo ambos documentos completos (2026-09-10), no solo el
+  abstract**: Halbach Torus de **8 bobinas elípticas**, radio Halbach 8 m,
+  semieje mayor 4 m, aspect ratio 2 (semieje menor 2 m), campo pico ~10 T
+  sobre el conductor, temperatura de diseño 40 K (Tabla 3.1, p. 15, y
+  §4.5 del reporte NIAC). **Con una ambigüedad real, no resuelta por el
+  propio reporte:** el dato de corriente de la Tabla 3.1 (`I = 1×10⁷ A`) es
+  la corriente **total** del sistema de bobina, no la corriente de
+  conductor ni un número de vueltas — el reporte deja abiertas dos
+  alternativas de conductor sin decidir entre ellas: cinta YBCO de 4 mm
+  (necesitaría ~125.000 vueltas para llegar a esa corriente total, con
+  Ic real de conductor ~80 A a 10 T/40 K) o cable CORC de 8 mm (~2.632
+  vueltas). La tesis de 2024 sí añade vueltas/capas concretas, grosor de
+  winding pack y análisis de esfuerzo mecánico (hoop stress) para ambas
+  opciones, pero sin cerrar cuál de las dos es la de diseño final. En
+  síntesis: **más completo que Geom14** (dimensiones de conjunto, campo
+  pico y temperatura sí están fijados sin ambigüedad, y hay curva Ic
+  vs. campo/temperatura del conductor) pero **no elimina la necesidad de
+  una decisión propia del equipo** — aquí, elegir conductor (cinta vs.
+  CORC) en vez de estimar separación radial o presencia de endcaps como en
+  Geom14. Es el candidato más prometedor de esta lista para adaptar al
+  pipeline (Halbach de bobinas elípticas con corriente prescrita, sin
+  quench ni transitorios, igual que el resto del pipeline ya asume).
+- **NASA NIAC/MAARSS** (NTRS 20190002579, Advanced Magnet Lab): da
+  geometría de conjunto (solenoides de 8 m ⌀ × 20 m, campo uniforme 1 T) y
+  estructura de soporte, pero no corriente ni vueltas en el resumen
+  disponible. El reporte completo (no solo el resumen NTRS) no se pudo
+  decodificar con las herramientas de búsqueda usadas — queda como
+  candidato a revisar manualmente, no descartado con certeza.
+- **Double-Helix dipole original** (Goodzeit/Ball/Meinke, IEEE Trans. Appl.
+  Supercond. 2003; reporte técnico OSTI 817768): un dipolo de acelerador
+  real, construido y medido (4 T en apertura de 80 mm) — es el origen
+  técnico del principio Double Helix, con datos de un magneto realmente
+  fabricado, pero es geometría de acelerador de partículas (apertura de
+  80 mm), no blindaje espacial, y a otra escala por completo que Geom14. El
+  reporte técnico completo de OSTI tampoco se pudo decodificar con las
+  herramientas de búsqueda; mismo caso que MAARSS, candidato pendiente de
+  revisión manual.
+
+**Conclusión práctica (corregida 2026-09-10):** ningún diseño publicado es
+reproducible sin al menos una decisión propia del equipo, pero **CREW HaT
+(reporte NIAC + tesis 2024 combinados) es un candidato genuinamente más
+completo que Geom14/ARSSEM** y vale la pena evaluarlo como alternativa, no
+solo como antecedente bibliográfico: fija dimensiones de conjunto, número
+de bobinas, campo pico y temperatura sin ambigüedad, y da curva Ic del
+conductor vs. campo/temperatura — la única decisión pendiente es elegir
+entre sus dos alternativas de conductor (cinta YBCO vs. cable CORC), cada
+una con su propio número de vueltas ya calculado en la tesis. Esto es
+menos trabajo de extrapolación que el que exige hoy Geom14 (que además de
+elegir conductor requiere estimar separación radial entre bobinas y decidir
+si hay endcaps, sin ningún dato del paper para apoyar esa decisión). Si el
+equipo decide migrar de Geom14 a CREW HaT como geometría de referencia, es
+un cambio de alcance que debe decidirse explícitamente, no algo que este
+documento resuelve por su cuenta — pero la comparación ya no favorece
+seguir con Geom14 solo por default. Los otros candidatos (SR2S,
+Ambroglini/Battiston, Double-Helix dipole de acelerador) siguen sirviendo
+como antecedentes conceptuales o casos de validación de método, no como
+reemplazo de la geometría de referencia. Dos reportes (OSTI 817768 del
+dipolo Double-Helix, y el MAARSS completo de NTRS) siguen sin decodificarse
+con las herramientas de búsqueda usadas — candidatos a revisión manual
+futura, sin la prioridad de CREW HaT tras esta verificación.
+
+## CREW HaT: datos verificados para el generador CAD (2026-09-10)
+
+Segunda ronda de verificación, dirigida específicamente a los números que
+hacen falta para generar la geometría (no solo confirmar que la fuente es
+"más completa que Geom14" en general). Misma fuente primaria ya verificada
+arriba (reporte NIAC Phase I completo, NTRS 20250002403; tesis 2024, Ziyang
+Hang, MINDS@UW 1793/85233) — cita exacta de página/sección para cada dato.
+
+**Corrección de nomenclatura**: las bobinas de CREW HaT son **elípticas**,
+no "racetrack" — ese término corresponde al diseño de SR2S (proyecto
+distinto). Cualquier archivo/generador para CREW HaT debe llamarse
+`generate_ellipse.py` o similar, no `generate_racetrack.py`.
+
+**Geometría de la bobina** (Tabla 3.1, p. 15, reporte NIAC): semieje mayor
+4 m, aspect ratio 2 (semieje menor 2 m), radio Halbach 8 m, 8 bobinas,
+corriente total del sistema I=1×10⁷ (ampere-vuelta, no corriente de un
+conductor — ver más abajo), campo pico ~10 T sobre el conductor, temperatura
+de diseño 40 K (Sección 4.5, p. 28).
+
+**Opciones de conductor, con winding pack ya calculado por la tesis** (no
+un factor de empaquetamiento simple: la tesis suma perímetro capa por capa,
+Ec. 2.10-2.12, p. 35 — usar sus cifras finales de grosor directamente, no
+recalcular desde N×área_conductor):
+
+| Conductor | Ic a 10T/40K | Vueltas (I_total/Ic) | Grosor winding pack (elíptico, optimizado) |
+|---|---:|---:|---:|
+| Cinta YBCO 4 mm | 80 A (p. 10, 32) | ~125.000 | No calculado en Tabla 2.7/2.8 |
+| Cinta YBCO 12 mm | 240 A (Ec. 2.8, p. 33) | ~41.667 | **1,43 m** (Tabla 2.7, p. 51-52) |
+| Cable CORC 8 mm | ≈3.800 A (p. 34) | ~2.632 | **0,67 m** (Tabla 2.8, p. 53-54) |
+
+(Tabla 2.3, p. 38, da cifras "fixed" anteriores a la optimización de masa:
+1,3 m para cinta 12mm y 0,7 m para CORC — usar las de Tabla 2.7/2.8, más
+recientes y ya optimizadas, no estas. Hay además una cifra temprana e
+inconsistente en la Sección 2.2.1, p. 14, de un modelo FEM ilustrativo
+—0,43 m axial × 0,34 m radial, mismas 41.667 vueltas— que el equipo no debe
+usar: es una ilustración preliminar del método, no el resultado final.)
+
+Sección de conductor individual: cinta YBCO, ~0,1 mm de espesor total
+(desglose de capas en Tabla 2.2, p. 32: Cu 40µm, Ag 2µm, YBCO 1µm, buffer
+0,2µm, Hastelloy C-276 50µm, Ag 1,8µm — suma ≈95µm, consistente con la
+cinta SCS4050 ya usada en Geom14), ancho 4 o 12mm. CORC: cable redondo de
+8mm de diámetro, 48 cintas de 4mm enrolladas sobre núcleo de Cu sólido de
+3,2mm a 65° (Sección 2.5.2, p. 34).
+
+**Decisión de modelado — winding pack homogeneizado, no vuelta por vuelta**:
+ni 41.667 ni 2.632 vueltas son viables de trazar individualmente con el
+enfoque de `generate_dh.py`/`mesh_swept.py` (diseñado para una Double Helix
+de pocas vueltas, donde cada vuelta importa físicamente). Una bobina
+elíptica de CREW HaT no tiene ese requisito — es modelable como un sólido
+único barrido a lo largo de la elipse, con densidad de corriente
+J=I_total/área_sección(grosor de la tabla de arriba). Esto es lo que
+permite evaluar cinta y CORC como dos configuraciones del mismo generador
+en vez de dos escalas de cómputo completamente distintas.
+
+**Nave/hábitat**: el reporte fija R_sc=4,5 m (radio, Sección 3.1, p. 10,
+asumiendo el diámetro de SpaceX Starship) para calcular el radio Halbach,
+aclarando explícitamente que "el volumen interior y layout del hábitat
+permanecen sin determinar" (p. 9) — **no da longitud axial del cilindro
+habitable**. Mayor que el radio actual del proyecto (2,8 m). Decidido
+escalar la nave a 4,5 m (`/spacecraft/shipRadius`, ver AGENTS.md) en vez de
+reescalar la bobina — reversible sin recompilar si se retoma Geom14/ARSSEM.
+
+**Lo que falta y no está en ninguno de los dos documentos** (búsqueda
+explícita, confirmado que no está, no que falte revisar más):
+- Longitud axial del hábitat.
+- Un factor de empaquetamiento/relleno escalar del winding pack (se calcula
+  capa por capa en su lugar, ver arriba).
+- El patrón angular explícito de las 8 bobinas en el arreglo Halbach: el
+  reporte solo distingue cualitativamente bobinas "radiales" (perpendicular
+  al eje, fuerza neta hacia el centro) de "tangenciales" (paralelas al eje,
+  Sección 5.2, p. 44-45) — sin una tabla de ángulos por bobina. El patrón
+  típico de un Halbach dipolar de 8 elementos (rotación de 2× el ángulo
+  azimutal por elemento) tendría que aplicarse como fórmula estándar de la
+  ingeniería de imanes, marcada explícitamente como tal y no como dato de
+  esta fuente, si se necesita antes de tener el arreglo completo.

@@ -21,7 +21,7 @@ import platform
 import gmsh
 import numpy as np
 from generate_dh import controls
-from generate_mesh import digest
+from provenance import digest
 
 
 def generate(config, directory, enclosing_factor=3.0):

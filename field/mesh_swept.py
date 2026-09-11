@@ -10,7 +10,7 @@ import time
 import gmsh
 import numpy as np
 from generate_dh import controls, has_tape_section
-from generate_mesh import digest
+from provenance import digest
 
 
 def sample_spine(config, step, sagitta):

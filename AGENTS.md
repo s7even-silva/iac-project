@@ -188,6 +188,59 @@ fuentes y pendientes en
   fallback al nombre corto del sistema si no existe) pasados explícitamente
   como `-DCMAKE_C_COMPILER`/`-DCMAKE_Fortran_COMPILER` en la compilación
   de Elmer, junto al `-DCMAKE_CXX_COMPILER` que ya se pasaba.
+- **Fix (2026-09-10):** `--with-elmer` volvía a fallar en otra máquina
+  nueva (una VM), otra vez con "Could not determine the Fortran compiler
+  version" / "GNU Fortran major version is too old" — con `gfortran` de
+  conda ya resuelto correctamente por el fix anterior (`GFORTRAN_BIN`
+  apuntaba bien, `--version` reportaba 15.2.0). Causa raíz distinta esta
+  vez, confirmada reproduciendo a mano el `try_run` que usa el propio
+  chequeo de versión de Elmer (`cmake/Modules/testGFortranVersion.cmake`
+  compila y **ejecuta** un programa de prueba, no confía en
+  `CMAKE_Fortran_COMPILER_VERSION`): cualquier binario enlazado con el
+  compilador de conda-forge abortaba al ejecutarse con "CPU ISA level is
+  lower than required", no con un error de compilación. El `Scrt1.o` del
+  sysroot de conda-forge trae una nota ELF (`GNU_PROPERTY_X86_ISA_1_NEEDED`)
+  que exige hasta `x86-64-v3`; esta VM (KVM/Oracle) expone `avx2`/`bmi2`
+  en `/proc/cpuinfo` pero le faltan `fma`/`f16c`/`lzcnt`/`osxsave` —
+  también requeridos por v3 — así que el dynamic linker del sistema
+  (`ld.so`, que reporta él mismo "x86-64-v2 (supported, searched)")
+  rechaza el binario en tiempo de ejecución. `try_run` no distingue
+  "compilador viejo" de "el binario no puede ni arrancar aquí", de ahí el
+  mensaje engañoso. Ni `-march=x86-64-v2` ni `-Wl,-z,x86-64-v2` en la
+  compilación del usuario cambian la nota (viene del `Scrt1.o` precompilado
+  del sysroot, no del objeto propio); el `Scrt1.o` del sistema, en cambio,
+  solo exige baseline y el gfortran del sistema (misma versión 15.2.0)
+  funciona sin problema. Corregido: antes de compilar Elmer, `install.sh`
+  reproduce la misma prueba compile+run con el compilador de conda: si
+  falla, cae automáticamente a `gcc`/`g++`/`gfortran` del sistema solo
+  para Elmer (que no enlaza contra ningún paquete conda de Geant4/CLHEP,
+  así que esto no reintroduce el problema de sysroots mezclados del primer
+  fix de Elmer). El resto del proyecto (`GXX_BIN`/`GCC_BIN`/`GFORTRAN_BIN`
+  para Geant4) sigue igual, sin tocar. Verificado en esa VM: Elmer compila,
+  `ElmerSolver --version` corre, y el binario final exige solo
+  `x86-64-baseline` (confirmado con `readelf -n`).
+- **Fix (2026-09-10), corrige una afirmación sin verificar del fix
+  anterior:** ese mismo día se descubrió que `GCR_SEP_Sim`/`ActiveShield_Sim`
+  compilados por el paso de "verificación final" de `install.sh` (que usa
+  `GXX_BIN`, el compilador largo de conda) **tampoco podían ejecutarse**
+  en esa VM — mismo síntoma exacto que Elmer, "CPU ISA level is lower than
+  required", confirmado con `readelf -n` (exige hasta x86-64-v3). El
+  comentario del fix anterior afirmaba que "GXX_BIN/GCC_BIN/GFORTRAN_BIN
+  deben seguir en conda para Geant4 mismo" — nunca se verificó
+  empíricamente esa necesidad, solo se asumió por analogía con el problema
+  real de Elmer. Repitiendo el mismo diagnóstico (compilar y **correr** el
+  binario, no solo compilarlo) se confirmó que **no hay tal necesidad**:
+  a diferencia de Elmer (que compila su propio C/C++/Fortran desde cero,
+  donde sí importa un triplete de compiladores consistente), estos dos
+  proyectos solo compilan un puñado de `.cc` propios que enlazan contra
+  bibliotecas `.so` ya compiladas de Geant4/CLHEP — el enlazado dinámico
+  no exige que el compilador cliente comparta sysroot con la librería.
+  `g++` del sistema (el mismo que ya recomiendan, sin verificar hasta
+  ahora, los comandos manuales de este archivo y de cada README) compila,
+  enlaza y **ejecuta** sin problema. Corregido: los dos `cmake` de la
+  verificación final de `install.sh` usan `g++` a secas en vez de
+  `$GXX_BIN`. `GXX_BIN` en sí no se tocó — Elmer lo sigue usando para su
+  propio build desde fuente, donde el diagnóstico original si aplica.
 - Elmer FEM instalado (`scripts/install.sh --with-elmer`, brecha 3) y
   corriendo (`CoilSolver` + `WhitneyAVSolver` + `MagnetoDynamicsCalcFields`,
   `field/examples/elmer_pilot.sif`), con dos bugs reales de `.sif`
@@ -231,6 +284,15 @@ fuentes y pendientes en
 - Cilindro de dimensiones exteriores 5.6 × 10 m, casco `G4_Al` de **1.5 cm**
   (sustituye 5 cm), tapas planas. Referencia radiológica de Al, no casco de
   aleación Al 2219 ni diseño estructural validado.
+- **Implementado 2026-09-10:** `shipRadius`/`shipHalfLength` (antes
+  constantes C++ fijas, `2.8*m`/`5.*m`) ahora son comandos de mensajero
+  (`/spacecraft/shipRadius <m>`, `/spacecraft/shipHalfLength <m>`, mismo
+  patrón que `hullThickness`), con esos mismos valores como default para
+  no alterar ninguna corrida de Geom14 ya hecha. Necesario para evaluar
+  CREW HaT (ver más abajo): su radio de referencia (`R_sc=4.5 m`, NIAC
+  Phase I, asumiendo el diámetro de SpaceX Starship) es mayor que el
+  actual — antes exigía editar C++ y recompilar para comparar tamaños de
+  nave; ahora es una línea de macro, reversible sin recompilar.
 - `World → MagnetEnvelope → {ShipHull, ShipInterior → fantoma}`. Casco y
   cabina son hermanos; las futuras bobinas externas serán hijas de
   `MagnetEnvelope`, nunca del interior presurizado.
@@ -316,6 +378,87 @@ fuentes y pendientes en
 - Elegir física de producción (`QGSP_BIC_HP` actual vs `Shielding` del piloto).
 - La posible novedad del artículo requiere revisión bibliográfica; calcular B
   dentro o fuera de Geant4 no demuestra por sí mismo una contribución novedosa.
+- **CREW HaT (2026-09-10): decidido desarrollar en paralelo a Geom14, no
+  reemplazarlo.** Búsqueda de una configuración de bobina 100% reproducible
+  que evite extrapolar los vacíos de ARSSEM; verificado leyendo el reporte
+  NASA NIAC Phase I completo (D'Onghia, NTRS 20250002403) y la tesis de
+  maestría 2024 (Ziyang Hang, MINDS@UW 1793/85233), no solo el abstract.
+  CREW HaT es un **Halbach Torus de 8 bobinas elípticas** (no "racetrack" —
+  corrección de nomenclatura, ese término aplica a SR2S, un diseño
+  distinto) — fija más parámetros sin ambigüedad que Geom14: semieje mayor
+  4 m, aspect ratio 2, radio Halbach 8 m, campo pico ~10 T, temperatura de
+  diseño 40 K, corriente total del sistema 1×10⁷ A·vuelta (Tabla 3.1, p. 15
+  del reporte NIAC).
+
+  **Conductor — decisión: construir ambas opciones y comparar** (no eran
+  tan costosas de comparar como parecía inicialmente, ver más abajo):
+  cinta YBCO 12 mm (Ic=240A a 10T/40K → ~41.667 vueltas, winding pack 1,43 m
+  elíptico, Tabla 2.7 de la tesis) y cable CORC 8 mm (Ic≈3.800A →
+  ~2.632 vueltas, winding pack 0,67 m elíptico, Tabla 2.8). Se empieza por
+  la cinta 12 mm. (La cinta de 4 mm de la tesis, Ic=80A → ~125.000 vueltas,
+  queda descartada por ahora: mismo conductor pero un orden de magnitud
+  más vueltas para el mismo winding pack, sin ninguna ventaja aparente
+  sobre la de 12 mm para este proyecto.)
+
+  **Decisión de modelado clave**: a diferencia de la Double Helix de
+  Geom14 (donde trazar cada vuelta es físicamente necesario para el
+  mecanismo de autocancelación del campo solenoidal propio), una bobina
+  elíptica de CREW HaT es N vueltas idénticas apiladas sin ese requisito
+  — se modela como **un solo sólido barrido homogeneizado** (densidad de
+  corriente equivalente J=I_total/área_winding_pack), no vuelta por vuelta.
+  Sin esto, cualquiera de las dos opciones de conductor (41.667 o 2.632
+  vueltas) sería inviable de mallar con el enfoque per-vuelta que usa
+  `generate_dh.py`/`mesh_swept.py` para la Double Helix.
+
+  **Nave**: el reporte NIAC asume R_sc=4,5 m (radio, diámetro de SpaceX
+  Starship), sin fijar la longitud axial del hábitat ("permanece sin
+  determinar", p. 9) — mayor que el radio actual del proyecto (2,8 m).
+  **Decidido escalar la nave a 4,5 m** en vez de reescalar la bobina a
+  nuestra nave, reversible sin recompilar: `shipRadius`/`shipHalfLength`
+  (ver más arriba) dejaron de ser constantes C++ fijas para permitir
+  volver a 2,8 m si se retoma Geom14/ARSSEM más adelante.
+
+  **Lo que ningún documento da** (confirmado buscando explícitamente, no
+  es que falte revisar más): longitud axial del hábitat, un factor de
+  empaquetamiento/relleno escalar del winding pack (la tesis calcula el
+  grosor capa por capa, Ec. 2.10-2.12 p. 35, no con un factor simple), y
+  el patrón angular explícito de las 8 bobinas en el arreglo Halbach (solo
+  describe cualitativamente bobinas "radiales" vs. "tangenciales", p. 44-45
+  — el patrón angular de un Halbach dipolar de 8 elementos tendrá que
+  aplicarse como fórmula estándar de ingeniería de imanes, no como dato de
+  la fuente).
+
+  **Implementado 2026-09-10:** `field/generate_ellipse.py`, una sola
+  bobina elíptica cerrada con sección transversal cuadrada homogeneizada
+  (representa el winding pack completo, no un conductor individual —
+  ninguna vuelta se traza por separado, a diferencia de la Double Helix).
+  Reutiliza `_conductor_profile()` de `generate_dh.py` sin modificarlo
+  (mismo principio que `generate_array.py`). Genera ambas variantes de
+  conductor con las cifras reales verificadas (winding pack de 1,43 m para
+  cinta 12mm, 0,67 m para CORC) — volumen CAD validado contra la
+  estimación analítica perímetro×área en <0,1% para ambas
+  (`field/tests/test_ellipse.py`). **Mallado, GDML e importación en Geant4
+  validados de punta a punta el mismo día**: a diferencia de la Double
+  Helix, esta elipse **no necesita** el workaround de `mesh_swept.py` —
+  el mallador Gmsh 2D/3D estándar (`generate_mesh.py`) completa sin
+  atascarse (curvatura mucho más suave), con solo 0,016% de diferencia
+  entre volumen de malla y CAD. Importado en `ActiveShield_Sim` vía
+  `/spacecraft/coilGeometry` sin solapamientos, con masa y trayecto de
+  sonda geantino coincidiendo exactamente con lo esperado. **Campo
+  Biot-Savart también calculado y probado con una partícula cargada real
+  el mismo día**: `compute_field.py` sin cambios; deflexión real medida
+  (hasta -77,9 mm) en un protón de 9,9 GeV cruzando la región de campo en
+  Geant4 — energía alta elegida a propósito porque `ActiveShield_Sim`, a
+  diferencia de `GCR_SEP_Sim`, no tiene protección contra partículas
+  atrapadas en campos fuertes. El arreglo de las 8 bobinas, Elmer y el
+  material HTS real **todavía no existen** — ver
+  [`field/CREWHAT_STATUS.md`](field/CREWHAT_STATUS.md) para el detalle
+  completo de brechas y las decisiones de modelado propias marcadas
+  explícitamente (sección cuadrada sin segunda dimensión de la fuente,
+  radio de regularización de Biot-Savart sin validar, margen de curvatura
+  de la elipse). Cifras exactas con cita de página en
+  [`field/ELMER_VALIDATION.md`](field/ELMER_VALIDATION.md) y comparación
+  con Geom14 en [`field/GEOM14_STATUS.md`](field/GEOM14_STATUS.md).
 
 ## Estructura de `geant4/GCR_SEP_Sim/`
 

@@ -11,7 +11,7 @@ import time
 
 import gmsh
 import numpy as np
-from generate_mesh import digest
+from provenance import digest
 from mesh_to_gdml import boundary
 
 

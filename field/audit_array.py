@@ -16,7 +16,7 @@ import numpy as np
 
 from audit_dh import mesh_volume
 from compute_field import field_at
-from generate_mesh import digest
+from provenance import digest
 
 
 def audit(source, mesh=None, critical_current=None):

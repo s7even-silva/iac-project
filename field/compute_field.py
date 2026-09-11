@@ -7,8 +7,7 @@ from pathlib import Path
 import platform
 
 import numpy as np
-from generate_mesh import digest
-
+from provenance import digest
 
 def field_at(points, path, current, core_radius):
     """Analytic integral per straight segment of a softened 1/r^3 kernel.

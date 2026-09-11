@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 from compute_field import field_at
 from elmer_to_map import load_vtu, resample
-from generate_mesh import digest
+from provenance import digest
 
 
 def compare(vtu, source, probes, min_clearance_radii=10.):

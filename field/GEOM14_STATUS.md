@@ -94,6 +94,43 @@ documento** — decidir con criterio propio cuál de los dos números usar (0,2 
 por capa está citado dos veces y es internamente consistente con "8 capas";
 1,6 µm aparece una sola vez y contradice esa multiplicación).
 
+## Alternativa evaluada: CREW HaT en vez de Geom14 (2026-09-10, propuesta no decidida)
+
+Se investigó si existe en la literatura pública una configuración de bobina
+para blindaje magnético espacial completamente especificada, para evitar
+extrapolar los vacíos de la tabla de arriba. Resultado detallado y fuentes
+en [`field/ELMER_VALIDATION.md`](../field/ELMER_VALIDATION.md#búsqueda-de-configuraciones-de-bobina-alternativas-100--reproducibles-2026-09-10).
+
+**CREW HaT** (NASA NIAC Phase I, D'Onghia, Univ. Wisconsin-Madison, NTRS
+20250002403 + tesis de maestría 2024 de Ziyang Hang, MINDS@UW 1793/85233)
+es un Halbach Torus de **8 bobinas elípticas** (semieje mayor 4 m, aspect
+ratio 2, radio Halbach 8 m), verificado leyendo ambos documentos completos,
+no solo el resumen. Fija sin ambigüedad: número de bobinas, forma,
+dimensiones de conjunto, campo pico (~10 T) y temperatura de diseño (40 K),
+y da curva Ic del conductor vs. campo/temperatura — más de lo que Geom14
+fija hoy en la tabla de arriba.
+
+**No es plug-and-play tampoco**: el dato de corriente de su Tabla 3.1
+(`I = 1×10⁷ A`) es la corriente **total** del sistema, no vueltas × corriente
+de conductor por separado. El reporte deja dos alternativas de conductor sin
+decidir entre ellas — cinta YBCO de 4 mm (~125.000 vueltas necesarias, Ic
+real ~80 A a 10 T/40 K) o cable CORC de 8 mm (~2.632 vueltas), ambas con
+vueltas/capas y análisis de esfuerzo mecánico ya calculados en la tesis de
+2024. Sigue exigiendo una decisión propia del equipo (elegir conductor),
+pero es una sola decisión bien acotada, no varias sin ningún dato de apoyo
+como exige hoy Geom14 (separación radial entre bobinas, presencia de
+endcaps, ambos sin ningún número del paper ARSSEM que los sustente).
+
+**Estado: propuesta, no decisión.** Migrar la geometría de referencia de
+Geom14 a CREW HaT es un cambio de alcance (topología distinta: Halbach
+Torus de bobinas elípticas vs. Double Helix de 12 bobinas barrel+endcaps)
+que el equipo debe decidir explícitamente, no algo que se resuelve solo
+por tener mejor documentación. Si se decide migrar, la brecha 1 de más
+abajo (fijar los ~10 parámetros dimensionales) se resolvería con los
+números de CREW HaT en vez de extrapolar Geom12/13; las brechas 2-5
+(malla, Elmer, convergencia, arreglo completo) siguen aplicando igual,
+son del método, no de la geometría específica.
+
 ### Qué está y qué no está explícitamente bajo el rótulo "Geom14" (verificado 2026-09-08)
 
 Lectura directa de ARSSEM confirma algo importante para no sobre-prometer
@@ -348,17 +385,44 @@ de investigación bibliográfica adicional.
        **Sí funciona y es muy rápido** (32,5 s vs. 40 min con el dominio
        CAD grande) para geometría/topología, pero no da hoy un campo
        comparable a Biot-Savart para curvas de curvatura fuerte como esta.
-   - **Estado 2026-09-09**: ninguno de los dos caminos de dominio de aire
-     (esfera grande vía CAD, cascarón delgado vía `mesh_swept_air.py`) da
-     un campo Elmer validado contra Biot-Savart sobre la geometría real
-     de la doble hélice. El camino de la esfera grande completa en tiempo
-     razonable (40 min) pero da una discrepancia de dirección/magnitud sin
-     diagnosticar; el camino del cascarón delgado es rápido pero
-     geométricamente limitado a un dominio demasiado pequeño para esta
-     curvatura. **No bloquea el proyecto**: la simulación piloto de
-     Geant4 (bobina + campo) ya corre de punta a punta usando el mapa
-     Biot-Savart regularizado (`compute_field.py`), que es la vía activa
-     documentada — ver `geant4/ActiveShield_Sim/tests/dh_pilot.mac`.
+   - **Estado 2026-09-09 (superado, ver actualización más abajo):**
+     ninguno de los dos caminos de dominio de aire (esfera grande vía CAD,
+     cascarón delgado vía `mesh_swept_air.py`) daba un campo Elmer validado
+     contra Biot-Savart sobre la geometría real de la doble hélice. El
+     camino de la esfera grande completaba en tiempo razonable (40 min)
+     pero con una discrepancia de dirección/magnitud sin diagnosticar; el
+     cascarón delgado era rápido pero geométricamente limitado a un
+     dominio demasiado pequeño para esta curvatura.
+
+   - **Causa raíz encontrada y corregida (2026-09-09, mismo día, commit
+     posterior):** no era un límite geométrico del dominio de aire —
+     `ChooseFixedBulkNodesNarrow`/`ChooseCoilCut` en `CoilSolver.F90`
+     recorrían todos los elementos volumétricos al elegir el corte del
+     devanado cerrado, incluidos los tetraedros de aire, que podían
+     puentear candidatos de corte que debían quedar separados en el
+     devanado. `field/build_coilsolver.py` compila un módulo local
+     `CoilSolverRestricted.so` (parche local sobre una revisión fijada de
+     Elmer, SHA256 verificado, licencia LGPL preservada — no es un fix
+     oficial upstream) que restringe esos recorridos a los elementos
+     activos. Con este fix, el punto central pasó de razón FEM/BS ≈0,18 a
+     ≈0,95 (error vectorial ≈5,7%). Un estudio posterior de convergencia
+     (`field/mesh_exterior.py`, malla de aire + dominio exterior sin el
+     límite de curvatura del cascarón) combinando refinamiento de malla y
+     tamaño de dominio bajó el error vectorial a 1,3%–5,8% en los 6 puntos
+     de diagnóstico, incluido el punto más lejano (~30 radios de hilo) que
+     antes parecía estancado. **No es una convergencia formal** (2 niveles
+     de refinamiento por eje, no Richardson ni un tercer nivel que
+     confirme monotonía) y **sigue sin cubrir** el arreglo de producción
+     (múltiples bobinas/circuitos), el campo dentro del conductor/cinta, ni
+     geometría de cinta rectangular real. Detalle completo, procedimiento
+     reproducible y tabla de la barrida de convergencia en
+     [ELMER_VALIDATION.md](ELMER_VALIDATION.md) — ese documento es ahora la
+     fuente de verdad sobre el estado de Elmer, más reciente que esta
+     sección. La simulación piloto de Geant4 (bobina + campo) sigue
+     corriendo con el mapa Biot-Savart regularizado (`compute_field.py`)
+     como vía activa de producción — ver
+     `geant4/ActiveShield_Sim/tests/dh_pilot.mac` — mientras el camino
+     Elmer valida el arreglo completo antes de reemplazarlo.
 
    - **Vía alternativa investigada (2026-09-09): exportar a Ansys Maxwell.**
      Maxwell tiene su propio mallador 3D maduro (motor ACIS/Parasolid +
