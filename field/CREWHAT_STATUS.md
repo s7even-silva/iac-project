@@ -206,11 +206,41 @@ placeholder) consistente con volumen×densidad. Regresión en
 `field/tests/test_ellipse_array.py` (4 bobinas, más rápido que las 8
 reales, mismo camino de código).
 
-- **Elmer FEM**: no probado sobre esta geometría todavía. Solo Biot-Savart
-  regularizado, y solo para una bobina aislada — no para el arreglo
-  completo de 8 (superposición de campos, análogo a
-  `compute_field_array.py` para la Double Helix, sigue sin implementar
-  para esta topología).
+- **Campo Biot-Savart superpuesto sobre las 8 bobinas, calculado y
+  validado (2026-09-10)**: `field/compute_field_ellipse_array.py`
+  (adaptador nuevo, no modifica `compute_field_array.py` — ese está
+  acoplado al esquema de config-por-bobina de `generate_array.py`, mientras
+  que este arreglo usa un `coil_template` único compartido; misma lógica
+  de superposición, solo el lector de esquema es distinto). **Resultado
+  físico central de todo este ejercicio, no solo una prueba de humo**: el
+  patrón dipolar de Halbach funciona como se espera —
+  - **Dentro del anillo** (radio 0 a 4,5m, la región de protección real
+    con la nave escalada a CREW HaT): campo razonablemente uniforme,
+    puramente en una dirección (X en este piloto), magnitud entre 0,42 y
+    0,72 T en los puntos probados (centro, ejes, diagonales dentro del
+    radio de la nave).
+  - **Fuera del anillo**: cae de 2,27 T justo en el radio de las bobinas
+    (r=8m) a 0,09 T en el borde del dominio (r=14m) — comportamiento de
+    caída esperado.
+  - **Simetría de 180° exacta**: `B(2,2,0) = B(-2,-2,0)` — la simetría de
+    punto que debe tener un campo dipolar, confirmada con precisión
+    numérica completa (no aproximada).
+  - Regresión en `test_dipole_field_pattern_inside_vs_outside_the_ring`
+    (`field/tests/test_ellipse_array.py`), con 4 bobinas por velocidad.
+  - **Sigue siendo Biot-Savart regularizado, no Elmer/FEM** — mismas
+    salvedades que la bobina individual: el núcleo de regularización
+    (10% del winding pack, sin validar) sigue siendo la limitación
+    principal para confiar en el campo cerca de las bobinas mismas, no
+    en la región de protección donde se hizo esta validación.
+- **Elmer FEM**: no probado sobre esta geometría todavía, ni para una
+  bobina ni para el arreglo completo. Dado el historial de esta sesión
+  con el piloto DH (ver `ELMER_VALIDATION.md`): mallar el dominio de aire
+  alrededor de 8 bobinas será sustancialmente más pesado en memoria que
+  una sola — antes de intentarlo, conviene repetir con esta geometría el
+  mismo tipo de barrido de convergencia (padding × air-size) ya hecho
+  para el piloto DH, y estar preparado para que el arreglo completo no
+  quepa en una máquina de recursos limitados, igual que pasó con las
+  combinaciones más finas del barrido DH.
 
 ## Lo que aún no existe
 - **Material HTS real**: el CAD usa cobre puro placeholder, no el material
