@@ -58,6 +58,17 @@ class ICRP110PhantomPrimaryGeneratorAction : public G4VUserPrimaryGeneratorActio
     G4String GetSpecies() const { return fSpecies; }
     G4String GetPhase() const   { return fPhase; }
 
+    // Bins de energia monoenergeticos para produccion (2026-09-11, ver
+    // AGENTS.md y scripts/energy_bins.py): si se fija (>=0), CADA primario
+    // nace con esta energia exacta -- MeV/amu para GCR_H/GCR_He (antes de
+    // multiplicar por A, igual que SpectrumSampler::SampleEnergy()), MeV
+    // para SEP_p -- en vez de muestrear el espectro continuo de
+    // SpectrumSampler. Default -1 (deshabilitado): mantiene el muestreo
+    // continuo tal cual para primary.mac/demos, donde no importa seguir la
+    // decision de bins de produccion.
+    void SetFixedEnergy(G4double e) { fFixedEnergy = e; }
+    G4double GetFixedEnergy() const { return fFixedEnergy; }
+
     // Flujo/fluencia integrado (SpectrumSampler::GetIntegratedFlux) de la
     // especie/fase actualmente seleccionada -- mismas unidades nativas que
     // en GCR_SEP_Sim (particles/(day*cm2) para GCR, particles/cm2 para SEP).
@@ -71,6 +82,7 @@ class ICRP110PhantomPrimaryGeneratorAction : public G4VUserPrimaryGeneratorActio
     G4ParticleGun* fGun;
     G4String fSpecies = "GCR_H";
     G4String fPhase   = "min";
+    G4double fFixedEnergy = -1.;
 
     SpectrumSampler* fGCR_H_max  = nullptr;
     SpectrumSampler* fGCR_H_min  = nullptr;

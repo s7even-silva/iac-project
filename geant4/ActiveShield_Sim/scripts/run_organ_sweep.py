@@ -1,38 +1,74 @@
 #!/usr/bin/env python3
-"""Corre el barrido reducido de dosis por organo en ActiveShield_Sim: 3
-especies (en su fase mas peligrosa) x 5 posiciones del fantoma, a la maxima
-intensidad de campo del barrido de GCR_SEP_Sim (10 T) -- ver AGENTS.md,
-seccion ActiveShield_Sim / analisis de riesgo estocastico.
+"""Corre el barrido de dosis por organo en ActiveShield_Sim con BINS de
+energia monoenergeticos (3 especies en su fase mas peligrosa x 8 bins de
+energia x 5 posiciones radiales del fantoma = 120 corridas), con el campo
+magnetico FIJO al maximo del arreglo Halbach de 8 bobinas de CREW HaT
+(diseno NIAC, corriente de diseno 1e7 A por bobina -- ver AGENTS.md,
+seccion ActiveShield_Sim / analisis de riesgo estocastico).
 
-Esto NO es un barrido de campo/fase completo: se decidio (2026-09-10)
-reducirlo al escenario que le interesa al usuario -- blindaje maximo +
-evento mas peligroso de cada especie (GCR en minimo solar, mayor flujo GCR;
-SEP en Oct 1989, peor evento SEP) -- variando solo la posicion del fantoma
-dentro de la nave, en vez de correr las 140 combinaciones de campo x fase x
-posicion. Si luego se quiere explorar otras intensidades o la fase
-contraria, hay que correr este script de nuevo con otros parametros (no es
-configurable por CLI a proposito, ver AGENTS.md por el porque de la
-reduccion).
+Tercera revision de esta tarea (2026-09-11), corrige un error real de las
+dos versiones anteriores: usaban `SpectrumSampler` para MUESTREAR el
+espectro continuo (mismo metodo que GCR_SEP_Sim), pero AGENTS.md ya tenia
+registrada la decision de equipo de usar **bins de energia + reponderacion**
+para la produccion de ActiveShield_Sim, explicitamente **"no portar
+muestreo continuo como plan de produccion"** -- un descuido, no una
+decision consciente de reemplazarla. Esta version sigue esa decision:
 
-Cada corrida es de UNA sola especie (ICRP110UserScoreWriter no distingue
-especies dentro de una misma corrida -- combinar especies con sus pesos
-fisicos W[s] se hace despues en Python, ver aggregate_organ_doses.py).
-ICRP110UserScoreWriter siempre escribe su salida en un archivo de nombre
-FIJO ("ICRP110.out", sin importar el nombre que se le de a
-/score/dumpQuantityToFile) -- por eso las corridas son secuenciales
+- Cada corrida es monoenergetica: `/gun/fixedEnergyMeV <valor>` fuerza la
+  MISMA energia en todos los primarios de la corrida (ver
+  ICRP110PhantomPrimaryGeneratorAction.hh), en vez de dejar que
+  `SpectrumSampler` muestree el espectro real.
+- `energy_bins.py` calcula, para cada especie, 8 bins log-espaciados
+  (decision 2026-09-11, ver AGENTS.md) dentro del rango de energia que
+  cubre >99.9% del flujo/fluencia real de OLTARIS (no el rango tabulado
+  completo, que tiene 8 decadas y colas irrelevantes) y el peso fisico de
+  cada bin (cuantos primarios reales de esa franja cruzan la esfera
+  fuente) -- ver ese modulo para el detalle y la justificacion del rango.
+- `aggregate_organ_doses.py` combina TODOS los (especie, bin) con su propio
+  peso, en vez de un solo peso por especie -- mismo principio matematico
+  que antes (`D = suma W[clave]*R[clave]`), solo con mas terminos en la suma.
+
+Esto multiplica el conteo de corridas por el numero de bins/especie (8x mas
+que la version anterior de 15 corridas) -- una tension real y reconocida con
+"menos combinaciones y menos tiempo": la resolucion de bins se decidio
+sacrificando parte de esa velocidad para seguir la decision ya tomada del
+equipo, no accidentalmente. Ver AGENTS.md para la tabla de opciones de
+bins/eventos evaluadas antes de fijar 8 bins.
+
+Ademas (2026-09-11, ver AGENTS.md): campo real del arreglo de 8 bobinas de
+CREW HaT (no un campo sintetico), a su corriente de diseno maxima (sin
+escalar); posicion del fantoma RADIAL en el plano XY
+(`/spacecraft/phantomOffsetX`, Y fijo en 0) en vez de a lo largo del eje Z
+-- el campo real de Bryam varia principalmente radial/azimutalmente
+respecto al anillo de bobinas; nave a escala real de CREW HaT
+(`shipRadius=4.5m`, `shipHalfLength=5m` -- este segundo valor es supuesto
+propio del equipo, ninguna fuente da la longitud axial).
+
+Cada corrida es de UNA sola especie Y UN SOLO bin de energia
+(ICRP110UserScoreWriter no distingue nada dentro de una misma corrida --
+combinar todo con sus pesos fisicos se hace despues en Python, ver
+aggregate_organ_doses.py). ICRP110UserScoreWriter siempre escribe su salida
+en un archivo de nombre FIJO ("ICRP110.out", sin importar el nombre que se
+le de a /score/dumpQuantityToFile) -- por eso las corridas son secuenciales
 (subprocess.run una por una) y cada ICRP110.out se archiva con un nombre
 unico inmediatamente despues de cada corrida, antes de lanzar la siguiente.
 
 Requiere:
 - ActiveShield_Sim ya compilado (ver README.md / AGENTS.md).
-- Un mapa de campo uniforme ya generado con field/generate_uniform_map.py
-  (entorno field/.venv, NO geant4_env -- este script no lo genera, para no
-  mezclar entornos, ver AGENTS.md).
+- El .map del arreglo de 8 bobinas ya generado (entorno field/.venv, NO
+  geant4_env -- este script no lo genera):
+    python3 field/generate_ellipse_array.py field/examples/crewhat_halbach_array_pilot.json field/generated/crewhat_halbach_array_production
+    python3 field/compute_field_ellipse_array.py field/generated/crewhat_halbach_array_production/array_current_paths.json build/crewhat_niac_max.map --half-size 13.0 --spacing 0.75
 
 Uso:
-    python3 run_organ_sweep.py --field-map ../build/uniform_1T.map
-    python3 run_organ_sweep.py --field-map ../build/uniform_1T.map --n-events 100 --limit 2  # piloto
-    python3 run_organ_sweep.py --field-map ../build/uniform_1T.map --no-resume
+    python3 run_organ_sweep.py --field-map ../build/crewhat_niac_max.map
+    python3 run_organ_sweep.py --field-map ../build/crewhat_niac_max.map --n-events 100 --limit 2  # piloto
+    python3 run_organ_sweep.py --field-map ../build/crewhat_niac_max.map --no-resume
+    # Repartir en equipo (60/40 EXACTO por corridas, por posicion completa --
+    # cada posicion trae sus 24 combinaciones de especie x bin, 5 posiciones
+    # x 24 = 120):
+    python3 run_organ_sweep.py --field-map ../build/crewhat_niac_max.map --only-positions 2,3,4  # 72 corridas (60%)
+    python3 run_organ_sweep.py --field-map ../build/crewhat_niac_max.map --only-positions 0,1    # 48 corridas (40%)
 
 Resume esta activado por defecto (mismo criterio que GCR_SEP_Sim/run_sweep.py):
 al relanzar el mismo comando se saltan los indices de corrida que ya tengan
@@ -52,13 +88,17 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 import sweep_config  # noqa: E402 -- constantes compartidas entre proyectos, ver geant4/sweep_config.py
+import energy_bins  # noqa: E402
 
-# Escenario fijo (decision 2026-09-10, ver AGENTS.md): NO cambiar a una lista
-# con mas valores de campo/fase sin revisarlo antes -- fue una reduccion de
-# alcance deliberada frente al barrido completo de 140 corridas.
-FIELD_T = 10.0
-POSITIONS_CM = [0.0, 70.0, 140.0, 210.0, 280.0]
-SPECIES_PHASE = [("GCR_H", "min"), ("GCR_He", "min"), ("SEP_p", "max")]
+# Escenario fijo (decision 2026-09-11, ver AGENTS.md): NO cambiar a una lista
+# con mas posiciones/especies/bins sin revisarlo antes.
+SHIP_RADIUS_M = 4.5      # escala real de CREW HaT (NIAC, diametro Starship)
+SHIP_HALF_LENGTH_M = 5.0  # supuesto propio, ninguna fuente da la longitud axial
+# Radial en XY; Y fijo en 0 (ver docstring). Interior de la nave es
+# shipRadius(4.5m)-hullThickness(1.5cm) menos el medio-ancho del fantoma en
+# X (~0.271m) = margen seguro ~4.2m; 4.0m ya se probo sin solapamientos.
+OFFSET_X_VALUES_M = [0.0, 1.0, 2.0, 3.0, 4.0]
+SPECIES_PHASE = {"GCR_H": "min", "GCR_He": "min", "SEP_p": "max"}
 
 BASE_SEED = sweep_config.BASE_SEED_ACTIVE_SHIELD_SIM
 
@@ -68,9 +108,12 @@ MACRO_TEMPLATE = """\
 /phantom/setPhantomSection full
 /phantom/setScoreWriterSection full
 
+/spacecraft/shipRadius {ship_radius_m} m
+/spacecraft/shipHalfLength {ship_half_length_m} m
 /spacecraft/fieldMap {field_map}
-/spacecraft/fieldScale {field_scale}
-/spacecraft/phantomPositionCm {position_cm}
+/spacecraft/fieldScale 1.0
+/spacecraft/phantomOffsetX {offset_x_m} m
+/spacecraft/phantomOffsetY 0 m
 
 /run/initialize
 /random/setSeeds {seed1} {seed2}
@@ -82,6 +125,7 @@ MACRO_TEMPLATE = """\
 
 /gun/species {species}
 /gun/phase {phase}
+/gun/fixedEnergyMeV {energy_mev}
 
 /score/create/boxMesh PhantomMesh
 /score/mesh/boxSize 271.399 135.6995 888. mm
@@ -96,12 +140,19 @@ MACRO_TEMPLATE = """\
 """
 
 
-def build_combinations():
+def build_combinations(spectra_dir):
+    bins_by_species = energy_bins.build_bins(spectra_dir)
     combos = []
-    for index, ((species, phase), position_cm) in enumerate(
-        itertools.product(SPECIES_PHASE, POSITIONS_CM)
-    ):
-        combos.append({"index": index, "species": species, "phase": phase, "position_cm": position_cm})
+    index = 0
+    for species, phase in SPECIES_PHASE.items():
+        for bin_index, energy_rep, flux_bin in bins_by_species[species]:
+            for offset_x_m in OFFSET_X_VALUES_M:
+                combos.append({
+                    "index": index, "species": species, "phase": phase,
+                    "bin_index": bin_index, "energy_mev": energy_rep, "flux_bin": flux_bin,
+                    "offset_x_m": offset_x_m,
+                })
+                index += 1
     return combos
 
 
@@ -112,11 +163,9 @@ def parse_icrp110_out(out_path):
     != 0" que aparece antes en el mismo archivo -- porque da un valor por ID
     sin depender de alinear posicionalmente esa otra tabla con la lista de
     nombres de organo que le sigue. El mapeo ID->nombre se hace aparte, en
-    aggregate_organ_doses.py, leyendo ICRPdata/.../AM_organs.dat directamente
-    (no verificado en este entorno porque ICRPdata/ aun no se ha descargado,
-    ver AGENTS.md). Formato exacto parseado aqui: ver
-    ICRP110UserScoreWriter.cc, seccion final ("OrganID | Edep Dose", todos
-    los IDs 0..NOrganIDs-1).
+    aggregate_organ_doses.py, leyendo ICRPdata/.../AM_organs.dat directamente.
+    Formato exacto parseado aqui: ver ICRP110UserScoreWriter.cc, seccion
+    final ("OrganID | Edep Dose", todos los IDs 0..NOrganIDs-1).
     """
     text = out_path.read_text()
     marker = "ORGAN ENERGY DEPOSITIONS AND ABSORBED DOSE"
@@ -148,13 +197,19 @@ def parse_icrp110_out(out_path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--field-map", type=Path, required=True,
-                         help="Ruta al .map generado con field/generate_uniform_map.py (referencia 1 T)")
+                         help="Ruta al .map del arreglo de 8 bobinas (field/compute_field_ellipse_array.py)")
     parser.add_argument("--build-dir", type=Path, default=None,
                          help="Directorio de build con ICRP110phantoms compilado (default: <repo>/build)")
     parser.add_argument("--n-events", type=int, default=sweep_config.DEFAULT_N_EVENTS,
                          help=f"Eventos por corrida, default {sweep_config.DEFAULT_N_EVENTS}")
+    parser.add_argument("--only-positions", type=str, default=None,
+                         help="Lista separada por comas de offset_x_m a correr, ej. '2,3,4' -- para repartir "
+                              "el barrido en equipo (mismo principio que --only-model de GCR_SEP_Sim/run_sweep.py: "
+                              "el indice global de cada corrida se asigna ANTES de filtrar, asi que las semillas "
+                              "no cambian sin importar como se reparta). Ej.: 3 posiciones (72 de 120 corridas, "
+                              "60%%) para una maquina mas rapida, las otras 2 (48 corridas, 40%%) para la otra.")
     parser.add_argument("--limit", type=int, default=None,
-                         help="Solo correr las primeras N combinaciones (piloto)")
+                         help="Solo correr las primeras N combinaciones ya filtradas (piloto)")
     parser.add_argument("--no-resume", dest="resume", action="store_false", default=True,
                          help="Rehacer desde cero incluso las corridas ya exitosas (exit_code 0)")
     args = parser.parse_args()
@@ -167,8 +222,9 @@ def main():
     if not binary_path.is_file():
         sys.exit(f"ERROR: no se encontro {binary_path}. Compila ActiveShield_Sim primero (ver README.md).")
     if not field_map.is_file():
-        sys.exit(f"ERROR: no se encontro {field_map}. Generalo con field/generate_uniform_map.py primero "
-                  "(entorno field/.venv, no geant4_env -- ver AGENTS.md).")
+        sys.exit(f"ERROR: no se encontro {field_map}. Generalo con field/generate_ellipse_array.py + "
+                  "field/compute_field_ellipse_array.py primero (entorno field/.venv, no geant4_env -- "
+                  "ver docstring de este script).")
 
     generated_dir = build_dir / "macros" / "generated_organ"
     logs_dir = build_dir / "logs_organ"
@@ -177,12 +233,16 @@ def main():
     logs_dir.mkdir(parents=True, exist_ok=True)
     archive_dir.mkdir(parents=True, exist_ok=True)
 
-    combos = build_combinations()
+    spectra_dir = project_root / "data" / "sources" / "oltaris"  # fuente de verdad versionada, no build_dir/data
+    combos = build_combinations(spectra_dir)
+    if args.only_positions is not None:
+        wanted = {float(x) for x in args.only_positions.split(",")}
+        combos = [c for c in combos if c["offset_x_m"] in wanted]
     if args.limit is not None:
         combos = combos[:args.limit]
 
     manifest_path = build_dir / "organ_sweep_manifest.csv"
-    manifest_fieldnames = ["index", "especie", "fase", "field_T", "position_cm",
+    manifest_fieldnames = ["index", "especie", "fase", "bin_index", "energy_mev", "offset_x_m",
                             "n_events", "seed1", "seed2", "macro_path", "exit_code",
                             "duration_s", "log_path", "out_archive_path"]
 
@@ -202,7 +262,7 @@ def main():
         manifest_file.flush()
 
     results_path = build_dir / "resultados_organo_sweep.csv"
-    results_fieldnames = ["especie", "fase", "field_T", "position_cm", "organo_id",
+    results_fieldnames = ["especie", "fase", "bin_index", "energy_mev", "offset_x_m", "organo_id",
                            "edep_J", "dose_gy_run", "n_eventos"]
     results_mode = "a" if (args.resume and results_path.is_file()) else "w"
     results_file = open(results_path, results_mode, newline="")
@@ -211,7 +271,7 @@ def main():
         results_writer.writeheader()
         results_file.flush()
 
-    print(f"Corriendo {len(combos)} combinacion(es) (n_events={args.n_events}, field={FIELD_T} T) "
+    print(f"Corriendo {len(combos)} combinacion(es) (n_events={args.n_events}, campo=NIAC max fijo) "
           f"con {binary_path.name} en {build_dir}")
 
     n_failed = 0
@@ -226,16 +286,17 @@ def main():
 
         macro_path = generated_dir / f"organ_run_{combo['index']:03d}.mac"
         macro_path.write_text(MACRO_TEMPLATE.format(
-            field_map=field_map, field_scale=f"{FIELD_T:.2f}",
-            position_cm=f"{combo['position_cm']:.2f}",
+            ship_radius_m=SHIP_RADIUS_M, ship_half_length_m=SHIP_HALF_LENGTH_M,
+            field_map=field_map, offset_x_m=f"{combo['offset_x_m']:.3f}",
             seed1=seed1, seed2=seed2,
             species=combo["species"], phase=combo["phase"],
+            energy_mev=f"{combo['energy_mev']:.6e}",
             n_events=args.n_events,
         ))
 
         log_path = logs_dir / f"organ_run_{combo['index']:03d}.log"
         label = (f"[{combo['index']+1}/{len(combos)}] {combo['species']}/{combo['phase']} "
-                 f"field={FIELD_T}T pos={combo['position_cm']}cm")
+                 f"bin{combo['bin_index']}={combo['energy_mev']:.3e} offsetX={combo['offset_x_m']}m")
         print(label, end=" ... ", flush=True)
 
         out_path = build_dir / "ICRP110.out"
@@ -258,7 +319,8 @@ def main():
                 for organ_id, edep_j, dose_gy in rows:
                     results_writer.writerow({
                         "especie": combo["species"], "fase": combo["phase"],
-                        "field_T": FIELD_T, "position_cm": combo["position_cm"],
+                        "bin_index": combo["bin_index"], "energy_mev": combo["energy_mev"],
+                        "offset_x_m": combo["offset_x_m"],
                         "organo_id": organ_id, "edep_J": edep_j, "dose_gy_run": dose_gy,
                         "n_eventos": args.n_events,
                     })
@@ -274,7 +336,8 @@ def main():
 
         manifest_writer.writerow({
             "index": combo["index"], "especie": combo["species"], "fase": combo["phase"],
-            "field_T": FIELD_T, "position_cm": combo["position_cm"],
+            "bin_index": combo["bin_index"], "energy_mev": combo["energy_mev"],
+            "offset_x_m": combo["offset_x_m"],
             "n_events": args.n_events, "seed1": seed1, "seed2": seed2,
             "macro_path": str(macro_path),
             "exit_code": result.returncode if parsed_ok else (result.returncode or 1),

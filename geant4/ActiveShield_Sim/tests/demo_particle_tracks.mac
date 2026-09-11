@@ -1,0 +1,47 @@
+# Demo interactivo: trayectorias de particulas reales (GCR_H, fase minima)
+# atravesando el campo magnetico y llegando (o no) al fantoma ICRP110.
+# Uso: ./ICRP110phantoms --vis tests/demo_particle_tracks.mac
+# (--vis abre la sesion interactiva de G4UIExecutive con ESTA macro en vez
+# de vis.mac, ver README.md "Visualizar una geometria/campo importado" --
+# necesario porque esta macro trae sus propios comandos /spacecraft/...
+# PreInit antes de /run/initialize).
+#
+# Requiere el mapa de referencia generado con field/generate_uniform_map.py
+# (ver field/README.md, entorno field/.venv):
+#   python3 field/generate_uniform_map.py build/uniform_1T.map --half-size 6.0 --spacing 0.5
+# Pocos eventos a proposito (20): suficientes para ver el patron de
+# trayectorias sin saturar el visor ni el core dump que advierte vis.mac
+# para conteos grandes.
+
+/phantom/setPhantomSex male
+/phantom/setScoreWriterSex male
+/phantom/setPhantomSection full
+/phantom/setScoreWriterSection full
+
+/spacecraft/fieldMap uniform_1T.map
+/spacecraft/fieldScale 10.0
+
+/control/verbose 2
+/run/initialize
+
+/vis/open
+/vis/viewer/set/autoRefresh false
+/vis/verbose errors
+/vis/viewer/set/specialMeshRendering
+/vis/drawVolume
+/vis/viewer/set/viewpointThetaPhi 85 -75 deg
+/vis/viewer/set/rotationStyle freeRotation
+/vis/viewer/set/hiddenMarker true
+/vis/scene/add/axes
+/vis/scene/add/trajectories
+/vis/modeling/trajectories/create/drawByCharge
+/vis/modeling/trajectories/drawByCharge-0/default/setDrawStepPts true
+/vis/modeling/trajectories/drawByCharge-0/default/setStepPtsSize 2
+/vis/scene/endOfEventAction accumulate
+/vis/viewer/set/autoRefresh true
+/vis/verbose warnings
+
+/gun/species GCR_H
+/gun/phase min
+
+/run/beamOn 20

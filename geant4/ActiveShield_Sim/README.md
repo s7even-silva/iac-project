@@ -10,11 +10,13 @@ conservado en `README_ICRP110_original.md`; datos descargados durante CMake.
   exterior **10 m**, eje Z. Casco de **G4_Al, 1.5 cm**, tapas planas del mismo
   espesor. Es una referencia radiológica, no un diseño estructural de vuelo.
 - Exterior **G4_Galactic** (vacío); aire del hábitat y materiales ICRP110
-  conservados. Fantoma masculino o femenino, centrado en X/Y; desplazable a
-  lo largo del eje Z de la nave vía `/spacecraft/phantomPositionCm` desde
-  2026-09-10 (ver sección "Dosis por órgano y equivalente" más abajo) —
-  revierte la decisión previa de "sin barrido de posición" para el análisis
-  de riesgo estocástico.
+  conservados. Fantoma masculino o femenino, centrado por defecto;
+  desplazable a lo largo del eje Z vía `/spacecraft/phantomPositionCm` y/o
+  radialmente en XY vía `/spacecraft/phantomOffsetX|Y` desde 2026-09-10/11
+  (ver sección "Dosis por órgano y equivalente" más abajo) — revierte la
+  decisión previa de "sin barrido de posición". El barrido de producción
+  actual usa **solo `phantomOffsetX`** (radial, el eje relevante para el
+  campo real no uniforme de CREW HaT).
 - Casco y cabina son hermanos bajo `MagnetEnvelope`, un volumen en vacío
   que también alojará bobinas y crióstatos externos. No colocar bobinas
   externas como hijas de `ShipInterior`.
@@ -189,66 +191,136 @@ La prueba CTest verifica un campo afín con divergencia nula sobre grilla no
 cúbica, unidades, interpolación interior, caras, exterior, escala y entradas
 inválidas. No sustituye validar el mapa físico contra Elmer/Biot-Savart.
 
-## Dosis por órgano y equivalente (2026-09-10)
+## Dosis por órgano y equivalente (2026-09-10, campo real y bins desde 2026-09-11)
 
-Objetivo: dosis equivalente (Sv) en los órganos de mayor riesgo estocástico
-de cáncer (ICRP 103 Tabla A.1, los `w_T=0.12` más altos: médula ósea roja,
-colon, pulmón, estómago, mama), en función de **dónde está el fantoma
-dentro de la nave**, en el escenario de **blindaje magnético máximo** (10 T,
-el tope del barrido de `GCR_SEP_Sim`) y **el evento más peligroso de cada
-especie** (GCR en mínimo solar — mayor flujo GCR — y SEP en Oct 1989, el
-peor caso ya documentado). Ver `AGENTS.md` para el porqué de este alcance
-reducido (no es un barrido de campo/fase completo).
+> **Nota para Bryam (2026-09-11):** esta sección es de Eddy, trabajando en
+> paralelo a CREW HaT/Elmer — resumen de lo que cambió para que no te
+> agarre de sorpresa al hacer `git pull`:
+> - **Tu trabajo no se tocó.** `shipRadius`/`shipHalfLength`/
+>   `phantomOffsetX|Y` (los que agregaste el mismo día) se usan tal cual,
+>   sin modificar — de hecho el barrido de este análisis corre a la escala
+>   real de CREW HaT (`shipRadius=4.5m`) y usa `phantomOffsetX` como su eje
+>   de posición principal, precisamente porque tu campo Halbach real es
+>   no uniforme en esa dirección.
+> - **Sí se usa tu campo real** (el arreglo de 8 bobinas,
+>   `crewhat_halbach_array_pilot.json`, a su corriente de diseño máxima
+>   1×10⁷ A/bobina) para este barrido — reemplazó un placeholder sintético
+>   que se había usado un día antes.
+> - **Cambio nuevo en `ICRP110PhantomPrimaryGeneratorAction`:** se agregó
+>   `/gun/fixedEnergyMeV <valor>` (opcional, default deshabilitado) para
+>   forzar una energía monoenergética exacta en vez de muestrear el
+>   espectro — necesario para seguir la decisión de "bins de energía +
+>   reponderación" que ya estaba en este archivo. No afecta nada si no se
+>   usa ese comando (tus macros/pruebas siguen igual).
+> - **El barrido resultante son 120 corridas** (3 especies × 8 bins de
+>   energía × 5 posiciones), no una corrida única — se está repartiendo
+>   60/40 entre Eddy y vos (`--only-positions`, ver más abajo) porque tu
+>   laptop es más rápida. Si te llega una rama/PR pidiendo que corras tu
+>   parte, es este barrido.
+> - Detalle completo, con las tres rondas de cambios de diseño de este
+>   mismo día, en `AGENTS.md` (sección "Dosis por órgano y equivalente,
+>   riesgo estocástico").
+
+Objetivo: dosis equivalente (Sv) en los 6 tejidos de mayor riesgo
+estocástico de cáncer (ICRP 103 Tabla A.1, los `w_T=0.12`: colon, pulmón,
+estómago, mama, médula ósea roja, tejidos restantes), en función de **dónde
+está el fantoma dentro de la nave** (radialmente, no a lo largo del eje),
+con el **campo real del arreglo de 8 bobinas de CREW HaT a su corriente de
+diseño máxima** (1×10⁷ A por bobina, sin escalar) y **bins de energía
+monoenergéticos + reponderación** (no muestreo continuo) por cada especie
+en su fase más peligrosa (GCR en mínimo solar, SEP en Oct 1989). Ver
+`AGENTS.md` para la historia completa (tres rondas: dos de reducción de
+alcance, una que corrige un error real — la primera versión usaba muestreo
+continuo, que ya estaba decidido no usar para producción).
 
 **`ICRP110PhantomPrimaryGeneratorAction` reescrito:** ya no envuelve un
 `G4GeneralParticleSource` — muestrea los mismos 6 CSV reales de OLTARIS que
-`GCR_SEP_Sim` (copiados a `data/`, no symlink, mismo motivo que allá:
-Windows), vía `SpectrumSampler.hh/.cc` (copiado sin modificar, archivo
-autocontenido, mismo criterio de no compartir código entre los dos
-proyectos Geant4). Comandos nuevos (`ICRP110PhantomGeneratorMessenger`,
-directorio `/gun/`, disponibles en Idle, después de `/run/initialize`):
+`GCR_SEP_Sim` (copiados a `data/sources/oltaris/`, fuente versionada; el
+CMake los copia planos a `data/` del build, ver `CMakeLists.txt`), vía
+`SpectrumSampler.hh/.cc` (copiado sin modificar). Comandos nuevos
+(`ICRP110PhantomGeneratorMessenger`, directorio `/gun/`, disponibles en
+Idle, después de `/run/initialize`):
 
 ```text
 /gun/species GCR_H|GCR_He|SEP_p
 /gun/phase max|min
+/gun/fixedEnergyMeV <valor>   # opcional -- MeV/amu (GCR_H|GCR_He) o MeV (SEP_p)
 ```
 
-**Una sola especie por corrida:** a diferencia de `GCR_SEP_Sim` (que mezcla
-H+He estocásticamente dentro de una corrida), aquí el scoring de dosis por
-órgano pasa por `G4ScoringManager`/`ICRP110UserScoreWriter` (sin tocar),
-que no distingue especies dentro de una misma corrida. Combinar especies
-con sus pesos físicos `W[s] = π·R_esfera²·flujo_integrado[s]` (misma
-fórmula que `RunAction.cc` de `GCR_SEP_Sim`, radio de esfera fuente ahora
-vía `ICRP110PhantomConstruction::GetSourceSphereRadius()`, adaptado de
-esfera a la media diagonal del cilindro) se hace **en Python**, leyendo el
-`ICRP110.out` de cada corrida — ver `scripts/aggregate_organ_doses.py`.
+`fixedEnergyMeV` fuerza esa energía exacta en TODOS los primarios de la
+corrida en vez de muestrear el espectro continuo de `SpectrumSampler` — es
+lo que sigue la decisión de "bins + reponderación" que ya tenía AGENTS.md.
+Omitirlo mantiene el muestreo continuo (default, usado por
+`primary.mac`/demos, donde no aplica esa decisión de producción).
 
-**`scripts/run_organ_sweep.py`:** corre las 15 combinaciones fijas (3
-especies/fase × 5 posiciones, ver el propio script) de forma secuencial —
-`ICRP110UserScoreWriter` siempre escribe su salida en un nombre **fijo**
-(`ICRP110.out`), así que cada corrida se archiva antes de lanzar la
-siguiente. Requiere un `.map` uniforme ya generado con
-`field/generate_uniform_map.py` (entorno `field/.venv`, no `geant4_env`):
-un solo archivo de referencia a 1 T sirve para cualquier intensidad vía
-`/spacecraft/fieldScale` (aquí, 10). Manifiesto + resume, mismo patrón que
-`GCR_SEP_Sim/scripts/run_sweep.py` (ver advertencia de `--n-events` en el
-docstring del script). Salida: `resultados_organo_sweep.csv`.
+**Una sola especie Y UN SOLO bin de energía por corrida:** a diferencia de
+`GCR_SEP_Sim` (que mezcla H+He estocásticamente dentro de una corrida), aquí
+el scoring de dosis por órgano pasa por
+`G4ScoringManager`/`ICRP110UserScoreWriter` (sin tocar), que no distingue
+nada dentro de una misma corrida. Combinar `(especie,bin)` con sus pesos
+físicos `W[s,bin] = π·R_esfera²·flujo_integrado_del_bin[s,bin]` (misma
+fórmula que `RunAction.cc` de `GCR_SEP_Sim`, generalizada a un sub-rango de
+energía por bin en vez de todo el espectro) se hace **en Python**, leyendo
+el `ICRP110.out` de cada corrida — ver `scripts/aggregate_organ_doses.py`.
 
-**`scripts/aggregate_organ_doses.py`:** reimplementa la integral trapezoidal
-de `SpectrumSampler.cc` en Python puro (sin numpy) para `W[s]`, aplica
-`w_R` (ICRP 103 Tabla A.3: protón/pion cargado = 2, alfa = 20 — **pondera
-por la partícula primaria de la corrida, no por partícula-en-cada-paso**;
-un neutrón secundario hereda el `w_R` del primario) y produce
-`resultados_organo_agregados.csv` (dosis absorbida/equivalente por
-`organo_id` y posición, GCR y SEP por separado — distinta semántica
-temporal, Gy/día vs Gy/evento, no se suman) más
-`resultados_riesgo_estocastico.csv` (la misma vista, filtrada a los 5
-órganos de interés, emparejados por palabra clave sobre el nombre real de
-`ICRPdata/.../AM_organs.dat` — advierte explícitamente si alguna palabra
-clave no matchea nada, en vez de fallar en silencio). **Limitación:** el
-fantoma es masculino; la dosis en tejido mamario de un fantoma masculino es
-una referencia dosimétrica/geométrica, no equivalente al riesgo
-epidemiológico de cáncer de mama documentado en mujeres.
+**`scripts/energy_bins.py`:** calcula, por especie, 8 bins log-espaciados
+(decisión 2026-09-11, evaluado contra 5/10 bins y distinto N/corrida por el
+costo en tiempo) dentro del rango de energía que cubre >99,9% del
+flujo/fluencia real de cada espectro (calculado de los CSV reales — GCR_H y
+GCR_He: 10–1×10⁵ MeV/amu; SEP_p: 0,01–300 MeV — no el rango tabulado
+completo de OLTARIS, que tiene colas irrelevantes), con energía
+representativa = media geométrica de los bordes del bin y peso físico real
+por integral trapezoidal restringida a ese sub-rango.
+
+**`scripts/run_organ_sweep.py`:** corre las **120 combinaciones fijas** (3
+especies/fase × 8 bins de energía × 5 posiciones radiales `phantomOffsetX`
+= 0/1/2/3/4 m, Y fijo en 0) de forma secuencial — `ICRP110UserScoreWriter`
+siempre escribe su salida en un nombre **fijo** (`ICRP110.out`), así que
+cada corrida se archiva antes de lanzar la siguiente. Nave a escala real de
+CREW HaT (`shipRadius=4.5m`, `shipHalfLength=5m`, fijos en la macro).
+Requiere el `.map` del arreglo real de 8 bobinas ya generado (entorno
+`field/.venv`, no `geant4_env` — dos pasos, ver docstring del script):
+
+```bash
+python3 field/generate_ellipse_array.py field/examples/crewhat_halbach_array_pilot.json field/generated/crewhat_halbach_array_production
+python3 field/compute_field_ellipse_array.py field/generated/crewhat_halbach_array_production/array_current_paths.json build/crewhat_niac_max.map --half-size 13.0 --spacing 0.75
+```
+
+Ese `.map` ya está a la corriente de diseño máxima (1×10⁷ A/bobina) — se usa
+con `/spacecraft/fieldScale 1.0`, sin escalar. Manifiesto + resume, mismo
+patrón que `GCR_SEP_Sim/scripts/run_sweep.py`. `--only-positions` reparte
+el barrido en equipo por posición completa (cada posición trae sus 24
+combinaciones de especie×bin) — ej. `--only-positions 2,3,4` = 72 corridas
+(60%), `--only-positions 0,1` = 48 corridas (40%). Salida:
+`resultados_organo_sweep.csv`. Medido en la laptop del usuario (WSL2):
+~12,5 s de overhead fijo por corrida (carga de fantoma/ICRPdata) +
+~0,045 s/evento.
+
+**`scripts/aggregate_organ_doses.py`:** usa `energy_bins.py` para los pesos
+`W[s,bin]`, aplica `w_R` (ICRP 103 Tabla A.3: protón/pion cargado = 2, alfa
+= 20, por especie no por bin — **pondera por la partícula primaria de la
+corrida, no por partícula-en-cada-paso**; un neutrón secundario hereda el
+`w_R` del primario) y produce `resultados_organo_agregados.csv` (dosis
+absorbida/equivalente por `organo_id` sin agrupar y posición radial
+`offset_x_m`, GCR y SEP por separado — distinta semántica temporal, Gy/día
+vs Gy/evento, no se suman) más `resultados_riesgo_estocastico.csv` (las 6
+categorías ICRP103 w_T=0.12, cada una agrupando varios `organo_id` en un
+solo valor **ponderado por masa** — no una fila por `organo_id` como en la
+versión anterior de este script). Médula ósea roja: cruza
+`AM_organs.dat`/`AM_spongiosa.dat`/`OrganMasses.dat` reales (19 sitios
+esqueléticos por su fracción RBM) — masa calculada (1,170 kg) coincide
+exactamente con el valor de referencia ICRP para el adulto masculino.
+"Tejidos restantes": agrupa 14 categorías anatómicas (suprarrenales, vías
+respiratorias extratoracicas, mucosa oral, tráquea, vesícula biliar,
+intestino delgado, corazón, riñón, ganglios linfáticos, músculo, páncreas,
+próstata, bazo, timo) en un solo valor. Ambas agrupaciones EXCLUYEN
+entradas con "contents" (heces, contenido gástrico, sangre en cámaras del
+corazón) por ser material transitorio, no tejido vivo — decisión de
+modelado marcada explícitamente en el script, no una convención ICRP
+verificada. **Limitación:** el fantoma es masculino; la dosis en tejido
+mamario de un fantoma masculino es una referencia dosimétrica/geométrica,
+no equivalente al riesgo epidemiológico de cáncer de mama documentado en
+mujeres.
 
 `QGSP_BIC_HP` sigue siendo la physics list de este proyecto (no `Shielding`,
 la del piloto `GCR_SEP_Sim`).
