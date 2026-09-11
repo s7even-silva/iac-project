@@ -242,10 +242,51 @@ reales, mismo camino de código).
   quepa en una máquina de recursos limitados, igual que pasó con las
   combinaciones más finas del barrido DH.
 
+## Material HTS real: implementado para ambas opciones de conductor (2026-09-10)
+
+`field/examples/crewhat_hts_materials.json` (análogo a
+`hts_tape_materials.json` de Geom14, **archivo separado, no el mismo** —
+mismos tipos de capa pero espesores de fuente distinta, ver más abajo).
+Reemplaza el cobre puro placeholder en `generate_ellipse.py` y
+`generate_ellipse_array.py`, que ahora leen `materials_library`/`material`
+del config (mismo patrón que `generate_array.py` ya usa para Geom14) —
+retrocompatible: sin esas claves, siguen generando el placeholder.
+
+- **Cinta CREW HaT homogeneizada** (`crewhat_tape_homogenized`): Hastelloy
+  C-276 50µm + YBCO 1µm + Ag 3,8µm (2µm+1,8µm, dos menciones de plata en
+  la Tabla 2.2 de la tesis, p.32, sumadas) + Cu 40µm = 94,8µm — **no es el
+  mismo cálculo que `hts_tape_homogenized` de Geom14** (94µm, menos plata,
+  más YBCO): mismos tipos de material (reutilizados sin cambios, misma
+  composición elemental), pero espesores de la propia tesis de CREW HaT,
+  no de la ficha SCS4050 de SuperPower. Buffer stack (0,2µm) excluido,
+  mismo criterio que Geom14 (composición no publicada, masa despreciable).
+  Densidad 8,95635 g/cm³.
+- **CORC homogeneizado** (`crewhat_corc_homogenized`): núcleo de Cu puro
+  (diámetro 3,2mm, dato geométrico exacto de la tesis, Sección 2.5.2 p.34
+  — 16% del área del cable) + región anular de `crewhat_tape_homogenized`
+  hasta completar el diámetro de 8mm (84% del área). **Supuesto propio, no
+  dato de la fuente**: se asume que la región anular está completamente
+  ocupada por el compuesto de la cinta, sin factor de relleno adicional
+  entre las 48 vueltas — la tesis no da ese número (confirmado, ver
+  arriba). Densidad 8,95693 g/cm³.
+- Ambas fracciones másicas calculadas con precisión completa de punto
+  flotante (no redondeadas a 4-6 decimales antes de combinar capas) y con
+  el residuo de redondeo absorbido en la fracción de Cu — mismo problema
+  que ya documentó y corrigió Geom14 (sumaba 0,999999, rechazado por la
+  tolerancia estricta de `mesh_to_gdml.py`); evitado aquí desde el inicio.
+- **Validado de punta a punta**: regenerados los 3 pilotos individuales y
+  el arreglo de 8 bobinas con el material real; reimportados en Geant4 —
+  `material=coil_mat_crewhat_tape_homogenized` /
+  `coil_mat_crewhat_corc_homogenized` aparecen correctamente en el log de
+  importación, con las densidades exactas calculadas arriba, sin ningún
+  solapamiento nuevo. La masa apenas cambia numéricamente frente al
+  placeholder (8,956-8,957 g/cm³ vs. 8,96 g/cm³ del cobre puro) porque el
+  cobre domina la fracción másica de ambos compuestos — pero el GDML
+  ahora lleva la composición elemental real (13 elementos), no solo cobre,
+  relevante para producción de secundarios y pérdida de energía en el
+  transporte de Geant4 aunque la densidad global cambie poco.
+
 ## Lo que aún no existe
-- **Material HTS real**: el CAD usa cobre puro placeholder, no el material
-  homogeneizado de la cinta YBCO/CORC (análogo a
-  `hts_tape_materials.json` de Geom14, con su propia composición).
 - **Nave/hábitat**: `shipRadius`/`shipHalfLength` ya son configurables
   (ver AGENTS.md) y se decidió escalar a 4,5m, pero la longitud axial del
   hábitat no está dada por ninguna fuente, y la ubicación de las bobinas

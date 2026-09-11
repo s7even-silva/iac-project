@@ -147,9 +147,18 @@ def generate(config, directory):
                   f'Mesh.MeshSizeFromCurvature = {template["mesh_points_per_circle"]};']
     (directory/'halbach_array.geo').write_text('\n'.join(geo_lines)+'\n')
 
-    materials = {'schema_version': 1, 'length_unit': 'm', 'elements': {'Cu': {'Z': 29, 'A': 63.546}},
-                 'materials': {'placeholder_copper': {'density_g_cm3': 8.96, 'mass_fractions': {'Cu': 1.0}}},
-                 'groups': {name: 'placeholder_copper' for name in names}}
+    # Same real-material convention as generate_ellipse.py: all N coils
+    # share the template's material, since they're the same shape/conductor.
+    if 'materials_library' in template and 'material' in template:
+        library = template['materials_library']
+        if template['material'] not in library['materials']:
+            raise ValueError(f'Undefined material {template["material"]!r} in materials_library')
+        materials = {'schema_version': 1, 'length_unit': 'm', 'elements': library['elements'],
+                     'materials': library['materials'], 'groups': {name: template['material'] for name in names}}
+    else:
+        materials = {'schema_version': 1, 'length_unit': 'm', 'elements': {'Cu': {'Z': 29, 'A': 63.546}},
+                     'materials': {'placeholder_copper': {'density_g_cm3': 8.96, 'mass_fractions': {'Cu': 1.0}}},
+                     'groups': {name: 'placeholder_copper' for name in names}}
     (directory/'materials.json').write_text(json.dumps(materials, indent=2)+'\n')
 
     report = {'schema_version': 1, 'status': array['status'], 'config': array,

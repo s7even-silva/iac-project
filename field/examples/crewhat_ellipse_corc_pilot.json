@@ -1,15 +1,167 @@
 {
   "schema_version": 1,
   "status": "computational_pilot_not_crewhat",
-  "center_m": [0.0, 0.0, 0.0],
+  "center_m": [
+    0.0,
+    0.0,
+    0.0
+  ],
   "semi_major_m": 4.0,
   "semi_minor_m": 2.0,
   "winding_pack_side_m": 0.67,
   "field_regularization_radius_m": 0.067,
-  "current_A": 1.0e7,
+  "current_A": 10000000.0,
   "control_points": 128,
   "field_segments": 512,
   "mesh_size_m": 0.1,
   "mesh_min_size_m": 0.05,
-  "mesh_points_per_circle": 16
+  "mesh_points_per_circle": 16,
+  "materials_library": {
+    "elements": {
+      "Cu": {
+        "Z": 29,
+        "A": 63.546
+      },
+      "Ni": {
+        "Z": 28,
+        "A": 58.6934
+      },
+      "Mo": {
+        "Z": 42,
+        "A": 95.95
+      },
+      "Cr": {
+        "Z": 24,
+        "A": 51.9961
+      },
+      "Fe": {
+        "Z": 26,
+        "A": 55.845
+      },
+      "Ag": {
+        "Z": 47,
+        "A": 107.8682
+      },
+      "W": {
+        "Z": 74,
+        "A": 183.84
+      },
+      "Co": {
+        "Z": 27,
+        "A": 58.933194
+      },
+      "Ba": {
+        "Z": 56,
+        "A": 137.327
+      },
+      "Mn": {
+        "Z": 25,
+        "A": 54.938044
+      },
+      "O": {
+        "Z": 8,
+        "A": 15.999
+      },
+      "Y": {
+        "Z": 39,
+        "A": 88.90585
+      },
+      "Si": {
+        "Z": 14,
+        "A": 28.085
+      }
+    },
+    "materials": {
+      "hastelloy_c276": {
+        "_provenance": "Identico a field/examples/hts_tape_materials.json -- Xometry/NeoNickel, punto medio de rangos publicados; densidad 8.89 g/cm3.",
+        "density_g_cm3": 8.89,
+        "mass_fractions": {
+          "Ni": 0.5567,
+          "Mo": 0.16,
+          "Cr": 0.155,
+          "Fe": 0.055,
+          "W": 0.0375,
+          "Co": 0.025,
+          "Mn": 0.01,
+          "Si": 0.0008
+        }
+      },
+      "ybco": {
+        "_provenance": "Identico a field/examples/hts_tape_materials.json -- YBa2Cu3O7 (x=0), fracciones por estequiometria exacta; densidad 6.3 g/cm3 (literatura general, no verificada para pelicula delgada).",
+        "density_g_cm3": 6.3,
+        "mass_fractions": {
+          "Y": 0.133454,
+          "Ba": 0.412276,
+          "Cu": 0.286161,
+          "O": 0.168109
+        }
+      },
+      "silver": {
+        "_provenance": "Identico a field/examples/hts_tape_materials.json -- plata pura (capa de recubrimiento).",
+        "density_g_cm3": 10.49,
+        "mass_fractions": {
+          "Ag": 1.0
+        }
+      },
+      "copper": {
+        "_provenance": "Identico a field/examples/hts_tape_materials.json -- cobre puro.",
+        "density_g_cm3": 8.96,
+        "mass_fractions": {
+          "Cu": 1.0
+        }
+      },
+      "crewhat_tape_homogenized": {
+        "_provenance": [
+          "Cinta CREW HaT 12mm homogeneizada: Hastelloy 50um + YBCO 1um + Ag 3.8um",
+          "(2um+1.8um) + Cu 40um = 94.8um, ponderado por masa por unidad de area",
+          "(espesor x densidad, no espesor simple). Buffer stack (0.2um) excluido,",
+          "ver _provenance de arriba. Calculado con precision completa (sin",
+          "redondear fracciones intermedias) -- suma exacta 1.0, no 0.999999."
+        ],
+        "density_g_cm3": 8.956350210970466,
+        "mass_fractions": {
+          "Cu": 0.42423617391898366,
+          "Ni": 0.2914429688291314,
+          "Mo": 0.08376302319500813,
+          "Cr": 0.08114542872016411,
+          "Ag": 0.046948279395379836,
+          "Fe": 0.028793539223284044,
+          "W": 0.01963195856133003,
+          "Co": 0.013087972374220021,
+          "Mn": 0.005235188949688008,
+          "Ba": 0.0030590684779203394,
+          "O": 0.0012473608523288048,
+          "Y": 0.0009902223865866095,
+          "Si": 0.00041881511597504067
+        }
+      },
+      "crewhat_corc_homogenized": {
+        "_provenance": [
+          "Cable CORC 8mm: nucleo de Cu puro (diametro 3.2mm, 16% del area del",
+          "cable) + region anular de crewhat_tape_homogenized (hasta 8mm de",
+          "diametro, 84% del area) -- ver aproximacion de empaquetamiento en la",
+          "_provenance de arriba (SIN factor de relleno adicional, no dado por",
+          "la fuente). Ponderado por area x densidad (nucleo vs. region anular).",
+          "Calculado con precision completa, suma exacta 1.0."
+        ],
+        "density_g_cm3": 8.956934177215192,
+        "mass_fractions": {
+          "Cu": 0.516389918128632,
+          "Ni": 0.24479613277486162,
+          "Mo": 0.07035635215372348,
+          "Cr": 0.0681577161489196,
+          "Ag": 0.0394339835426283,
+          "Fe": 0.024184996052842442,
+          "W": 0.01648977003602894,
+          "Co": 0.010993180024019293,
+          "Mn": 0.004397272009607717,
+          "Ba": 0.0025694499898105947,
+          "O": 0.0010477148035225657,
+          "Y": 0.0008317325746349125,
+          "Si": 0.0003517817607686174
+        }
+      }
+    }
+  },
+  "material": "crewhat_corc_homogenized"
 }
