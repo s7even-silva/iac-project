@@ -96,16 +96,18 @@ void ICRP110PhantomPrimaryGeneratorAction::GeneratePrimaries(G4Event* anEvent)
   if (fSpecies == "GCR_He") {
     particle = ionTable->GetIon(2, 4, 0.0); // alpha: Z=2, A=4
     SpectrumSampler* sampler = isMin ? fGCR_He_min : fGCR_He_max;
-    G4double keMeVPerNucleon = sampler->SampleEnergy();
+    G4double keMeVPerNucleon = (fFixedEnergy >= 0.) ? fFixedEnergy : sampler->SampleEnergy();
     kineticEnergy = keMeVPerNucleon * 4 * MeV;
   } else if (fSpecies == "SEP_p") {
     particle = table->FindParticle("proton");
     SpectrumSampler* sampler = isMin ? fSEP_p_min : fSEP_p_max;
-    kineticEnergy = sampler->SampleEnergy() * MeV;
+    G4double keMeV = (fFixedEnergy >= 0.) ? fFixedEnergy : sampler->SampleEnergy();
+    kineticEnergy = keMeV * MeV;
   } else { // "GCR_H", default
     particle = table->FindParticle("proton");
     SpectrumSampler* sampler = isMin ? fGCR_H_min : fGCR_H_max;
-    kineticEnergy = sampler->SampleEnergy() * MeV;
+    G4double keMeV = (fFixedEnergy >= 0.) ? fFixedEnergy : sampler->SampleEnergy();
+    kineticEnergy = keMeV * MeV;
   }
 
   fGun->SetParticleDefinition(particle);

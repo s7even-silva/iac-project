@@ -323,9 +323,15 @@ fuentes y pendientes en
   puntos, integración con el pipeline de bins de dosimetría) sigue sin
   implementar; ver `field/CREWHAT_STATUS.md`. `phantomPositionCm` sí tiene
   un barrido completo, ver más abajo ("Dosis por órgano y equivalente").
-- **Bins de energía + reponderación** para producción. La decisión ya está
-  tomada; faltan bordes/rango, especies, N/bin, orquestador y estimación de
-  incertidumbre por órgano. No portar muestreo continuo como plan de producción.
+- **Bins de energía + reponderación** para producción. **Implementado
+  2026-09-11 para el análisis de riesgo estocástico** (ver la entrada de
+  "Dosis por órgano y equivalente" más abajo): bordes/rango (>99,9% del
+  flujo real por especie), especies (GCR_H, GCR_He, SEP_p) y N/bin
+  decididos ahí, `scripts/energy_bins.py` y `/gun/fixedEnergyMeV`. Sigue
+  pendiente para el **barrido de producción completo** (el que compara
+  blindaje pasivo/activo con las 8 bobinas a distintas configuraciones,
+  distinto del análisis de riesgo estocástico ya implementado): orquestador
+  a esa escala mayor y estimación de incertidumbre por órgano.
 - **Gmsh + Elmer + Python** para calcular y exportar el campo. No implementar
   un Halbach uniforme ficticio; no inventar dimensiones/corrientes de bobinas.
   Elmer se instala por `scripts/install.sh --with-elmer`; el venv cubre
@@ -365,54 +371,79 @@ fuentes y pendientes en
   Oct1989 que en Feb1956). Detalle completo en el checklist.
 - Mantener material de devanados, soportes y crióstato en el modelo final:
   la contribución pasiva y los secundarios pueden aumentar o reducir dosis.
-- **Dosis por órgano y equivalente, riesgo estocástico (2026-09-10).**
+- **Dosis por órgano y equivalente, riesgo estocástico (2026-09-10/11).**
   `GCR_SEP_Sim` da dosis absoluta de cuerpo completo pero su fantoma es una
   esfera sin órganos; para dosis por órgano y equivalente (Sv) hace falta
-  el fantoma ICRP110 real de `ActiveShield_Sim`. Se implementó:
-  `ICRP110PhantomPrimaryGeneratorAction` reescrito (ya no es un wrapper GPS
-  vacío: muestrea los 6 espectros reales de OLTARIS vía `SpectrumSampler`
-  copiado de `GCR_SEP_Sim`, comandos `/gun/species GCR_H|GCR_He|SEP_p` y
-  `/gun/phase max|min`, una sola especie por corrida — el scoring por
-  órgano de `ICRP110UserScoreWriter`, sin modificar, no distingue especies
-  dentro de una misma corrida; combinar especies con sus pesos físicos
-  `W[s]` se hace en Python después); `/spacecraft/phantomPositionCm` para
-  desplazar el fantoma a lo largo del eje Z de la nave (revierte la
-  decisión de "sin barrido de posición", ver arriba); `field/generate_uniform_map.py`
-  para un `.map` sintético de referencia (evita usar el imán real de Bryam,
-  aún no validado, para este análisis); `scripts/run_organ_sweep.py` y
-  `scripts/aggregate_organ_doses.py` en `ActiveShield_Sim/`.
-  **Alcance deliberadamente reducido** (no las 140 combinaciones de
-  `GCR_SEP_Sim`): el usuario pidió específicamente la dosis equivalente en
-  los órganos de mayor riesgo estocástico de cáncer (ICRP 103 Tabla A.1,
-  `w_T=0.12`: colon, pulmón, estómago, mama — **médula ósea roja excluida**,
-  ver más abajo) **en función de la posición del fantoma**, con el
-  **blindaje magnético al máximo** (10
-  T, tope del barrido de `GCR_SEP_Sim`) y **el evento más peligroso de cada
-  especie** (GCR en mínimo solar, SEP en Oct 1989) — así que el barrido real
-  son 15 corridas (3 especies/fase × 5 posiciones), no 140. Si después se
-  quiere otra intensidad de campo o la fase contraria, hay que correr de
-  nuevo con esos parámetros.
+  el fantoma ICRP110 real de `ActiveShield_Sim`. **Tres rondas de revisión**
+  (dos de reducción de alcance, una de corrección de un error de diseño):
+  - *Ronda 1 (2026-09-10):* dosis equivalente en los órganos de mayor
+    riesgo estocástico de cáncer, en función de la posición del fantoma,
+    con blindaje al máximo y el evento más peligroso de cada especie (GCR
+    en mínimo solar, SEP en Oct 1989). Campo **sintético uniforme**
+    (`field/generate_uniform_map.py`, evitaba el imán real de Bryam, aún
+    no validado en ese momento) a 10 T, fantoma desplazado a lo largo del
+    eje Z en 5 posiciones — 15 corridas.
+  - *Ronda 2 (2026-09-11):* el arreglo real de 8 bobinas de CREW HaT ya
+    estaba validado (ver más arriba) — se usa ese campo real en vez del
+    placeholder sintético, a su **corriente de diseño máxima fija** (1×10⁷
+    A por bobina, sin escalar), exportado a `.map` con
+    `field/generate_ellipse_array.py` + `field/compute_field_ellipse_array.py`
+    sobre `field/examples/crewhat_halbach_array_pilot.json`. Posición del
+    fantoma de `phantomPositionCm` (eje Z) a **`phantomOffsetX`** (radial
+    en XY, Y fijo en 0): el campo real de Bryam varía principalmente
+    radial/azimutalmente respecto al anillo de bobinas. Nave a escala real
+    de CREW HaT (`shipRadius=4.5m`, `shipHalfLength=5m`, este segundo valor
+    supuesto propio del equipo).
+  - *Ronda 3 (2026-09-11), corrige un error real, no una reducción de
+    alcance:* `ICRP110PhantomPrimaryGeneratorAction` usaba `SpectrumSampler`
+    para **muestreo continuo** del espectro (copiado de `GCR_SEP_Sim`) — el
+    mismo método que esta sección ya tenía registrado, más abajo, como
+    **"no portar como plan de producción"** para `ActiveShield_Sim` (la
+    decisión de "bins de energía + reponderación" es anterior a esta
+    tarea). Corregido: `/gun/fixedEnergyMeV <valor>` (nuevo) fuerza una
+    energía monoenergética fija en todos los primarios de la corrida, en
+    vez de muestrear — `SpectrumSampler` se conserva sin tocar y sigue
+    siendo el default (sin este comando) para `primary.mac`/demos, donde
+    no aplica la decisión de bins. `scripts/energy_bins.py` (nuevo) calcula
+    8 bins log-espaciados por especie (decisión 2026-09-11, evaluado contra
+    5/10 bins y distintos N/corrida por el costo en tiempo) dentro del
+    rango que cubre >99,9% del flujo/fluencia real de cada espectro
+    (calculado de los CSV reales, no el rango tabulado completo de OLTARIS
+    que tiene colas irrelevantes) y el peso físico real de cada bin.
+    `aggregate_organ_doses.py` combina cada `(especie,bin)` con su propio
+    peso en vez de un peso único por especie. Esto **multiplica el conteo
+    de corridas por 8** (de 15 a **120**: 3 especies × 8 bins × 5
+    posiciones) — tensión reconocida con "menos combinaciones y menos
+    tiempo"; se aceptó el costo para seguir la decisión ya tomada del
+    equipo. División de trabajo: `--only-positions` (nuevo, mismo criterio
+    que `--only-model` de `GCR_SEP_Sim`) reparte por posición completa —
+    3 posiciones = 72 corridas (60%), 2 posiciones = 48 corridas (40%).
   **Ponderación radiobiológica (`w_R`, ICRP 103 Tabla A.3):** protón y pion
-  cargado = 2, alfa = 20, aplicada por especie de la corrida. Limitación
+  cargado = 2, alfa = 20, por especie (no por bin de energía — esta
+  ponderación simplificada de ICRP103 no depende de la energía). Limitación
   explícita: pondera por la partícula *primaria* de la corrida, no por
   partícula-en-cada-paso (un neutrón secundario hereda el `w_R` del
   primario, no el suyo propio) — resolverlo por paso requeriría un
   `SteppingAction` con filtro por tipo de partícula, fuera de alcance.
-  Fantoma masculino: la mama sí está segmentada en ICRP110 para ambos
-  sexos, pero `w_T=0.12` es un valor promediado por sexo — la dosis en
-  tejido mamario de un fantoma masculino es una referencia
-  dosimétrica/geométrica, no equivalente al riesgo epidemiológico de cáncer
-  de mama documentado en mujeres. **Médula ósea roja excluida de la vista
-  de riesgo estocástico, verificado contra el `AM_organs.dat` real
-  (2026-09-10):** ICRP110 no la modela como un `organ_id` propio — está
-  repartida como una fracción de la dosis de "spongiosa" (hueso esponjoso)
-  en cada sitio esquelético, dada por `AM_spongiosa.dat` (fracciones
-  RBM/YBM/hueso por **ID de tejido**, no de órgano).
-  `ICRP110UserScoreWriter` no calcula esa fracción — `ICRP110.out` solo da
-  Edep/Dosis por `organ_id`, sin ponderar por contenido de médula.
-  Agregarla exige leer `AM_spongiosa.dat` y cruzarlo con el ID de tejido
-  (no de órgano) de cada vóxel — pendiente, fuera de alcance de esta
-  versión. Detalle de comandos y scripts en
+  **6 categorías de riesgo estocástico** (ICRP 103 Tabla A.1, los seis
+  `w_T=0.12`): colon, pulmón, estómago, mama, médula ósea roja y "tejidos
+  restantes" (remainder, un compuesto de otros 14 tejidos que ICRP103 trata
+  como una sola categoría) — cada una agrupa varios `organ_id` de ICRP110
+  en un solo valor ponderado por masa, no una fila por `organ_id` (versión
+  anterior de este análisis). **Médula ósea roja, verificado contra
+  `AM_organs.dat`/`AM_spongiosa.dat`/`OrganMasses.dat` reales
+  (2026-09-11):** ICRP110 no la modela como `organ_id` propio — está
+  repartida como fracción de la dosis de "spongiosa" (hueso esponjoso) en
+  19 sitios esqueléticos, dada por `AM_spongiosa.dat` (fracciones
+  RBM/YBM/hueso por **ID de tejido**, columna "Tissue number" de
+  `AM_organs.dat`, no por `organ_id`) — masa total calculada (1,170 kg)
+  coincide exactamente con el valor de referencia ICRP para el adulto
+  masculino, validando la implementación. Fantoma masculino: la mama sí
+  está segmentada en ICRP110 para ambos sexos, pero `w_T=0.12` es un valor
+  promediado por sexo — la dosis en tejido mamario de un fantoma masculino
+  es una referencia dosimétrica/geométrica, no equivalente al riesgo
+  epidemiológico de cáncer de mama documentado en mujeres. Detalle de
+  comandos y scripts en
   [README de ActiveShield_Sim](geant4/ActiveShield_Sim/README.md).
 
 **Propuestas y pendientes (no decisiones finales):**
