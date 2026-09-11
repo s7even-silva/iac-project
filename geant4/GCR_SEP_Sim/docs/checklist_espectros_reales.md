@@ -85,27 +85,36 @@ En la pantalla **"Environment Definition: SPE, Free Space 1AU"**, el campo **"Sa
 - [x] Archivo reformateado en `data/sources/oltaris/sep_proton_solarmax.csv`; crudo (con nota de dónde está el detalle completo) en `data/sources/oltaris/raw_exports/oltaris_SPE_oct1989_proton_raw.txt`.
 - [x] Captura de pantalla de la configuración (resumen de proyecto de OLTARIS). Transcrito: `SPE, Free Space 1AU · SPE: Oct 1989 multiplier=1.0 · Geometry: zero sphere (42 rays, density-based) · Responses: none` (Proyecto "SEP_max_1989").
 
-**Diferido — SEP mínimo (no hace falta para la primera corrida):** cuando se retome, repetir los mismos pasos marcando **"Feb 1956 (LaRC)"** en vez de "Oct 1989", generando `oltaris_SPE_feb1956_LaRC_proton.csv`.
+**✅ SEP mínimo completado (2026-09-10).**
+
+- [x] Corrida **"SEP mínimo"** (Feb 1956, ajuste LaRC): "Save external differential flux" = **Sí**.
+- [x] Especie exportada: **protón** confirmado — mismo patrón que Oct 1989 (índice 1 real, el resto en `1e-20`).
+- [x] **Unidades**: idénticas a Oct 1989 (`Boundary Fluence`, `particles/((EU*-cm2))`, EU*=MeV).
+- [x] Rango de energía: **1.000000E-02 a 2.500000E+03 MeV**, 100 puntos (mismo arreglo que Oct 1989).
+- [x] Pico de fluencia ~1400× menor que Oct 1989 — consistente con ser el evento más pequeño de los catalogados con dato comparable (ver comparación en Parte 2 arriba).
+- [x] Archivo reformateado en `data/sources/oltaris/sep_proton_solarmin.csv`; crudo en `raw_exports/oltaris_SPE_feb1956_LaRC_proton_raw.txt`.
 
 Con un evento histórico puntual, la interpretación de dosis sigue siendo **dosis aguda de un evento**, sin factor de tiempo — consistente con la fórmula ya anotada en `AGENTS.md`: `dosis_Gy_del_evento = dosis_sim × (fluencia_evento × área_fuente) / N`.
 
 ---
 
-## Al terminar (estado: 5 de 6 archivos listos)
+## Al terminar (estado: 6 de 6 archivos listos — completo)
 
-**✅ 5 de 6 archivos ya están reformateados y en el repo:**
-`gcr_proton_solarmin.csv`, `gcr_alpha_solarmin.csv` (2026-09-08),
-`gcr_proton_solarmax.csv`, `gcr_alpha_solarmax.csv` (2026-09-10, fecha
-14-15/01/2023 por el límite de BON2020 — ver nota en Parte 1),
-`sep_proton_solarmax.csv` (2026-09-08). Crudos correspondientes en `raw_exports/`.
-
-**Solo falta:** `sep_proton_solarmin.csv` (evento Feb 1956, LaRC) — ver "Diferido" en Parte 2.
+**✅ Los 6 archivos ya están reformateados y en el repo:**
+`gcr_proton_solarmin.csv`, `gcr_alpha_solarmin.csv` (2026-09-08, fecha
+31/12/2019-01/01/2020), `gcr_proton_solarmax.csv`, `gcr_alpha_solarmax.csv`
+(2026-09-10, fecha 14-15/01/2023 por el límite de BON2020 — ver nota en
+Parte 1), `sep_proton_solarmax.csv` (2026-09-08, Oct 1989),
+`sep_proton_solarmin.csv` (2026-09-10, Feb 1956 LaRC). Crudos correspondientes
+en `raw_exports/`. Activado y probado con `gcrsim` (piloto de cada una de las
+4 combinaciones modelo×fase, sin errores, dosis físicamente coherentes: GCR
+más alto en mínimo que en máximo, SEP más alto en Oct1989 que en Feb1956).
 
 Pendiente aún:
 
-1. ~~Reformateo de los exports crudos a CSV~~ — hecho para 5/6.
+1. ~~Reformateo de los exports crudos a CSV~~ — hecho, 6/6.
 2. El cálculo de los pesos por bin (`W[s,i]`) a partir de estos espectros, una vez que se fijen los bordes de bin (puntos 6-7 de la lista de pendientes) — esto es para el pipeline por bins de `ActiveShield_Sim`; `GCR_SEP_Sim` (el piloto) ya usa estos espectros por muestreo continuo, sin bins.
 3. ~~La normalización a dosis absoluta en `RunAction.cc`~~ — implementada en `GCR_SEP_Sim` (2026-09-09), ver `AGENTS.md` sección "Dosis absoluta".
-4. El párrafo de Métodos describiendo exactamente qué modelo (BON2020, fechas de mínimo y máximo solar — incluyendo la limitación de BON2020 para el máximo; evento Oct 1989 de SEP), y qué unidades se usaron.
+4. El párrafo de Métodos describiendo exactamente qué modelo (BON2020, fechas de mínimo y máximo solar — incluyendo la limitación de BON2020 para el máximo; eventos Oct 1989/Feb 1956 de SEP), y qué unidades se usaron.
 5. ~~Capturas de pantalla de la configuración de OLTARIS~~ — hecho.
-6. **Ya no bloquea:** con GCR (ambas fases) completo, `select_spectrum_source.py oltaris --only gcr_proton_solarmin.csv gcr_alpha_solarmin.csv gcr_proton_solarmax.csv gcr_alpha_solarmax.csv sep_proton_solarmax.csv` activa 5/6 archivos reales; `run_sweep.py --only-model GCR` (sin `--priority-only`) ya puede correr las 70 combinaciones completas de GCR. Para SEP sigue haciendo falta `--priority-only` (o esperar `sep_proton_solarmin.csv`) porque falta esa fase.
+6. ~~Decidir si correr solo el subconjunto prioritario o el barrido completo~~ — ya no aplica: con los 6 archivos reales, `select_spectrum_source.py oltaris` (sin `--only`) y `run_sweep.py` sin `--priority-only` corren el barrido completo de 140 combinaciones. `--priority-only` sigue disponible si por tiempo de cómputo se prefiere correr solo los 2 casos de mayor dosis primero.

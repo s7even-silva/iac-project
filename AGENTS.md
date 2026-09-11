@@ -273,14 +273,18 @@ fuentes y pendientes en
   diferidos, no bloquean la primera corrida de producción; se completan
   después si hay tiempo. Ver checklist para el detalle de qué 3 archivos
   (no 6) se exportan primero.
-- **GCR máximo completado (2026-09-10), con limitación de fecha:** BON2020 en
-  OLTARIS no acepta fechas más allá de enero de 2023 (confirmado al intentar
-  la ventana real del máximo del ciclo 25, ene 2024–jul 2025). Se usó
-  14-15/01/2023 en su lugar — la mejor aproximación disponible en la
-  herramienta, no el pico real (que según NOAA/SWPC fue más tarde). Con esto,
-  GCR ya tiene ambas fases reales (`gcr_{proton,alpha}_solarmin.csv` y
-  `_solarmax.csv`); solo falta `sep_proton_solarmin.csv` (Feb 1956) para
-  completar los 6. Detalle en el checklist.
+- **Los 6 espectros reales completados (2026-09-10).** GCR máximo tuvo una
+  limitación de fecha: BON2020 en OLTARIS no acepta fechas más allá de enero
+  de 2023 (confirmado al intentar la ventana real del máximo del ciclo 25,
+  ene 2024–jul 2025), así que se usó 14-15/01/2023 en su lugar — la mejor
+  aproximación disponible en la herramienta, no el pico real (que según
+  NOAA/SWPC fue más tarde). SEP mínimo (Feb 1956, ajuste LaRC) se exportó sin
+  problemas. Con esto **ya no hace falta `--priority-only`**:
+  `select_spectrum_source.py oltaris` (sin `--only`) y `run_sweep.py` (sin
+  `--priority-only`) corren el barrido completo de 140 combinaciones —
+  probado con un piloto de las 4 combinaciones modelo×fase, todas con dosis
+  físicamente coherentes (GCR mayor en mínimo que en máximo, SEP mayor en
+  Oct1989 que en Feb1956). Detalle completo en el checklist.
 - Mantener material de devanados, soportes y crióstato en el modelo final:
   la contribución pasiva y los secundarios pueden aumentar o reducir dosis.
 
@@ -319,7 +323,7 @@ Proyecto GEANT4 en C++ (CMake), ejecutable `gcrsim`. Piezas clave:
 
 - `DetectorConstruction` / `DetectorMessenger`: geometría `World → ShipHull (aluminio, 0.3 cm) → ShipInterior (vacío) → Phantom`. El campo magnético, cuando está activo, está **confinado al interior de la nave** (no a todo el mundo, como antes). Comandos nuevos: `/detector/astronautX <cm>` (posición del astronauta), `/detector/hullThicknessCm <cm>` (espesor del casco). Comandos de blindaje legado (`/detector/shield`, `/detector/alThickness`, `/detector/polyThickness`) siguen existiendo pero no se usan en el barrido nuevo.
 - `PrimaryGeneratorAction` / `GeneratorMessenger`: comando nuevo `/gun/phase max|min` para elegir la fase solar, además de `/gun/model GCR|SEP` ya existente.
-- `data/`: 6 archivos de espectro de energía, uno por combinación modelo×fase (`gcr_proton_solarmax.csv`, `gcr_proton_solarmin.csv`, `gcr_alpha_solarmax.csv`, `gcr_alpha_solarmin.csv`, `sep_proton_solarmax.csv`, `sep_proton_solarmin.csv`). **Son placeholders** (max y min son idénticos por ahora) — pendiente reemplazarlos con datos reales antes de sacar conclusiones científicas. **Estos 6 archivos ya NO se versionan directamente** (ver `.gitignore`) — son el destino generado por `scripts/select_spectrum_source.py <fuente>` a partir de `data/sources/<fuente>/*.csv`, que sí se versiona y es la fuente de verdad. Fuentes en `data/sources/`: `spenvis/` (plan B, ISO-15390+ESP-PSYCHIC, ya no es la fuente activa) y `oltaris/` (activa desde 2026-09-08: BON2020 para GCR, evento histórico Oct 1989/Feb 1956-LaRC para SEP — carpeta y README pendientes de poblar con los exports reales, ver checklist). `SpectrumSampler` es agnóstico a la fuente (solo lee dos columnas energía/flujo), así que cambiar de fuente no toca código C++, solo qué CSV se copia a `data/`.
+- `data/`: 6 archivos de espectro de energía, uno por combinación modelo×fase (`gcr_proton_solarmax.csv`, `gcr_proton_solarmin.csv`, `gcr_alpha_solarmax.csv`, `gcr_alpha_solarmin.csv`, `sep_proton_solarmax.csv`, `sep_proton_solarmin.csv`). **Estos 6 archivos ya NO se versionan directamente** (ver `.gitignore`) — son el destino generado por `scripts/select_spectrum_source.py <fuente>` a partir de `data/sources/<fuente>/*.csv`, que sí se versiona y es la fuente de verdad. Fuentes en `data/sources/`: `spenvis/` (plan B, ISO-15390+ESP-PSYCHIC, placeholders, ya no es la fuente activa) y `oltaris/` (**activa, completa desde 2026-09-10**: BON2020 para GCR mínimo/máximo, evento histórico Oct 1989/Feb 1956-LaRC para SEP — los 6 archivos son datos reales, verificados y probados, ver checklist). `SpectrumSampler` es agnóstico a la fuente (solo lee dos columnas energía/flujo), así que cambiar de fuente no toca código C++, solo qué CSV se copia a `data/`.
 - `macros/legacy/`: las 4 macros de escenarios de blindaje pasivo (`escenario1-4`), conservadas para referencia pero ya no reflejan el esquema de resultados actual.
 - `scripts/run_sweep.py`: corre automáticamente las 140 combinaciones del barrido (4 evento×fase × 7 campo × 5 posición), con semillas aleatorias fijas por corrida para reproducibilidad. Soporta `--n-events` y `--limit` (nota: `--limit N` corre las primeras N combinaciones en el orden del barrido, no necesariamente una por cada modelo/fase) para hacer una corrida piloto antes del barrido completo. También soporta `--repeats` (repeticiones por combinación, para estadística) y `--only-model GCR|SEP` (repartir el barrido en equipo, ver README.md). El manifiesto (`sweep_manifest.csv`) y el CSV de resultados se escriben por append, corrida por corrida, así que un corte a la mitad no pierde lo ya corrido; resume está activado **por defecto** y salta las combinaciones `(índice, repetición)` que ya tengan `exit_code 0` en el manifiesto — usar `--no-resume` para forzar rehacer todo desde cero (ver sección correspondiente en README.md). El default de `--n-events` (y el `BASE_SEED`) vienen de `geant4/sweep_config.py`, compartido entre proyectos — ver ese archivo antes de hardcodear un número de eventos "oficial" en un script nuevo. Los parámetros específicos de esta geometría (campo uniforme, posiciones del astronauta) NO están ahí a propósito, porque `ActiveShield_Sim` tendrá un espacio de parámetros distinto (bobinas Halbach) una vez que exista — `ActiveShield_Sim` todavía no tiene lanzador por bins: faltan la definición de energías/configuraciones y los pesos físicos. Su lector de mapa ya existe; no confundirlo con un mapa físico validado.
 - Resultados: `resultados_dosis_sweep.csv` (columnas `modelo,fase,field_T,astronaut_x_m,n_eventos,edep_MeV,masa_kg,dosis_Gy,dosis_absoluta_Gy`), una fila por corrida. `dosis_Gy` es la dosis cruda sin ponderar (QA); `dosis_absoluta_Gy` es la normalización física real (Gy/día para GCR, Gy del evento completo para SEP) — ver "Dosis absoluta implementada" en Pendientes conocidos.
@@ -346,7 +350,7 @@ Barrido completo (140 corridas):
 
 ## Pendientes conocidos
 
-- **Reemplazar los 6 CSV placeholder de `data/sources/` con espectros reales por fase solar.** Modelos elegidos, ambos vía **OLTARIS** (acceso aprobado 2026-09-08, reemplaza el plan intermedio con SPENVIS): **Badhwar-O'Neill 2020** para GCR (periodos históricos de mínimo/máximo solar), **evento histórico** para SEP (Oct 1989 = máximo, Feb 1956 ajuste LaRC = mínimo — no el modelo probabilístico ESP-PSYCHIC). CREME96 se había descartado antes porque su componente de GCR está anclado a datos de 1986-87; ISO-15390/SPENVIS y ESP-PSYCHIC/SPENVIS quedaron como plan B si OLTARIS no se aprobaba a tiempo, ya no es el camino activo. Checklist de qué exportar de cada modelo: [`docs/checklist_espectros_reales.md`](geant4/GCR_SEP_Sim/docs/checklist_espectros_reales.md).
+- ~~Reemplazar los 6 CSV placeholder de `data/sources/` con espectros reales por fase solar.~~ **Hecho (2026-09-10), los 6 son reales.** Modelos: **Badhwar-O'Neill 2020** para GCR (mínimo 31/12/2019-01/01/2020, máximo 14-15/01/2023 — limitado por BON2020 en OLTARIS, ver nota arriba), **evento histórico** para SEP (Oct 1989 = máximo, Feb 1956 ajuste LaRC = mínimo — no el modelo probabilístico ESP-PSYCHIC). Detalle completo: [`docs/checklist_espectros_reales.md`](geant4/GCR_SEP_Sim/docs/checklist_espectros_reales.md).
 - **Dosis absoluta implementada en el piloto GCR_SEP_Sim (2026-09-09).** El
   scorer sigue calculando `dosis_Gy` (cruda, sin ponderar, por los N eventos
   mezclados de una corrida — se conserva por QA) pero `resultados_dosis_sweep.csv`

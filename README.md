@@ -95,14 +95,14 @@ Compilación (fuera de fuente, con el toolchain de conda):
 
 ## División del trabajo del equipo (barrido de simulaciones)
 
-El barrido de `geant4/GCR_SEP_Sim/` tiene 140 combinaciones posibles (GCR/SEP × fase solar max/min × 7 valores de campo × 5 posiciones del astronauta), pero **por ahora solo se corren 70** (`--priority-only`): (GCR, mínimo) y (SEP, máximo), las dos únicas combinaciones con espectro real de OLTARIS ya exportado — ver [`docs/checklist_espectros_reales.md`](geant4/GCR_SEP_Sim/docs/checklist_espectros_reales.md). (GCR, máximo) y (SEP, mínimo) quedan diferidos hasta que se exporten esos 2 archivos; no hace falta esperarlos para la primera corrida de producción.
+El barrido de `geant4/GCR_SEP_Sim/` tiene 140 combinaciones (GCR/SEP × fase solar max/min × 7 valores de campo × 5 posiciones del astronauta). **Los 6 espectros reales de OLTARIS ya están completos** (2026-09-10, ver [`docs/checklist_espectros_reales.md`](geant4/GCR_SEP_Sim/docs/checklist_espectros_reales.md)), así que ya se corre el barrido completo — `--priority-only` sigue existiendo en `run_sweep.py` por si alguna vez hace falta priorizar de nuevo, pero ya no es necesario.
 
-Para el artículo necesitamos, por cada combinación, **media, desviación estándar e intervalo de confianza 95%** — eso requiere correr cada combinación varias veces (repeticiones con semillas distintas), no una sola vez. Ya se acordó: **5 repeticiones por combinación** (70 × 5 = 350 corridas en total con `--priority-only`; serían 700 si más adelante se completan las 140).
+Para el artículo necesitamos, por cada combinación, **media, desviación estándar e intervalo de confianza 95%** — eso requiere correr cada combinación varias veces (repeticiones con semillas distintas), no una sola vez. Ya se acordó: **5 repeticiones por combinación** (140 × 5 = 700 corridas en total).
 
 Para terminar a tiempo entre los dos, el trabajo se reparte así:
 
-- **Persona A** corre **GCR en mínimo solar** (7 campos × 5 posiciones = 35 combinaciones × 5 repeticiones = 175 corridas).
-- **Persona B** corre **SEP en el evento máximo (Oct 1989)** (35 combinaciones × 5 repeticiones = 175 corridas).
+- **Persona A** corre **todo GCR** (mín + máx × 7 campos × 5 posiciones = 70 combinaciones × 5 repeticiones = 350 corridas).
+- **Persona B** corre **todo SEP** (mín + máx × 7 campos × 5 posiciones = 70 combinaciones × 5 repeticiones = 350 corridas).
 
 Se reparte por tipo de evento porque GCR y SEP son ejes físicamente independientes (no hay interacción entre ellos), así que no hay riesgo de inconsistencia al juntar los resultados de cada quien al final — simplemente se concatenan.
 
@@ -115,23 +115,23 @@ Ambos deben partir exactamente del mismo código:
 
 Y compilar con el mismo comando (ver nota en `AGENTS.md` sobre el workaround de compilador — `$CXX` no sirve en `geant4_env`, hay que usar `g++` + `CMAKE_PREFIX_PATH`).
 
-Medido en una laptop de gama baja: una corrida de 10000 eventos tarda entre **~2 y ~10 segundos** según la combinación (campo/posición). Con eso, 175 corridas por persona toman entre **~6 y ~30 minutos** — sobra tiempo dentro de una ventana de 4 días incluso con poder de cómputo bajo, así que **no hace falta bajar `--n-events`**. Si en su hardware resulta mucho más lento, midan con un piloto chico antes de lanzar todo:
+Medido en esta máquina: una corrida de GCR (10000 eventos) tarda **~8-11 s**, una de SEP **~2 s** (el campo suele desviar/frenar más partículas antes de que depositen energía). Con eso, los 350 corridas de GCR toman **~50 min** y las 350 de SEP **~12 min** — sobra tiempo dentro de una ventana de 4 días incluso con poder de cómputo bajo, así que **no hace falta bajar `--n-events`**. Si en su hardware resulta mucho más lento, midan con un piloto chico antes de lanzar todo:
 
     cd geant4/GCR_SEP_Sim/build
-    python3 ../scripts/run_sweep.py --priority-only --only-model GCR --n-events 10000 --limit 3
+    python3 ../scripts/run_sweep.py --only-model GCR --n-events 10000 --limit 3
 
 ### Si el barrido se corta a la mitad (Ctrl+C, corte de luz, se cierra la sesión SSH sin `tmux`/`screen`)
 
 No hace falta empezar de cero. El binario `gcrsim` va agregando (append) una fila a `resultados_dosis_sweep.csv` por cada corrida que termina, y `run_sweep.py` hace lo mismo con `sweep_manifest.csv` — ninguno de los dos se sobrescribe de golpe al final, así que lo ya corrido antes del corte queda guardado. **Resume está activado por defecto:** basta con relanzar exactamente el mismo comando que se cortó:
 
-    python3 ../scripts/run_sweep.py --priority-only --only-model GCR --repeats 5 --n-events 10000
+    python3 ../scripts/run_sweep.py --only-model GCR --repeats 5 --n-events 10000
 
 El script lee `sweep_manifest.csv` y salta automáticamente toda combinación `(índice, repetición)` que ya haya terminado con éxito (`exit_code 0`); las que fallaron se vuelven a intentar. Si en cambio se quiere rehacer el barrido desde cero a propósito (por ejemplo, tras cambiar algún parámetro que invalida las corridas previas), agregar `--no-resume` — de lo contrario esas corridas viejas quedarían duplicadas en el CSV de resultados.
 
 Si van a dejar el barrido corriendo desatendido en una máquina remota (por ejemplo las de la universidad por SSH), lanzarlo dentro de `tmux` o `screen` para que sobreviva un corte de la conexión:
 
     tmux new -s sweep
-    python3 ../scripts/run_sweep.py --priority-only --only-model GCR --repeats 5 --n-events 10000
+    python3 ../scripts/run_sweep.py --only-model GCR --repeats 5 --n-events 10000
     # Ctrl+B, D para desconectar sin matar el proceso; tmux attach -t sweep para volver a verlo
 
 ### 0.5. Fechas de referencia para la fase solar (GCR y SEP)
@@ -172,41 +172,39 @@ separado en capas:
   `PrimaryGeneratorAction.cc` para cambiar de fuente.
 - Cada fuente vive en su propia carpeta bajo
   `geant4/GCR_SEP_Sim/data/sources/<fuente>/` (hoy: `oltaris/`, activa desde
-  2026-09-08 — cubre GCR y SEP; `spenvis/` conservada como plan B).
+  2026-09-08, **completa desde 2026-09-10** — los 6 archivos son datos
+  reales, ver checklist; `spenvis/` conservada como plan B).
   `data/*.csv` (sin la subcarpeta `sources/`) es solo el **destino activo**
   — no se versiona en git (ver `.gitignore`), se regenera con:
 
       cd geant4/GCR_SEP_Sim
+      python3 scripts/select_spectrum_source.py oltaris   # fuente activa hoy, los 6 completos
       python3 scripts/select_spectrum_source.py spenvis   # plan B
 
-  **`oltaris/` hoy solo tiene 3 de los 6 archivos** (GCR mínimo H+He, SEP
-  máximo Oct 1989 — ver checklist), así que activarla requiere `--only` con
-  esos 3 nombres exactos (si se corre `oltaris` sin `--only`, falla porque
-  faltan los otros 3, que siguen diferidos):
-
-      python3 scripts/select_spectrum_source.py oltaris --only gcr_proton_solarmin.csv gcr_alpha_solarmin.csv sep_proton_solarmax.csv
-
-  Esto es consistente con correr el barrido con `--priority-only` (ver
-  arriba): mismo subconjunto (GCR-mínimo, SEP-máximo) en datos y en código.
+  (`--only <archivo...>` si alguna vez se necesita mezclar fuentes por
+  especie/fase — usar con cuidado, revisar bien Métodos si se hace).
 - Después de cambiar de fuente hay que volver a correr `cmake ..` dentro de
   `build/` (no basta con `make -j`) para que el build recoja los CSV
   nuevos — `CMakeLists.txt` copia `data/` a `build/data/` en la fase de
   configuración de CMake, no en cada compilación.
-- Lo único que no es "gratis": la normalización de dosis absoluta en
-  `RunAction.cc` (pendiente de implementar, ver `AGENTS.md`) y el párrafo
-  de Métodos del artículo, que sí cambian de contenido según la fuente
-  (aunque la fórmula conceptual para SEP —fluencia de un evento puntual,
-  sin factor de tiempo— es la misma para cualquier evento histórico).
+- Lo único que no es "gratis" al cambiar de fuente: la normalización de
+  dosis absoluta en `RunAction.cc` (implementada, ver `AGENTS.md` sección
+  "Dosis absoluta") usa el flujo/fluencia integrado de cada CSV, así que
+  cambiar de fuente cambia el número final de dosis, no solo la forma del
+  espectro muestreado — y el párrafo de Métodos del artículo, que sí cambia
+  de contenido según la fuente (aunque la fórmula conceptual para SEP
+  —fluencia de un evento puntual, sin factor de tiempo— es la misma para
+  cualquier evento histórico).
 
 ### 1. Correr el barrido asignado
 
 Persona A (GCR):
 
-    python3 ../scripts/run_sweep.py --priority-only --only-model GCR --repeats 5 --n-events 10000
+    python3 ../scripts/run_sweep.py --only-model GCR --repeats 5 --n-events 10000
 
 Persona B (SEP):
 
-    python3 ../scripts/run_sweep.py --priority-only --only-model SEP --repeats 5 --n-events 10000
+    python3 ../scripts/run_sweep.py --only-model SEP --repeats 5 --n-events 10000
 
 Esto genera `build/resultados_dosis_sweep.csv` (una fila por corrida/repetición) y `build/sweep_manifest.csv` (semillas, tiempos, logs de cada corrida — útil para depurar si algo falla).
 

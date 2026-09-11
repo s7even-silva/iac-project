@@ -1,15 +1,15 @@
 # Fuente activa: OLTARIS (2026-09-08)
 
-**Estado (2026-09-10): 5 de 6 archivos listos** — `gcr_proton_solarmin.csv`,
-`gcr_alpha_solarmin.csv` (fecha 31/12/2019-01/01/2020), `gcr_proton_solarmax.csv`,
-`gcr_alpha_solarmax.csv` (fecha 14-15/01/2023 — **no** el pico real del ciclo 25,
-ver limitación de BON2020 abajo) y `sep_proton_solarmax.csv` (evento Oct 1989)
-ya están reformateados y verificados en esta carpeta. Solo falta
-`sep_proton_solarmin.csv` (evento Feb 1956, LaRC) — ver
-`../../docs/checklist_espectros_reales.md`. Mientras falte, activar esta
-fuente con `select_spectrum_source.py oltaris` (sin `--only`) fallará; usar
-`--only gcr_proton_solarmin.csv gcr_alpha_solarmin.csv gcr_proton_solarmax.csv gcr_alpha_solarmax.csv sep_proton_solarmax.csv`
-para correr todo excepto SEP mínimo.
+**Estado (2026-09-10): 6 de 6 archivos listos — completo.**
+`gcr_proton_solarmin.csv`, `gcr_alpha_solarmin.csv` (fecha 31/12/2019-01/01/2020),
+`gcr_proton_solarmax.csv`, `gcr_alpha_solarmax.csv` (fecha 14-15/01/2023 —
+**no** el pico real del ciclo 25, ver limitación de BON2020 abajo),
+`sep_proton_solarmax.csv` (evento Oct 1989) y `sep_proton_solarmin.csv`
+(evento Feb 1956, ajuste LaRC) ya están reformateados, verificados y
+probados con `gcrsim` (las 4 combinaciones modelo×fase corren sin errores,
+con dosis físicamente coherentes). `select_spectrum_source.py oltaris`
+(sin `--only`) ya activa la fuente completa. Detalle en
+`../../docs/checklist_espectros_reales.md`.
 
 **Limitación de fecha descubierta para GCR máximo:** BON2020 en OLTARIS no
 acepta fechas más allá de enero de 2023 — no se pudo usar la ventana real del
@@ -68,20 +68,21 @@ como fuente del CSV.
 ## Formato esperado por `SpectrumSampler`
 
 Igual que `spenvis/`: CSV de dos columnas (energía, flujo diferencial),
-separador coma o espacio, líneas `#` como comentario. El piloto solo usa la
-*forma* de la distribución; las unidades exactas se anotan en el checklist
-para la normalización de dosis absoluta (`RunAction.cc`, pendiente).
+separador coma o espacio, líneas `#` como comentario. `SpectrumSampler` usa
+la *forma* de la distribución para muestrear energías; el flujo/fluencia
+integrado (la misma tabla, sin muestrear) alimenta la normalización a dosis
+absoluta ya implementada en `RunAction.cc` — ver "Dosis absoluta" en
+`AGENTS.md`.
 
-## Cómo activar esta fuente hoy (5 de 6 archivos)
+## Cómo activar esta fuente
 
-Desde `geant4/GCR_SEP_Sim/`, mientras falte `sep_proton_solarmin.csv`:
+Desde `geant4/GCR_SEP_Sim/`:
 
-    python3 scripts/select_spectrum_source.py oltaris --only gcr_proton_solarmin.csv gcr_alpha_solarmin.csv gcr_proton_solarmax.csv gcr_alpha_solarmax.csv sep_proton_solarmax.csv
+    python3 scripts/select_spectrum_source.py oltaris
 
-Una vez que los 6 estén reales, se podrá correr `select_spectrum_source.py oltaris`
-sin `--only`. Después de activar la fuente, volver a correr `cmake ..` dentro
-de `build/` (no basta con `make -j`) para que el binario recoja los CSV
-actualizados.
+Cubre los 6 archivos, no hace falta `--only`. Después de activar la fuente,
+volver a correr `cmake ..` dentro de `build/` (no basta con `make -j`) para
+que el binario recoja los CSV actualizados.
 
 ## Checklist de qué anotar al exportar
 
