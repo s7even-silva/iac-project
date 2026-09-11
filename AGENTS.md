@@ -447,7 +447,13 @@ fuentes y pendientes en
   vs. "tangenciales" (esa distinción del reporte es para el montaje
   mecánico, no la fase electromagnética). Las 8 bobinas importan en
   `ActiveShield_Sim` sin ningún solapamiento, ni entre sí ni con el casco.
-  Elmer FEM y el material HTS real **todavía no existen** — ver
+  **Campo Biot-Savart superpuesto de las 8 bobinas calculado el mismo día**
+  (`field/compute_field_ellipse_array.py`) — resultado físico central del
+  ejercicio: el patrón dipolar de Halbach funciona como se espera, con
+  campo razonablemente uniforme (0,42-0,72 T) dentro del radio de la nave
+  escalada (4,5m) y cayendo a 0,09 T en el borde del dominio (14m), con
+  simetría de 180° exacta. Sigue siendo Biot-Savart regularizado, no
+  Elmer/FEM. Elmer FEM y el material HTS real **todavía no existen** — ver
   [`field/CREWHAT_STATUS.md`](field/CREWHAT_STATUS.md) para el detalle
   completo de brechas y las decisiones de modelado propias marcadas
   explícitamente (sección cuadrada sin segunda dimensión de la fuente,
