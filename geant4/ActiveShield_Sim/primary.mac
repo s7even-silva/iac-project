@@ -1,9 +1,7 @@
-# Prueba geometrica monoenergetica, no ambiente GCR/SEP de produccion.
-# El haz nace en el vacio exterior y cruza el casco antes del fantoma.
-/gps/verbose 0
-/gps/particle proton
-/gps/ene/type Mono
-/gps/ene/mono 250 MeV
-/gps/pos/type Point
-/gps/pos/centre -6. 0. 0. m
-/gps/direction 1 0 0
+# Ambiente GCR/SEP real via OLTARIS (2026-09-10), reemplaza la prueba GPS
+# monoenergetica original -- ICRP110PhantomPrimaryGeneratorAction ya no usa
+# G4GeneralParticleSource, asi que /gps/... ya no tiene efecto. Una sola
+# especie por corrida (ver AGENTS.md); posicion/direccion se muestrean solas,
+# isotropicas sobre una esfera que envuelve toda la nave.
+/gun/species GCR_H
+/gun/phase min

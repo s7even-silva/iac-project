@@ -23,30 +23,62 @@
 // * acceptance of all terms of the Geant4 Software license.          *
 // ********************************************************************
 //
-// Code developed by:
-// S.Guatelli, M. Large and A. Malaroda, University of Wollongong
+// Original GPS-based skeleton by S.Guatelli, M. Large and A. Malaroda,
+// University of Wollongong. Rewritten (2026-09-10) to sample real OLTARIS
+// GCR/SEP spectra instead of a fixed GPS macro beam, mirroring the pattern
+// already validated in GCR_SEP_Sim/PrimaryGeneratorAction -- see AGENTS.md.
 //
 #ifndef ICRP110PhantomPrimaryGeneratorAction_h
 #define ICRP110PhantomPrimaryGeneratorAction_h 1
 
 #include "G4VUserPrimaryGeneratorAction.hh"
+#include "G4ParticleGun.hh"
 #include "globals.hh"
 
-class G4GeneralParticleSource;
 class G4Event;
+class SpectrumSampler;
+class ICRP110PhantomGeneratorMessenger;
 
+// /gun/species GCR_H|GCR_He|SEP_p (una sola especie por corrida -- el
+// scoring de dosis por organo de esta app pasa por G4ScoringManager, que no
+// distingue especies dentro de una corrida; combinar especies con sus pesos
+// fisicos W[s] se hace en Python leyendo el ICRP110.out de cada corrida,
+// ver scripts/run_organ_sweep.py y scripts/aggregate_organ_doses.py).
+// /gun/phase max|min (fase del ciclo solar; SEP min = Feb 1956, SEP max = Oct 1989)
 class ICRP110PhantomPrimaryGeneratorAction : public G4VUserPrimaryGeneratorAction
 {
   public:
     explicit ICRP110PhantomPrimaryGeneratorAction();
-    ~ICRP110PhantomPrimaryGeneratorAction();
+    ~ICRP110PhantomPrimaryGeneratorAction() override;
 
-  public:
-    void GeneratePrimaries(G4Event* anEvent);
+    void GeneratePrimaries(G4Event* anEvent) override;
+
+    void SetSpecies(const G4String& species) { fSpecies = species; }
+    void SetPhase(const G4String& phase)     { fPhase = phase; }
+    G4String GetSpecies() const { return fSpecies; }
+    G4String GetPhase() const   { return fPhase; }
+
+    // Flujo/fluencia integrado (SpectrumSampler::GetIntegratedFlux) de la
+    // especie/fase actualmente seleccionada -- mismas unidades nativas que
+    // en GCR_SEP_Sim (particles/(day*cm2) para GCR, particles/cm2 para SEP).
+    // Usado por aggregate_organ_doses.py junto al radio de esfera fuente
+    // para recalcular W[s], no consumido en C++.
+    G4double GetIntegratedFlux() const;
 
   private:
-    G4GeneralParticleSource* fParticleGun;
+    void SampleIsotropicPosition(G4ThreeVector& pos, G4ThreeVector& dir, G4double radius) const;
+
+    G4ParticleGun* fGun;
+    G4String fSpecies = "GCR_H";
+    G4String fPhase   = "min";
+
+    SpectrumSampler* fGCR_H_max  = nullptr;
+    SpectrumSampler* fGCR_H_min  = nullptr;
+    SpectrumSampler* fGCR_He_max = nullptr;
+    SpectrumSampler* fGCR_He_min = nullptr;
+    SpectrumSampler* fSEP_p_max  = nullptr;
+    SpectrumSampler* fSEP_p_min  = nullptr;
+
+    ICRP110PhantomGeneratorMessenger* fMessenger = nullptr;
 };
 #endif
-
-
