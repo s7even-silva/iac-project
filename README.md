@@ -146,9 +146,11 @@ Si van a dejar el barrido corriendo desatendido en una máquina remota (por ejem
 | Fase | GCR: condición del ciclo solar | SEP: severidad del evento histórico |
 |---|---|---|
 | `min` | Mínimo solar real, dic 2019 – ene 2020 (oficial NASA/NOAA, ciclo 24→25) | **Febrero 1956, ajuste LaRC** — el más pequeño de los eventos catalogados en OLTARIS con dato comparable |
-| `max` | Máximo solar real, ventana ene 2024 – jul 2025 (ciclo 25) | **Octubre 1989** — peor caso estándar en el rango 5-100 MeV |
+| `max` | 14-15/01/2023 — **no** el pico real del ciclo 25 (ver nota) | **Octubre 1989** — peor caso estándar en el rango 5-100 MeV |
 
-Para GCR importa **la fecha real** (se pregunta "¿cómo es el flujo típico en esa fase del ciclo solar?", y las fechas 2019-2020/2024 son el mínimo/máximo real más reciente, más representativo que un ciclo de hace décadas). Para SEP importa **la magnitud del evento**, no cuándo ocurrió — por eso los eventos elegidos caen en años completamente distintos (1989, 1956) sin relación con las fechas de GCR.
+**Nota sobre la fecha de GCR máximo:** originalmente se planeó usar la ventana ene 2024 – jul 2025 (el máximo real del ciclo 25 según NOAA/SWPC), pero **BON2020 en OLTARIS no acepta fechas más allá de enero de 2023** (confirmado al intentarlo). Se usó entonces la fecha más tardía disponible dentro de ese límite (14-15/01/2023) como la mejor aproximación posible al máximo solar — no es el pico real, es una limitación de la herramienta. Dejar esto explícito en Métodos. Detalle completo en [`docs/checklist_espectros_reales.md`](geant4/GCR_SEP_Sim/docs/checklist_espectros_reales.md).
+
+Para GCR importa **la fecha real** (se pregunta "¿cómo es el flujo típico en esa fase del ciclo solar?"), aunque para el máximo la fecha usada quedó acotada por la herramienta, no por elección. Para SEP importa **la magnitud del evento**, no cuándo ocurrió — por eso los eventos elegidos caen en años completamente distintos (1989, 1956) sin relación con las fechas de GCR.
 
 Con esto, el resultado esperado es que **la dosis de GCR salga mayor en `min` que en `max`, y la dosis de SEP salga mayor en `max` que en `min`** — es física real del ciclo solar/severidad de evento, no un error si se da así; coméntenlo en la Discusión del artículo.
 
