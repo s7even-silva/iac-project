@@ -432,9 +432,14 @@ fuentes y pendientes en
   atascarse (curvatura mucho más suave), con solo 0,016% de diferencia
   entre volumen de malla y CAD. Importado en `ActiveShield_Sim` vía
   `/spacecraft/coilGeometry` sin solapamientos, con masa y trayecto de
-  sonda geantino coincidiendo exactamente con lo esperado. El arreglo de
-  las 8 bobinas, el cálculo de campo (Biot-Savart/Elmer) y el material
-  HTS real **todavía no existen** — ver
+  sonda geantino coincidiendo exactamente con lo esperado. **Campo
+  Biot-Savart también calculado y probado con una partícula cargada real
+  el mismo día**: `compute_field.py` sin cambios; deflexión real medida
+  (hasta -77,9 mm) en un protón de 9,9 GeV cruzando la región de campo en
+  Geant4 — energía alta elegida a propósito porque `ActiveShield_Sim`, a
+  diferencia de `GCR_SEP_Sim`, no tiene protección contra partículas
+  atrapadas en campos fuertes. El arreglo de las 8 bobinas, Elmer y el
+  material HTS real **todavía no existen** — ver
   [`field/CREWHAT_STATUS.md`](field/CREWHAT_STATUS.md) para el detalle
   completo de brechas y las decisiones de modelado propias marcadas
   explícitamente (sección cuadrada sin segunda dimensión de la fuente,
