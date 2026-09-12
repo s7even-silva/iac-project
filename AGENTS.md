@@ -491,6 +491,26 @@ fuentes y pendientes en
   diseño 40 K, corriente total del sistema 1×10⁷ A·vuelta (Tabla 3.1, p. 15
   del reporte NIAC).
 
+  **Aclaración de metodología (2026-09-11): los "~10 T" son el dato de
+  diseño del conductor, no el campo que recibe el fantoma.** Consistente
+  con que la cinta HTS está calificada `Ic=240A **a 10T/40K**` (Tabla 2.7
+  de la tesis, ver abajo) — es el campo que el propio devanado debe
+  soportar en su punto de operación, no el campo dentro del hábitat. Un
+  arreglo Halbach está optimizado para dar un campo **uniforme** dentro
+  del anillo, no necesariamente fuerte — la magnitud se concentra cerca de
+  las bobinas. A la corriente de diseño real (1×10⁷ A, sin escalar, la que
+  usa `run_organ_sweep.py`), el campo calculado da **~0,4-1 T dentro de la
+  nave** (donde importa para la dosis) y **~2,27 T** cerca del radio de
+  las bobinas (r=8m) — el verdadero pico cerca del conductor (que podría
+  acercarse a los 10 T) no es visible con este modelo: el núcleo de
+  regularización de Biot-Savart está marcado como no válido justo ahí (ver
+  brecha ya documentada más abajo). **Decisión del equipo:** la
+  metodología cita los ~10 T como especificación de diseño del conductor
+  (con su fuente), y usa el campo real simulado (~0,4-1 T) para el cálculo
+  de dosis — no se escala `/spacecraft/fieldScale` para forzar 10 T dentro
+  de la nave, porque eso ya no correspondería al diseño real de CREW HaT
+  citado.
+
   **Conductor — decisión: construir ambas opciones y comparar** (no eran
   tan costosas de comparar como parecía inicialmente, ver más abajo):
   cinta YBCO 12 mm (Ic=240A a 10T/40K → ~41.667 vueltas, winding pack 1,43 m
