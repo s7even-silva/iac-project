@@ -1041,14 +1041,14 @@ ni resolver de nuevo. Verificado: 700 de 82.720 nodos (0,85%) rellenados
 por estar dentro de un conductor, dentro del 5% que
 `_fill_conductor_gaps()` tolera; el campo máximo en la grilla ahora es
 6,25T (esa región, cerca de las bobinas, ni se muestreaba con el cubo).
-**Sin verificar todavía en vivo con Geant4** — el formato se comprobó
-por separado (cuenta de filas exacta, todo finito) pero no se pudo
-cargar con `ICRP110phantoms` porque el directorio de build estaba
-ocupado con el piloto de 8 bins.
+**Verificado en vivo con Geant4 (2026-09-12):** el `.map` anisotrópico ya
+corrió sin problema en la producción real de Bryam (ver más abajo) —
+docenas de corridas exitosas (`exit_code 0`) con `coilGeometry` +
+`fieldMap` juntos, el escenario que faltaba probar.
 
 **Piloto de 8 bins (1 por bin, GCR_H, posición 0), con la configuración
 final (14 hilos, bobinas incluidas, 10000 eventos reales) — hallazgo
-crítico para el presupuesto de tiempo:**
+crítico para el presupuesto de tiempo, tabla completa:**
 
 | Bin | Energía (MeV/amu) | Tiempo real |
 |---|---|---|
@@ -1058,16 +1058,40 @@ crítico para el presupuesto de tiempo:**
 | 3 | 562,3 | 72,6s |
 | 4 | 1778,3 | 275,3s |
 | 5 | 5623,4 | 730,4s |
-| 6-7 | 17780-56230 | (completar aquí cuando termine la corrida) |
+| 6 | 17782,8 | 1909,5s (31,8 min) |
+| 7 | 56230,4 | **5141,1s (85,7 min)** |
 
 El costo **no es uniforme entre bins** — cada bin de energía tarda
-aproximadamente 2,3-2,7x el anterior, un factor >30x ya confirmado entre
-el bin más barato y el bin5, con los dos bins más caros (los de mayor
-energía, más producción de secundarios) todavía sin medir. Cualquier
-presupuesto de tiempo para el barrido de 120 (o 600 con repeticiones)
-corridas debe usar esta curva real, no un promedio plano — el bin7 solo
-podría, extrapolando el mismo factor, tardar del orden de una hora por
-corrida.
+aproximadamente 2,3-2,7x el anterior. Los bins 6-7 solos (2 de 8) se
+comen ~80% del tiempo total de las 8 bins de una posición (suma completa
+~2,28h) — cualquier presupuesto de tiempo para el barrido debe usar esta
+curva real, no un promedio plano.
+
+**Producción real de Bryam (`--only-positions 2,3,4`, 72 corridas, sin
+repeticiones), en curso desde 2026-09-12 01:48, lanzada automáticamente
+al terminar el piloto:**
+
+- **GCR_H completo: 24/24, 23.233,5s = 6,45h** — muy cerca de la
+  proyección ingenua (3× el piloto de 1 posición ≈ 6,84h, dado que son
+  las mismas 8 bins en 3 posiciones).
+- **GCR_He, en curso — resultando MÁS caro que GCR_H a la misma energía
+  nominal, no igual como se había proyectado antes de tener datos
+  reales:** bin2 (177,8 MeV/amu nominal) tarda 111-122s aquí, vs 34,1s en
+  GCR_H — ~3,5x más. Bin3 (562,3 MeV/amu nominal) tarda 422-441s vs
+  72-95s en GCR_H — ~5x más. Explicación (no solo observación): el
+  `/gun/fixedEnergyMeV` es MeV/**amu**, y `ICRP110PhantomPrimaryGenerator
+  Action.cc` multiplica por el número de masa (`kineticEnergy =
+  keMeVPerNucleon * A * MeV`) — para GCR_He (A=4) la energía cinética
+  real simulada es **4x la de GCR_H a la misma etiqueta de bin** (ej. el
+  bin2 de GCR_He corre en realidad a ~711 MeV, no 177,8 MeV), así que
+  cuesta lo que costaría ese rango de energía real, consistente con el
+  patrón de la tabla de arriba. Implica que el total de GCR_He
+  probablemente supere las ~6,45h de GCR_H, no las iguale — sin cifra
+  final todavía (bins 4-7 de GCR_He, los más caros, sin correr aún).
+- **SEP_p, sin empezar** — rango 0,01-300 MeV (sin el multiplicador ×A,
+  A=1), su bin más caro (~300 MeV) cae entre el bin2 y bin3 de GCR_H en
+  costo — se espera barato (minutos, no horas) para las 24 combinaciones
+  juntas, pero sigue siendo una proyección, no medido.
 
 **Matriz pasiva/activa A-E: NO duplica el conteo, lo multiplica por hasta
 5x, y no es necesaria completa para el resultado central.** Si el único
