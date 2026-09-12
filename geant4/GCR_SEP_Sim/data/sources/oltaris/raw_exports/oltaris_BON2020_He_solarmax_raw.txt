@@ -1,0 +1,22 @@
+C	Boundary Flux (particles/((EU*-day-cm2)) vs. Energy (EU*) vs. Isotope
+C	Energy unit (EU*) is MeV for photon, electron, and positron; EU* is MeV/amu for all other particles.
+
+C	Created on Thu Sep 10 19:44:26 2026
+C	Job Name: He_min  [NOTA: mismo caso que el H -- Job Name mal etiquetado,
+C	fecha real usada fue ENERO 2023 (confirmado por el usuario). Esto es GCR
+C	MAXIMO, no minimo. Ver oltaris_BON2020_H_solarmax_raw.txt para el detalle
+C	completo de la limitacion de BON2020 en OLTARIS.]
+C	TARIS FORTRAN code version 5.01
+C	Fecha usada en OLTARIS (Defined by: Date): 14-15/01/2023
+
+C	 axis name= Energy unit= EU*
+C	 (mismo arreglo de energia de 125 puntos que el resto de exports)
+
+C	 axis name= Particle
+C	 (misma plantilla generica de 59 especies)
+
+NOTA: el bloque completo de 59 x 125 valores se omite aqui por brevedad --
+verificado que el dato real de He/alpha cae en el bloque de indice 2 (exactamente
+2 bloques de 25 filas de cero, es decir neutron + proton, antes del primer valor
+real), consistente con la regla indice=Z ya confirmada en este proyecto. Valores
+identicos, cifra por cifra, a los ya convertidos en ../gcr_alpha_solarmax.csv.

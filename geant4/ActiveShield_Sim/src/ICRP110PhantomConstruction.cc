@@ -75,6 +75,7 @@ ICRP110PhantomConstruction::ICRP110PhantomConstruction():
   fHullThickness = 1.5*cm; // ARSSEM Geom01 radiation reference, not structural sizing.
   fShipRadius = 2.8*m;     // ARSSEM/Geom14 default; CREW HaT's own reference is 4.5 m (Starship).
   fShipHalfLength = 5.*m;  // Kept as the default so existing Geom14 macros are unaffected.
+  fPhantomPositionCm = 0.; // Centred on the ship's cylinder axis (Z) by default; swept for the organ-dose study.
   fPhantomOffsetX = 0.;    // Default reproduces the old fixed-on-axis placement exactly.
   fPhantomOffsetY = 0.;
   fSpacecraftMessenger = new G4GenericMessenger(this, "/spacecraft/", "Spacecraft and field setup");
@@ -94,6 +95,12 @@ ICRP110PhantomConstruction::ICRP110PhantomConstruction():
   shipHalfLengthCmd.SetParameterName("halfLength", false);
   shipHalfLengthCmd.SetRange("halfLength>0");
   shipHalfLengthCmd.SetStates(G4State_PreInit);
+  // Offset along the ship's cylinder axis (Z, unrotated G4Tubs) -- NOT the same axis convention as
+  // GCR_SEP_Sim's /detector/astronautX (there ShipInterior is a sphere, so "X" was an arbitrary label).
+  auto& phantomPosCmd = fSpacecraftMessenger->DeclarePropertyWithUnit("phantomPositionCm", "cm", fPhantomPositionCm);
+  phantomPosCmd.SetParameterName("positionCm", false);
+  phantomPosCmd.SetRange("positionCm>=0");
+  phantomPosCmd.SetStates(G4State_PreInit);
   fSpacecraftMessenger->DeclareMethod("addPassiveLayerCm",
       &ICRP110PhantomConstruction::AddPassiveLayer,
       "Append outside hull, inner to outer: G4_Al|G4_POLYETHYLENE thickness_in_cm")
@@ -123,6 +130,12 @@ ICRP110PhantomConstruction::ICRP110PhantomConstruction():
   offY.SetStates(G4State_PreInit);
   // Register field accuracy commands before /run/initialize; setup is thread local.
   G4FieldBuilder::Instance();
+}
+
+G4double ICRP110PhantomConstruction::GetSourceSphereRadius() const
+{
+  const G4double shipHalfDiagonal = std::sqrt(fShipRadius*fShipRadius + fShipHalfLength*fShipHalfLength);
+  return shipHalfDiagonal + fHullThickness + 20.*cm; // same 20 cm margin as GCR_SEP_Sim
 }
 
 void ICRP110PhantomConstruction::AddPassiveLayer(G4String material, G4double thicknessCm)
@@ -455,17 +468,24 @@ G4VPhysicalVolume* ICRP110PhantomConstruction::Construct()
   fMinY = -fNVoxelY*fVoxelHalfDimY*mm;// Min Y
   fMinZ = -fNVoxelZ*fVoxelHalfDimZ*mm;// Min Z
 
+  // fPhantomPositionCm/fPhantomOffsetX/Y are already in G4 internal units
+  // here (DeclarePropertyWithUnit converts at parse time) -- do NOT
+  // multiply by cm/m again, that was a real double-conversion bug caught
+  // by a merge smoke test (50 cm macro input placed the phantom at 500 cm).
   G4ThreeVector posCentreVoxels((fMinX+fMaxX)/2.+fPhantomOffsetX,
                                  (fMinY+fMaxY)/2.+fPhantomOffsetY,
-                                 (fMinZ+fMaxZ)/2.);
+                                 (fMinZ+fMaxZ)/2. + fPhantomPositionCm);
 
   G4cout << " placing voxel container volume at " << posCentreVoxels << G4endl;
 
   // Fantoma colgado del interior de la nave (ShipInterior), no directo del
-  // World -- centrado en el eje a media longitud por defecto, desplazable
-  // en XY vía /spacecraft/phantomOffsetX|Y para un barrido de posicion
-  // (ver AGENTS.md, decision revertida el 2026-09-10 dado el campo Halbach
-  // no uniforme ya validado).
+  // World -- centrado por defecto (eje a media longitud), desplazable en XY
+  // via /spacecraft/phantomOffsetX|Y (radial/azimutal, relevante para el
+  // campo Halbach de CREW HaT, no uniforme) y a lo largo del eje Z via
+  // /spacecraft/phantomPositionCm (a lo largo de la nave, para el barrido
+  // de dosis por organo) -- ambos ejes son independientes y se combinan
+  // sin conflicto. Revierte el "sin barrido de posicion" original de
+  // AGENTS.md; ver esa seccion para el porque de cada uno.
   fPhantomContainer
   = new G4PVPlacement(nullptr,                     // rotation
                       posCentreVoxels,
