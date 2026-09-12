@@ -277,28 +277,45 @@ def main():
                 d_eq_sep += contrib_eq
         return d_abs_gcr, d_eq_gcr, d_abs_sep, d_eq_sep
 
-    # edep_by_run[(especie, bin_index, offset_x_m)][organo_id] = edep_J
-    # n_events_by_run[(especie, bin_index, offset_x_m)] = N
-    edep_by_run = defaultdict(dict)
-    n_events_by_run = {}
+    # edep_by_run[(especie, bin_index, offset_x_m)][organo_id] = edep_J, SUMADO
+    # sobre repeticiones (run_organ_sweep.py --repeats > 1 escribe una fila
+    # por organo por repeticion, misma clave -- pool de eventos de Monte
+    # Carlo independientes, no solo la ultima repeticion vista).
+    # n_events_by_run[(especie, bin_index, offset_x_m)] = N, sumado UNA VEZ
+    # por repeticion (no por fila de organo -- cada repeticion escribe ~142
+    # filas de organo que comparten el mismo n_eventos).
+    edep_by_run = defaultdict(lambda: defaultdict(float))
+    n_events_by_run_rep = {}  # (run_key, repeticion) -> n
     with open(results_path, newline="") as f:
         for row in csv.DictReader(f):
             n = int(row["n_eventos"])
             if n == 0:
                 continue
             run_key = (row["especie"], int(row["bin_index"]), float(row["offset_x_m"]))
-            edep_by_run[run_key][int(row["organo_id"])] = float(row["edep_J"])
-            n_events_by_run[run_key] = n
+            edep_by_run[run_key][int(row["organo_id"])] += float(row["edep_J"])
+            n_events_by_run_rep[(run_key, int(row.get("repeticion", 0) or 0))] = n
+    n_events_by_run = defaultdict(int)
+    for (run_key, _rep), n in n_events_by_run_rep.items():
+        n_events_by_run[run_key] += n
 
-    # --- CSV completo por organo_id (sin agrupar), R[o,s,bin] = dose_gy_run/N ---
-    r_by_key = defaultdict(dict)  # (organo_id, offset_x_m) -> {(species,bin_index): R}
+    # --- CSV completo por organo_id (sin agrupar), R[o,s,bin] = dose_gy_run/N,
+    # pooled sobre repeticiones. dose_gy_run ya es edep_J/masa_organo de ESA
+    # corrida -- pool correcto via promedio ponderado por N: R_pooled =
+    # sum(dose_gy_run_i * n_i) / sum(n_i) = sum(edep_i)/(masa*sum(n_i)),
+    # sin necesitar la masa explicita aqui (se cancela en el promedio). ---
+    _dose_n_sum = defaultdict(lambda: [0.0, 0])  # (organo_id,offset,especie,bin) -> [sum(dose*n), sum(n)]
     with open(results_path, newline="") as f:
         for row in csv.DictReader(f):
             n = int(row["n_eventos"])
             if n == 0:
                 continue
-            key = (int(row["organo_id"]), float(row["offset_x_m"]))
-            r_by_key[key][(row["especie"], int(row["bin_index"]))] = float(row["dose_gy_run"]) / n
+            key4 = (int(row["organo_id"]), float(row["offset_x_m"]), row["especie"], int(row["bin_index"]))
+            acc = _dose_n_sum[key4]
+            acc[0] += float(row["dose_gy_run"]) * n
+            acc[1] += n
+    r_by_key = defaultdict(dict)  # (organo_id, offset_x_m) -> {(species,bin_index): R}
+    for (organo_id, offset_x_m, especie, bin_index), (dose_n_sum, n_sum) in _dose_n_sum.items():
+        r_by_key[(organo_id, offset_x_m)][(especie, bin_index)] = dose_n_sum / n_sum
 
     out_fieldnames = ["organo_id", "offset_x_m",
                       "D_absorbida_GCR_Gy_dia", "D_equivalente_GCR_Sv_dia",

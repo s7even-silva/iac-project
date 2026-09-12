@@ -69,6 +69,9 @@ Uso:
     # x 24 = 120):
     python3 run_organ_sweep.py --field-map ../build/crewhat_niac_max.map --only-positions 2,3,4  # 72 corridas (60%)
     python3 run_organ_sweep.py --field-map ../build/crewhat_niac_max.map --only-positions 0,1    # 48 corridas (40%)
+    # Con repeticiones para media/std/IC95% (ver aggregate_organ_doses.py) --
+    # multiplica el total: 120 x 5 = 600 corridas.
+    python3 run_organ_sweep.py --field-map ../build/crewhat_niac_max.map --repeats 5
 
 Resume esta activado por defecto (mismo criterio que GCR_SEP_Sim/run_sweep.py):
 al relanzar el mismo comando se saltan los indices de corrida que ya tengan
@@ -218,6 +221,11 @@ def main():
                               "60%%) para una maquina mas rapida, las otras 2 (48 corridas, 40%%) para la otra.")
     parser.add_argument("--limit", type=int, default=None,
                          help="Solo correr las primeras N combinaciones ya filtradas (piloto)")
+    parser.add_argument("--repeats", type=int, default=1,
+                         help="Repeticiones por combinacion, con semillas distintas (default 1 -- para "
+                              "pilotos; usar mas para poder calcular media/std/IC95%% en aggregate_organ_doses.py, "
+                              "mismo principio que --repeats de GCR_SEP_Sim/run_sweep.py). N repeticiones "
+                              "multiplica el total de corridas por N (ej. 120 combos x 5 = 600).")
     parser.add_argument("--no-resume", dest="resume", action="store_false", default=True,
                          help="Rehacer desde cero incluso las corridas ya exitosas (exit_code 0)")
     args = parser.parse_args()
@@ -250,7 +258,7 @@ def main():
         combos = combos[:args.limit]
 
     manifest_path = build_dir / "organ_sweep_manifest.csv"
-    manifest_fieldnames = ["index", "especie", "fase", "bin_index", "energy_mev", "offset_x_m",
+    manifest_fieldnames = ["index", "repeticion", "especie", "fase", "bin_index", "energy_mev", "offset_x_m",
                             "n_events", "seed1", "seed2", "macro_path", "exit_code",
                             "duration_s", "log_path", "out_archive_path"]
 
@@ -259,7 +267,7 @@ def main():
         with open(manifest_path, newline="") as f:
             for row in csv.DictReader(f):
                 if row["exit_code"] == "0":
-                    done_runs.add(int(row["index"]))
+                    done_runs.add((int(row["index"]), int(row["repeticion"])))
         print(f"resume: {len(done_runs)} corrida(s) ya completada(s), se saltaran (--no-resume para rehacerlas).")
 
     manifest_mode = "a" if (args.resume and manifest_path.is_file()) else "w"
@@ -270,8 +278,8 @@ def main():
         manifest_file.flush()
 
     results_path = build_dir / "resultados_organo_sweep.csv"
-    results_fieldnames = ["especie", "fase", "bin_index", "energy_mev", "offset_x_m", "organo_id",
-                           "edep_J", "dose_gy_run", "n_eventos"]
+    results_fieldnames = ["especie", "fase", "bin_index", "energy_mev", "offset_x_m", "repeticion",
+                           "organo_id", "edep_J", "dose_gy_run", "n_eventos"]
     results_mode = "a" if (args.resume and results_path.is_file()) else "w"
     results_file = open(results_path, results_mode, newline="")
     results_writer = csv.DictWriter(results_file, fieldnames=results_fieldnames)
@@ -279,85 +287,90 @@ def main():
         results_writer.writeheader()
         results_file.flush()
 
-    print(f"Corriendo {len(combos)} combinacion(es) (n_events={args.n_events}, campo=NIAC max fijo) "
-          f"con {binary_path.name} en {build_dir}")
+    total_runs = len(combos) * args.repeats
+    print(f"Corriendo {len(combos)} combinacion(es) x {args.repeats} repeticion(es) = {total_runs} corridas "
+          f"(n_events={args.n_events}, campo=NIAC max fijo) con {binary_path.name} en {build_dir}")
 
     n_failed = 0
     n_skipped = 0
+    run_n = 0
     for combo in combos:
-        if combo["index"] in done_runs:
-            n_skipped += 1
-            continue
+        for rep in range(args.repeats):
+            run_n += 1
+            if (combo["index"], rep) in done_runs:
+                n_skipped += 1
+                continue
 
-        seed1 = BASE_SEED + 2 * combo["index"]
-        seed2 = seed1 + 1
+            seed1 = BASE_SEED + 1000 * rep + 2 * combo["index"]
+            seed2 = seed1 + 1
 
-        macro_path = generated_dir / f"organ_run_{combo['index']:03d}.mac"
-        macro_path.write_text(MACRO_TEMPLATE.format(
-            ship_radius_m=SHIP_RADIUS_M, ship_half_length_m=SHIP_HALF_LENGTH_M,
-            field_map=field_map, offset_x_m=f"{combo['offset_x_m']:.3f}",
-            seed1=seed1, seed2=seed2,
-            species=combo["species"], phase=combo["phase"],
-            energy_mev=f"{combo['energy_mev']:.6e}",
-            n_events=args.n_events, n_threads=args.threads,
-        ))
+            macro_path = generated_dir / f"organ_run_{combo['index']:03d}_r{rep:02d}.mac"
+            macro_path.write_text(MACRO_TEMPLATE.format(
+                ship_radius_m=SHIP_RADIUS_M, ship_half_length_m=SHIP_HALF_LENGTH_M,
+                field_map=field_map, offset_x_m=f"{combo['offset_x_m']:.3f}",
+                seed1=seed1, seed2=seed2,
+                species=combo["species"], phase=combo["phase"],
+                energy_mev=f"{combo['energy_mev']:.6e}",
+                n_events=args.n_events, n_threads=args.threads,
+            ))
 
-        log_path = logs_dir / f"organ_run_{combo['index']:03d}.log"
-        label = (f"[{combo['index']+1}/{len(combos)}] {combo['species']}/{combo['phase']} "
-                 f"bin{combo['bin_index']}={combo['energy_mev']:.3e} offsetX={combo['offset_x_m']}m")
-        print(label, end=" ... ", flush=True)
+            log_path = logs_dir / f"organ_run_{combo['index']:03d}_r{rep:02d}.log"
+            label = (f"[{run_n}/{total_runs}] {combo['species']}/{combo['phase']} "
+                     f"bin{combo['bin_index']}={combo['energy_mev']:.3e} offsetX={combo['offset_x_m']}m "
+                     f"rep={rep}")
+            print(label, end=" ... ", flush=True)
 
-        out_path = build_dir / "ICRP110.out"
-        out_path.unlink(missing_ok=True)  # nombre fijo, ver docstring del modulo
+            out_path = build_dir / "ICRP110.out"
+            out_path.unlink(missing_ok=True)  # nombre fijo, ver docstring del modulo
 
-        start = time.monotonic()
-        with open(log_path, "w") as logfile:
-            result = subprocess.run(
-                [str(binary_path), str(macro_path)],
-                cwd=build_dir, stdout=logfile, stderr=subprocess.STDOUT, text=True,
-            )
-        duration_s = time.monotonic() - start
+            start = time.monotonic()
+            with open(log_path, "w") as logfile:
+                result = subprocess.run(
+                    [str(binary_path), str(macro_path)],
+                    cwd=build_dir, stdout=logfile, stderr=subprocess.STDOUT, text=True,
+                )
+            duration_s = time.monotonic() - start
 
-        archive_path = archive_dir / f"organ_run_{combo['index']:03d}.out"
-        parsed_ok = False
-        if result.returncode == 0 and out_path.is_file():
-            out_path.rename(archive_path)
-            try:
-                rows = parse_icrp110_out(archive_path)
-                for organ_id, edep_j, dose_gy in rows:
-                    results_writer.writerow({
-                        "especie": combo["species"], "fase": combo["phase"],
-                        "bin_index": combo["bin_index"], "energy_mev": combo["energy_mev"],
-                        "offset_x_m": combo["offset_x_m"],
-                        "organo_id": organ_id, "edep_J": edep_j, "dose_gy_run": dose_gy,
-                        "n_eventos": args.n_events,
-                    })
-                results_file.flush()
-                parsed_ok = True
-            except ValueError as exc:
-                print(f"\n  ADVERTENCIA: no se pudo parsear {archive_path}: {exc}")
+            archive_path = archive_dir / f"organ_run_{combo['index']:03d}_r{rep:02d}.out"
+            parsed_ok = False
+            if result.returncode == 0 and out_path.is_file():
+                out_path.rename(archive_path)
+                try:
+                    rows = parse_icrp110_out(archive_path)
+                    for organ_id, edep_j, dose_gy in rows:
+                        results_writer.writerow({
+                            "especie": combo["species"], "fase": combo["phase"],
+                            "bin_index": combo["bin_index"], "energy_mev": combo["energy_mev"],
+                            "offset_x_m": combo["offset_x_m"], "repeticion": rep,
+                            "organo_id": organ_id, "edep_J": edep_j, "dose_gy_run": dose_gy,
+                            "n_eventos": args.n_events,
+                        })
+                    results_file.flush()
+                    parsed_ok = True
+                except ValueError as exc:
+                    print(f"\n  ADVERTENCIA: no se pudo parsear {archive_path}: {exc}")
 
-        status = "OK" if (result.returncode == 0 and parsed_ok) else f"FALLO (exit {result.returncode})"
-        if status != "OK":
-            n_failed += 1
-        print(f"{status} ({duration_s:.1f}s)")
+            status = "OK" if (result.returncode == 0 and parsed_ok) else f"FALLO (exit {result.returncode})"
+            if status != "OK":
+                n_failed += 1
+            print(f"{status} ({duration_s:.1f}s)")
 
-        manifest_writer.writerow({
-            "index": combo["index"], "especie": combo["species"], "fase": combo["phase"],
-            "bin_index": combo["bin_index"], "energy_mev": combo["energy_mev"],
-            "offset_x_m": combo["offset_x_m"],
-            "n_events": args.n_events, "seed1": seed1, "seed2": seed2,
-            "macro_path": str(macro_path),
-            "exit_code": result.returncode if parsed_ok else (result.returncode or 1),
-            "duration_s": round(duration_s, 2), "log_path": str(log_path),
-            "out_archive_path": str(archive_path) if parsed_ok else "",
-        })
-        manifest_file.flush()
+            manifest_writer.writerow({
+                "index": combo["index"], "repeticion": rep, "especie": combo["species"], "fase": combo["phase"],
+                "bin_index": combo["bin_index"], "energy_mev": combo["energy_mev"],
+                "offset_x_m": combo["offset_x_m"],
+                "n_events": args.n_events, "seed1": seed1, "seed2": seed2,
+                "macro_path": str(macro_path),
+                "exit_code": result.returncode if parsed_ok else (result.returncode or 1),
+                "duration_s": round(duration_s, 2), "log_path": str(log_path),
+                "out_archive_path": str(archive_path) if parsed_ok else "",
+            })
+            manifest_file.flush()
 
     manifest_file.close()
     results_file.close()
 
-    print(f"\nListo: {len(combos) - n_skipped} corrida(s) nueva(s), {n_failed} fallida(s), "
+    print(f"\nListo: {total_runs - n_skipped} corrida(s) nueva(s), {n_failed} fallida(s), "
           f"{n_skipped} ya completada(s) (saltadas).")
     print(f"Manifiesto: {manifest_path}")
     print(f"Resultados: {results_path}")
