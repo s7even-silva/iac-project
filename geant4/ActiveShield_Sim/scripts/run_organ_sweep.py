@@ -108,24 +108,34 @@ WORLD_HALF_SIZE_M = 14.0  # encierra el arreglo (halbach_radius=8m) + margen, mi
 # crioestato en el modelo final: la contribucion pasiva y los secundarios
 # pueden aumentar o reducir dosis") -- sin esto, la corrida solo ve el EFECTO
 # del campo sobre trayectorias, nunca las bobinas como blindaje/fuente de
-# secundarios. Mismo array_current_paths.json (mismas corrientes/posiciones,
-# solo ruido de punto flotante ~1e-15 entre generaciones) que compute_field_
-# ellipse_array.py uso para generar el .map de produccion -- geometria y
-# campo son consistentes entre si.
+# secundarios. **Es la variante CORC (winding pack 0,67m), NO la cinta 12mm
+# (1,43m)** -- descubierto 2026-09-11 revisando el JSON fuente
+# (crewhat_halbach_array_pilot.json: material="crewhat_corc_homogenized",
+# winding_pack_side_m=0.67), contradice la nota de AGENTS.md "se empieza
+# por la cinta 12mm": esa decision se siguio para los pilotos de UNA sola
+# bobina (existen ambas variantes ahi), pero el arreglo de 8 bobinas
+# siempre se ensamblo con CORC, nunca con la cinta -- no hay ningun archivo
+# de arreglo con la cinta 12mm todavia. Ver field/production/README.md.
+# Copia versionada en field/production/ (no field/generated/, que es
+# scratch/regenerable y no esta en git) -- mismo array_current_paths.json
+# (mismas corrientes/posiciones, solo ruido de punto flotante ~1e-15 entre
+# generaciones) que compute_field_ellipse_array.py uso para el .map.
 DEFAULT_COIL_GEOMETRY = (Path(__file__).resolve().parent.parent.parent.parent
-                          / "field" / "generated" / "crewhat_halbach_array" / "halbach_array.gdml")
+                          / "field" / "production" / "crewhat_corc_array.gdml")
 # Elmer FEM a escala real de nave, no Biot-Savart -- decision de equipo
 # 2026-09-11 (ver AGENTS.md, "Error de campo vs. error de dosis en Elmer, y
 # extension a escala real"): Biot-Savart trata cada bobina como un filamento
 # con nucleo de regularizacion de 6,7cm, mucho menor que el winding pack
-# real (~1,4m); la region de la nave (radio 4,5-6,9m) no esta lo bastante
-# lejos del arreglo (radio Halbach 8m) para que esa aproximacion sea buena
-# ahi. Medido: Biot-Savart da 36-48% MAS dosis que Elmer en la misma
-# configuracion (una sola semilla, no una validacion estadistica cerrada
-# todavia) -- Elmer resuelve la distribucion de corriente real sobre la
-# seccion del conductor, Biot-Savart no. build/crewhat_niac_max.map
-# (Biot-Savart) se conserva en disco para comparacion, ya no es el default.
-DEFAULT_FIELD_MAP = (Path(__file__).resolve().parent.parent.parent.parent / "build" / "crewhat_elmer_fullscale.map")
+# real (0,67m, CORC -- ver nota de DEFAULT_COIL_GEOMETRY arriba); la region
+# de la nave (radio 4,5-6,9m) no esta lo bastante lejos del arreglo (radio
+# Halbach 8m) para que esa aproximacion sea buena ahi. Medido: Biot-Savart
+# da 36-48% MAS dosis que Elmer en la misma configuracion (una sola
+# semilla, no una validacion estadistica cerrada todavia) -- Elmer resuelve
+# la distribucion de corriente real sobre la seccion del conductor,
+# Biot-Savart no. field/production/crewhat_niac_max.map (Biot-Savart) se
+# conserva para comparacion, ya no es el default.
+DEFAULT_FIELD_MAP = (Path(__file__).resolve().parent.parent.parent.parent
+                      / "field" / "production" / "crewhat_elmer_fullscale.map")
 # Radial en XY; Y fijo en 0 (ver docstring). Interior de la nave es
 # shipRadius(4.5m)-hullThickness(1.5cm) menos el medio-ancho del fantoma en
 # X (~0.271m) = margen seguro ~4.2m; 4.0m ya se probo sin solapamientos.

@@ -1,0 +1,78 @@
+{
+  "components": [
+    {
+      "group": "crewhat_coil_0",
+      "mass_kg": 77905.36758621557,
+      "material": "crewhat_corc_homogenized",
+      "tag": 1,
+      "triangles": 6022,
+      "volume_m3": 8.697771586218934
+    },
+    {
+      "group": "crewhat_coil_1",
+      "mass_kg": 77906.07339088278,
+      "material": "crewhat_corc_homogenized",
+      "tag": 2,
+      "triangles": 6022,
+      "volume_m3": 8.697850386024006
+    },
+    {
+      "group": "crewhat_coil_2",
+      "mass_kg": 77904.87459695972,
+      "material": "crewhat_corc_homogenized",
+      "tag": 3,
+      "triangles": 6002,
+      "volume_m3": 8.697716546263733
+    },
+    {
+      "group": "crewhat_coil_3",
+      "mass_kg": 77905.37092793829,
+      "material": "crewhat_corc_homogenized",
+      "tag": 4,
+      "triangles": 6010,
+      "volume_m3": 8.697771959306719
+    },
+    {
+      "group": "crewhat_coil_4",
+      "mass_kg": 77905.28858801277,
+      "material": "crewhat_corc_homogenized",
+      "tag": 5,
+      "triangles": 6024,
+      "volume_m3": 8.697762766437384
+    },
+    {
+      "group": "crewhat_coil_5",
+      "mass_kg": 77904.814680999,
+      "material": "crewhat_corc_homogenized",
+      "tag": 6,
+      "triangles": 6008,
+      "volume_m3": 8.69770985692567
+    },
+    {
+      "group": "crewhat_coil_6",
+      "mass_kg": 77905.16910537332,
+      "material": "crewhat_corc_homogenized",
+      "tag": 7,
+      "triangles": 6008,
+      "volume_m3": 8.697749426756966
+    },
+    {
+      "group": "crewhat_coil_7",
+      "mass_kg": 77904.77014749164,
+      "material": "crewhat_corc_homogenized",
+      "tag": 8,
+      "triangles": 6008,
+      "volume_m3": 8.697704884966909
+    }
+  ],
+  "converter_sha256": "c87a1fcb7ffe60f38df3452050b26f03f3af33071bea2d4eab42f7f07a038ba8",
+  "coordinate_frame": "Geant4 world, metres",
+  "gdml_sha256": "0161a0b9f75315374f26ebb56f5d5a37f3e8996943c8272c7fbbcb4c41896b3b",
+  "gmsh": "4.15.2",
+  "materials_sha256": "b7925613cb3c2cf1d6e0d75147eaf718e4b44a0706c3bbdc46b2da84bd8aebb7",
+  "mesh_sha256": "9180d6b0ea79439eee3cf4fa43754ecdb5627531a13a7900c9920f05548a7100",
+  "numpy": "2.3.3",
+  "platform": "Linux-7.0.0-31-generic-x86_64-with-glibc2.43",
+  "python": "3.13.15",
+  "schema_version": 1
+}

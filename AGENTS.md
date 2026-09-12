@@ -955,22 +955,67 @@ energía más baja** — las bobinas ahora generan secundarios de verdad.
 
 **Campo de producción cambiado de Biot-Savart a Elmer FEM a escala real
 (decisión de equipo, 2026-09-11):** `--field-map` ahora tiene default
-(`build/crewhat_elmer_fullscale.map`, ya no requerido explícitamente) —
-antes de este cambio, ninguna combinación mencionaba qué campo específico
-era "el de producción" fuera de la CLI. Motivo: ver la entrada "Error de
-campo vs. error de dosis en Elmer" más abajo — Biot-Savart sobreestima
-dosis 36-48% frente a Elmer en la misma configuración porque trata cada
-bobina como un filamento con núcleo de 6,7cm, mucho menor que el winding
-pack real (~1,4m), y la región de la nave no está lo bastante lejos del
-arreglo (radio Halbach 8m) para que esa aproximación sea buena ahí. Elmer
-resuelve la distribución de corriente real sobre la sección del
-conductor. `build/crewhat_niac_max.map` (Biot-Savart) se conserva para
-comparación, ya no es el default. **Sin verificar todavía en vivo la
-combinación exacta Elmer+coilGeometry dentro de `run_organ_sweep.py`**
-(cada pieza se probó por separado — Elmer a mano, coilGeometry con
-Biot-Savart — pero no las tres juntas en el lanzador real): el directorio
-de build estaba ocupado corriendo el piloto de 8 bins (ver abajo) cuando
-se hizo este cambio; verificar con `--limit 1` antes de un barrido real.
+(`field/production/crewhat_elmer_fullscale.map`, ya no requerido
+explícitamente) — antes de este cambio, ninguna combinación mencionaba
+qué campo específico era "el de producción" fuera de la CLI. Motivo: ver
+la entrada "Error de campo vs. error de dosis en Elmer" más abajo —
+Biot-Savart sobreestima dosis 36-48% frente a Elmer en la misma
+configuración porque trata cada bobina como un filamento con núcleo de
+6,7cm, mucho menor que el winding pack real (**0,67m, CORC — no 1,43m/cinta
+12mm, ver corrección más abajo**), y la región de la nave no está lo
+bastante lejos del arreglo (radio Halbach 8m) para que esa aproximación
+sea buena ahí. Elmer resuelve la distribución de corriente real sobre la
+sección del conductor. `field/production/crewhat_niac_max.map`
+(Biot-Savart) se conserva para comparación, ya no es el default. **Sin
+verificar todavía en vivo la combinación exacta Elmer+coilGeometry dentro
+de `run_organ_sweep.py`** (cada pieza se probó por separado — Elmer a
+mano, coilGeometry con Biot-Savart en el piloto de 8 bins — pero no las
+tres juntas en el lanzador real): verificar con `--limit 1` antes de un
+barrido real.
+
+**Corrección importante (2026-09-12): el arreglo de 8 bobinas siempre fue
+CORC, nunca la cinta 12mm — descubierto al preparar estos archivos para
+subir a git.** `field/examples/crewhat_halbach_array_pilot.json` (el
+único config de arreglo que existe, usado para TODO el trabajo de
+arreglo documentado arriba — geometría, GDML, campo Biot-Savart, ambas
+corridas Elmer r1/r2, el ablation de patrón angular, y el campo Elmer a
+escala real de hoy) tiene `material: "crewhat_corc_homogenized"` y
+`winding_pack_side_m: 0.67` — es la variante **CORC**, no la cinta 12mm
+(`crewhat_tape_homogenized`, 1,43m) que la bitácora de "Conductor —
+decisión: construir ambas opciones" (más arriba) dice que se empieza a
+probar primero. Esa decisión sí se siguió para los **pilotos de una sola
+bobina** (existen ambas variantes: `crewhat_ellipse_tape12mm_pilot.json`
+y `crewhat_ellipse_corc_pilot.json`, con Elmer corrido para la cinta en
+`crewhat_elmer_tape12mm{,_r2,_r3}`) — pero **el arreglo completo de 8
+bobinas nunca se ensambló con la cinta 12mm, solo con CORC**. Ningún
+resultado del arreglo (Biot-Savart, Elmer, ablation, ni la comparación de
+dosis Biot-Savart-vs-Elmer de hoy) es de la cinta 12mm — todos son de
+CORC. No es un error introducido hoy, es cómo se venían generando estos
+archivos desde el 2026-09-10; simplemente nadie lo había verificado
+explícitamente contra el JSON fuente hasta ahora. Pendiente real: si el
+paper quiere reportar también el arreglo con la cinta 12mm (la opción de
+mayor Ic, preferida en la decisión original), hay que generarlo desde
+cero — geometría, malla, GDML, Biot-Savart y, si se quiere comparar,
+Elmer — no existe ningún archivo de eso todavía.
+
+**Archivos de producción versionados en git, `field/production/`
+(2026-09-12):** antes, `.map`/GDML vivían solo en `field/generated/`/
+`build/` (ambos excluidos de git a propósito, ver más abajo) — cualquiera
+que clonara el repo tenía que instalar Elmer/Gmsh y regenerar todo desde
+cero para poder correr `run_organ_sweep.py`, aunque no fuera a cambiar
+nada del campo o la geometría. `field/production/` es una excepción
+deliberada y acotada a esta carpeta (`!field/production/**` en
+`.gitignore`, que de otro modo ignora todo `*.map` globalmente) — no
+cambia el criterio para `field/generated/`, que sigue siendo
+scratch/regenerable y no se versiona. Contiene, con sus manifiestos
+SHA256: `crewhat_elmer_fullscale.map`/`.field-manifest.json` (campo de
+producción actual), `crewhat_niac_max.map`/`.field-manifest.json`
+(Biot-Savart, para comparación), `crewhat_corc_array.gdml` +
+`.manifest.json` + `_materials.json` + `_config.json` (geometría sólida
+CORC de las 8 bobinas — nombrado explícitamente `corc`, no genérico
+`array`, precisamente por la corrección de arriba). 12MB en total. Los
+defaults de `run_organ_sweep.py` (`DEFAULT_FIELD_MAP`/
+`DEFAULT_COIL_GEOMETRY`) apuntan aquí, no a `build/`/`field/generated/`.
 
 **Piloto de 8 bins (1 por bin, GCR_H, posición 0), con la configuración
 final (14 hilos, bobinas incluidas, 10000 eventos reales) — hallazgo
