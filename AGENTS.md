@@ -1092,6 +1092,22 @@ al terminar el piloto:**
   A=1), su bin más caro (~300 MeV) cae entre el bin2 y bin3 de GCR_H en
   costo — se espera barato (minutos, no horas) para las 24 combinaciones
   juntas, pero sigue siendo una proyección, no medido.
+- **Decisión (2026-09-12): bin7 de GCR_He se salta por ahora, se corre
+  aparte después con cómputo distribuido.** El bin6 de GCR_He ya costó
+  7105,6s/7910,5s (~2h) por corrida — extrapolando el mismo factor de
+  crecimiento (~2,3-2,8x por bin), el bin7 (energía real ~225.000 MeV,
+  la más alta de todo el barrido) podría rondar 5-6h por corrida, ~15-18h
+  para las 3 posiciones — sin confirmar, es una extrapolación, no una
+  medición. Implementado `--skip-bins` en `run_organ_sweep.py` (lista de
+  `bin_index` a omitir, combinable con `--only-positions`) para poder
+  seguir con el resto del barrido (SEP_p) sin esperar esas horas. Un
+  script de este mismo cambio detectó cuándo terminó el bin6
+  (índices 72-74, GCR_He, posiciones 2-4) y relanzó automáticamente con
+  `--skip-bins 7`, sin perder ninguna corrida ya hecha (mismo mecanismo
+  de resume). El bin7 de GCR_He (posiciones 2,3,4) queda pendiente,
+  planeado para correrse por separado — candidato natural para probar
+  cómputo distribuido en una sola tanda de 3 corridas caras, en vez de
+  todo el barrido.
 
 **Matriz pasiva/activa A-E: NO duplica el conteo, lo multiplica por hasta
 5x, y no es necesaria completa para el resultado central.** Si el único
