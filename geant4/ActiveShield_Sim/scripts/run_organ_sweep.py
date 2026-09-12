@@ -81,6 +81,7 @@ estadistica del piloto mezclada con el resto).
 import argparse
 import csv
 import itertools
+import os
 import subprocess
 import sys
 import time
@@ -115,6 +116,7 @@ MACRO_TEMPLATE = """\
 /spacecraft/phantomOffsetX {offset_x_m} m
 /spacecraft/phantomOffsetY 0 m
 
+/run/numberOfThreads {n_threads}
 /run/initialize
 /random/setSeeds {seed1} {seed2}
 
@@ -202,6 +204,12 @@ def main():
                          help="Directorio de build con ICRP110phantoms compilado (default: <repo>/build)")
     parser.add_argument("--n-events", type=int, default=sweep_config.DEFAULT_N_EVENTS,
                          help=f"Eventos por corrida, default {sweep_config.DEFAULT_N_EVENTS}")
+    parser.add_argument("--threads", type=int, default=os.cpu_count(),
+                         help="Hilos de Geant4 MT por corrida via /run/numberOfThreads (default: todos los "
+                              "nucleos detectados -- antes de este flag, el binario usaba el default de 4 "
+                              "hardcodeado en ICRP110phantoms.cc, nunca sobreescrito aqui). Verificado "
+                              "(2026-09-11) que el scorer por organo funde correctamente entre hilos: dosis "
+                              "identica bit a bit entre 1/4/14 hilos, ~25-90%% mas rapido segun eventos/corrida.")
     parser.add_argument("--only-positions", type=str, default=None,
                          help="Lista separada por comas de offset_x_m a correr, ej. '2,3,4' -- para repartir "
                               "el barrido en equipo (mismo principio que --only-model de GCR_SEP_Sim/run_sweep.py: "
@@ -291,7 +299,7 @@ def main():
             seed1=seed1, seed2=seed2,
             species=combo["species"], phase=combo["phase"],
             energy_mev=f"{combo['energy_mev']:.6e}",
-            n_events=args.n_events,
+            n_events=args.n_events, n_threads=args.threads,
         ))
 
         log_path = logs_dir / f"organ_run_{combo['index']:03d}.log"

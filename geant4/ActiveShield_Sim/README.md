@@ -296,6 +296,19 @@ combinaciones de especie×bin) — ej. `--only-positions 2,3,4` = 72 corridas
 ~12,5 s de overhead fijo por corrida (carga de fantoma/ICRPdata) +
 ~0,045 s/evento.
 
+**`--threads` (2026-09-11, default: todos los núcleos detectados):**
+antes de este flag, `ICRP110phantoms` corría cada corrida con el default
+de 4 hilos hardcodeado en `ICRP110phantoms.cc` (`SetNumberOfThreads(4)`),
+sin que este lanzador lo sobreescribiera. Verificado en una máquina de 14
+núcleos, mismo macro y semilla: dosis final **idéntica bit a bit** entre
+1, 4 y 14 hilos (`ICRP110UserScoreWriter` funde correctamente los
+resultados de los hilos worker de Geant4 MT — no es un dato asumido, se
+comparó `ICRP110.out` de las tres corridas), con ~1,9x más rápido a 3000
+eventos y ~1,33x a 10000 eventos yendo de 1 a 14 hilos (la ganancia
+depende de cuánto pesa el overhead fijo de carga de ICRPdata, que no
+paraleliza, frente al `/run/beamOn`, que sí). `/run/numberOfThreads` es
+comando PreInit — el macro lo pone antes de `/run/initialize`.
+
 **`scripts/aggregate_organ_doses.py`:** usa `energy_bins.py` para los pesos
 `W[s,bin]`, aplica `w_R` (ICRP 103 Tabla A.3: protón/pion cargado = 2, alfa
 = 20, por especie no por bin — **pondera por la partícula primaria de la
