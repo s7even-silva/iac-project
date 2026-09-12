@@ -1017,22 +1017,34 @@ CORC de las 8 bobinas — nombrado explícitamente `corc`, no genérico
 defaults de `run_organ_sweep.py` (`DEFAULT_FIELD_MAP`/
 `DEFAULT_COIL_GEOMETRY`) apuntan aquí, no a `build/`/`field/generated/`.
 
-**Corrección del half-size del `.map` de Elmer, 7,2m → 7,6m (2026-09-12,
-a pedido de un usuario que notó, con razón, que 7,2m parecía muy poco):**
-el dominio mallado real es `X:±11,8m, Y:±13,8m, Z:±7,8m` — no es un cubo,
-porque el arreglo Halbach tampoco lo es (vive en el plano XY, radio 8m,
-mucho más extendido ahí que a lo largo de Z, el eje de la nave).
-`elmer_array_to_map.py` genera un `.map` cúbico (mismo half-size en los 3
-ejes) por simplicidad, así que queda limitado por el eje más corto (Z) —
-7,2m dejaba solo 0,26m de margen sobre el radio de la esfera fuente real
-de la nave (~6,94m). Subido a 7,6m (margen 0,66m contra la esfera fuente,
-0,235m contra el límite real de malla en Z) **reusando la misma solución
-Elmer ya calculada** — sin remallar ni resolver de nuevo, solo repetir el
-resampleo con `--half-size` mayor. Verificado: mismo ~1% de nodos dentro
-de conductores que antes (312 de 32.768), dentro del límite de seguridad
-de `_fill_conductor_gaps()`. Pendiente si se necesita más margen todavía:
-un `.map` no-cúbico que aproveche el espacio real disponible en X/Y —
-`elmer_array_to_map.py` no lo soporta hoy (un solo `--half-size`).
+**El `.map` de Elmer, de cubo a caja anisotrópica (2026-09-12, dos
+correcciones seguidas):** el dominio mallado real es `X:±11,8m,
+Y:±13,8m, Z:±7,8m` — no es un cubo, porque el arreglo Halbach tampoco lo
+es (vive en el plano XY, radio 8m, mucho más extendido ahí que a lo
+largo de Z, el eje de la nave). Primer intento: 7,2m cúbico (muy poco
+margen sobre la esfera fuente de la nave, ~6,94m — un usuario lo notó).
+Segundo intento: 7,6m cúbico (más margen, pero seguía limitado por el
+eje más corto). **Un usuario señaló el problema de fondo**: un `.map`
+cúbico no solo desperdicia margen en X/Y, sino que además el anillo de
+bobinas (y desde hoy, su sólido físico real vía
+`/spacecraft/coilGeometry`) se sale de un cubo de 7,6m en X/Y — cualquier
+secundario cargado que llegara ahí leía campo cero exactamente donde
+debería haber campo fuerte cerca del conductor, un hueco físico real, no
+solo cosmético. El formato `.map` que lee Geant4
+(`TabulatedMagneticField.cc`) ya soporta `nx/ny/nz` y `dx/dy/dz`
+independientes por eje — solo `elmer_array_to_map.py` forzaba un cubo.
+**Corregido:** `--half-size` ahora acepta 1 valor (cubo, retrocompatible)
+o 3 (`X Y Z`). El `.map` actual usa X=11,3m/Y=13,3m/Z=7,6m — margen
+~0,5m contra el límite real de malla en X/Y, 0,235m en Z, 0,66m sobre la
+esfera fuente. Reusa la misma solución Elmer ya calculada, sin remallar
+ni resolver de nuevo. Verificado: 700 de 82.720 nodos (0,85%) rellenados
+por estar dentro de un conductor, dentro del 5% que
+`_fill_conductor_gaps()` tolera; el campo máximo en la grilla ahora es
+6,25T (esa región, cerca de las bobinas, ni se muestreaba con el cubo).
+**Sin verificar todavía en vivo con Geant4** — el formato se comprobó
+por separado (cuenta de filas exacta, todo finito) pero no se pudo
+cargar con `ICRP110phantoms` porque el directorio de build estaba
+ocupado con el piloto de 8 bins.
 
 **Piloto de 8 bins (1 por bin, GCR_H, posición 0), con la configuración
 final (14 hilos, bobinas incluidas, 10000 eventos reales) — hallazgo

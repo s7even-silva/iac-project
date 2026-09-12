@@ -19,6 +19,21 @@ The requested half-size/spacing MUST fit inside the meshed air domain
 (see domain.mesh-manifest.json's bounds_m for the run in question) or
 resample() returns NaN for the points outside it, which this script
 refuses to write (TabulatedMagneticField requires all-finite input).
+
+--half-size takes 1 or 3 values (2026-09-12, fixed after a review of the
+first version of this script correctly pointed out the map was a cube
+sized to the shortest domain axis, wasting the real headroom on the
+other two): the meshed domain from mesh_exterior.py is NOT a cube -- the
+Halbach ring lives mostly in the coil array's XY plane (its own
+generate_ellipse_array.py bounding box, then padded by the same amount on
+every side), so it reaches much farther there than along the ship's Z
+axis. A cubic map inherits the shortest axis for ALL three, which clips
+the field at zero well inside where the ring (and now, since
+coilGeometry imports by default, the coils' own solid) actually sits in
+X/Y -- not just a wasted-headroom issue, a real physics gap for any
+charged secondary that reaches that region. The .map format Geant4 reads
+(TabulatedMagneticField.cc) already supports independent nx/ny/nz and
+dx/dy/dz per axis; only this exporter was forcing a cube.
 """
 import argparse
 from pathlib import Path
@@ -66,27 +81,32 @@ def _fill_conductor_gaps(grid, b, max_gap_fraction=0.05):
     return b, n_bad
 
 
-def generate(vtu, output, half_size, spacing, max_points):
+def generate(vtu, output, half_size_xyz, spacing, max_points):
+    """half_size_xyz: (half_x, half_y, half_z) in metres -- independent per
+    axis (pass the same value 3x for the old cubic behaviour)."""
     if output.suffix != '.map' or output.resolve() == vtu.resolve():
         raise ValueError('Use a distinct .map output')
-    n, step = grid_shape(half_size, spacing)
-    if n**3 > max_points:
-        raise ValueError(f'{n**3:,} nodes exceed --max-points={max_points:,}; plan/refine explicitly')
+    shapes = [grid_shape(h, spacing) for h in half_size_xyz]
+    (nx, stepx), (ny, stepy), (nz, stepz) = shapes
+    n_total = nx*ny*nz
+    if n_total > max_points:
+        raise ValueError(f'{n_total:,} nodes exceed --max-points={max_points:,}; plan/refine explicitly')
     points, tetra, values = load_vtu(vtu)
-    grid = np.array([(-half_size+step*(i % n), -half_size+step*(i//n % n), -half_size+step*(i//(n*n)))
-                      for i in range(n**3)])
+    hx, hy, hz = half_size_xyz
+    grid = np.array([(-hx+stepx*(i % nx), -hy+stepy*(i//nx % ny), -hz+stepz*(i//(nx*ny)))
+                      for i in range(n_total)])
     b = resample(points, tetra, values, grid)
     b, n_filled = _fill_conductor_gaps(grid, b)
     if not np.isfinite(b).all():
         n_bad = int(np.count_nonzero(~np.isfinite(b).all(axis=1)))
-        raise ValueError(f'{n_bad:,} of {n**3:,} grid points still non-finite after conductor-gap fill -- '
+        raise ValueError(f'{n_bad:,} of {n_total:,} grid points still non-finite after conductor-gap fill -- '
                           'shrink --half-size or check domain.mesh-manifest.json bounds_m for this run')
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_suffix(output.suffix+'.tmp')
     try:
         with temporary.open('w') as f:
             f.write(f'# Elmer FEM resample of {vtu.name}, array of 8 coils; m and T; not production\n')
-            f.write(f'{n} {n} {n}\n{-half_size} {-half_size} {-half_size}\n{step} {step} {step}\n')
+            f.write(f'{nx} {ny} {nz}\n{-hx} {-hy} {-hz}\n{stepx} {stepy} {stepz}\n')
             np.savetxt(f, b, fmt='%.12e')
         temporary.replace(output)
     finally:
@@ -94,8 +114,9 @@ def generate(vtu, output, half_size, spacing, max_points):
     report = {'model': 'elmer_fem_array_resample', 'vtu_sha256': digest(vtu),
               'generator_sha256': digest(Path(__file__)), 'map_sha256': digest(output),
               'python': platform.python_version(), 'numpy': np.__version__,
-              'platform': platform.platform(), 'half_size_m': half_size, 'spacing_m': step,
-              'shape': [n]*3, 'production_validated': False}
+              'platform': platform.platform(), 'half_size_m': list(half_size_xyz),
+              'spacing_m': [stepx, stepy, stepz], 'shape': [nx, ny, nz],
+              'conductor_gap_nodes_filled': n_filled, 'production_validated': False}
     output.with_suffix('.field-manifest.json').write_text(__import__('json').dumps(report, indent=2)+'\n')
     print(__import__('json').dumps(report, indent=2))
 
@@ -104,8 +125,16 @@ if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('vtu', type=Path, help="Elmer's *_air_t0001.vtu (ResultOutputSolver ascii output)")
     p.add_argument('output', type=Path)
-    p.add_argument('--half-size', type=float, required=True, help='Map cube half-side in metres')
-    p.add_argument('--spacing', type=float, required=True, help='Maximum uniform grid step in metres')
+    p.add_argument('--half-size', type=float, nargs='+', required=True,
+                    help='Map half-size(s) in metres: one value for a cube (old behaviour), or 3 '
+                         '(X Y Z) for an anisotropic box matching the real (non-cubic) meshed domain')
+    p.add_argument('--spacing', type=float, required=True, help='Maximum grid step in metres (shared by all axes)')
     p.add_argument('--max-points', type=int, default=1000000)
     a = p.parse_args()
-    generate(a.vtu, a.output, a.half_size, a.spacing, a.max_points)
+    if len(a.half_size) == 1:
+        half_size_xyz = (a.half_size[0],)*3
+    elif len(a.half_size) == 3:
+        half_size_xyz = tuple(a.half_size)
+    else:
+        p.error('--half-size takes 1 value (cube) or 3 values (X Y Z)')
+    generate(a.vtu, a.output, half_size_xyz, a.spacing, a.max_points)
