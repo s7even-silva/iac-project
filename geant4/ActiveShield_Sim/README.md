@@ -278,23 +278,46 @@ especies/fase × 8 bins de energía × 5 posiciones radiales `phantomOffsetX`
 siempre escribe su salida en un nombre **fijo** (`ICRP110.out`), así que
 cada corrida se archiva antes de lanzar la siguiente. Nave a escala real de
 CREW HaT (`shipRadius=4.5m`, `shipHalfLength=5m`, fijos en la macro).
-Requiere el `.map` del arreglo real de 8 bobinas ya generado (entorno
-`field/.venv`, no `geant4_env` — dos pasos, ver docstring del script):
 
-```bash
-python3 field/generate_ellipse_array.py field/examples/crewhat_halbach_array_pilot.json field/generated/crewhat_halbach_array_production
-python3 field/compute_field_ellipse_array.py field/generated/crewhat_halbach_array_production/array_current_paths.json build/crewhat_niac_max.map --half-size 13.0 --spacing 0.75
-```
+**Campo de producción: Elmer FEM a escala real (2026-09-11), no
+Biot-Savart.** `--field-map`/`--coil-geometry` ya traen default
+(`build/crewhat_elmer_fullscale.map`, `field/generated/crewhat_halbach_array/
+halbach_array.gdml`) — no hace falta pasarlos si ya generaste esos
+archivos. Por qué se cambió de Biot-Savart a Elmer: ver AGENTS.md, "Error
+de campo vs. error de dosis en Elmer, y extensión a escala real" — en
+corto, Biot-Savart sobreestima la dosis 36-48% en esta geometría porque
+trata cada bobina como un filamento delgado, no como el winding pack real.
+Para regenerar el `.map` de Elmer desde cero (entorno `field/.venv` para
+mallar/exportar, más Elmer instalado vía `scripts/install.sh --with-elmer`
+para el solve — ver `AGENTS.md` para los comandos exactos de
+`mesh_exterior.py`/`ElmerGrid`/`ElmerSolver`/`field/elmer_array_to_map.py`).
+El `.map` de Biot-Savart anterior (`build/crewhat_niac_max.map`) se
+conserva para comparación explícita (`--field-map ../build/crewhat_niac_max.map`).
 
-Ese `.map` ya está a la corriente de diseño máxima (1×10⁷ A/bobina) — se usa
-con `/spacecraft/fieldScale 1.0`, sin escalar. Manifiesto + resume, mismo
-patrón que `GCR_SEP_Sim/scripts/run_sweep.py`. `--only-positions` reparte
-el barrido en equipo por posición completa (cada posición trae sus 24
-combinaciones de especie×bin) — ej. `--only-positions 2,3,4` = 72 corridas
-(60%), `--only-positions 0,1` = 48 corridas (40%). Salida:
-`resultados_organo_sweep.csv`. Medido en la laptop del usuario (WSL2):
-~12,5 s de overhead fijo por corrida (carga de fantoma/ICRPdata) +
-~0,045 s/evento.
+`/spacecraft/coilGeometry` (la masa/material real de las bobinas, no solo
+su campo) también se importa por defecto ahora — decisión de equipo ya
+registrada en AGENTS.md ("Mantener material de devanados..."), que el
+lanzador nunca había seguido hasta este cambio. `--no-coil-geometry` para
+comparar sin ellas.
+
+Manifiesto + resume, mismo patrón que `GCR_SEP_Sim/scripts/run_sweep.py`.
+`--only-positions` reparte el barrido en equipo por posición completa
+(cada posición trae sus 24 combinaciones de especie×bin) — ej.
+`--only-positions 2,3,4` = 72 corridas (60%), `--only-positions 0,1` = 48
+corridas (40%); `aggregate_organ_doses.py --results a.csv b.csv` junta los
+CSV de ambas personas en una sola pasada (acepta varios archivos/patrones
+glob). Salida: `resultados_organo_sweep.csv`.
+
+**Costo por corrida, NO uniforme entre bins de energía (medido
+2026-09-11, 14 hilos, con coilGeometry, 10000 eventos reales, GCR_H,
+posición 0):** 21,6s (bin0, 17,8 MeV/amu) → 21,8s (bin1) → 34,1s (bin2) →
+72,6s (bin3) → 275,3s (bin4, 1778 MeV/amu) → 730,4s (bin5, 5623 MeV/amu)
+— cada bin tarda ~2,3-2,7x el anterior; los bins 6-7 (17780-56230 MeV/amu)
+probablemente son los más caros de los 8. Cualquier presupuesto de
+tiempo para el barrido completo debe usar esta curva, no un promedio
+plano — la cifra anterior de este documento (~12,5s de overhead fijo +
+~0,045s/evento, medida sin bobinas ni en los bins de mayor energía) ya
+no es representativa de la configuración de producción actual.
 
 **`--threads` (2026-09-11, default: todos los núcleos detectados):**
 antes de este flag, `ICRP110phantoms` corría cada corrida con el default
@@ -312,9 +335,14 @@ comando PreInit — el macro lo pone antes de `/run/initialize`.
 **`--repeats N` (2026-09-11, default 1):** repite las 120 combinaciones N
 veces con semillas distintas (`--repeats 5` = 600 corridas), mismo patrón
 que `GCR_SEP_Sim/scripts/run_sweep.py`. Resume indexa por `(index,
-repeticion)`. Necesario si se quiere media/std/IC95% por combinación —
-sin esto solo hay una estimación puntual por (especie,bin,posición), sin
-barra de error.
+repeticion)`. **Orden repetición-mayor siempre** (no un flag): termina
+todas las combinaciones de la repetición 0 antes de empezar la 1 — da un
+primer resultado completo mucho antes de terminar todo el barrido.
+Necesario si se quiere media/std/IC95% por combinación — sin esto solo
+hay una estimación puntual por (especie,bin,posición), sin barra de
+error. `aggregate_organ_doses.py` calcula esa estadística entre
+repeticiones en `resultados_riesgo_estocastico_repeticiones.csv` (con
+`--repeats 1` imprime aviso y deja std/CV en blanco, no falla).
 
 **`scripts/aggregate_organ_doses.py`:** usa `energy_bins.py` para los pesos
 `W[s,bin]`, aplica `w_R` (ICRP 103 Tabla A.3: protón/pion cargado = 2, alfa

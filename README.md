@@ -10,19 +10,33 @@ cargue las mismas instrucciones sin duplicar su contenido.
 casco de referencia Al de 1.5 cm, envolvente para bobinas externas y lector de
 campo global. Existe un [piloto Double Helix y campo de referencia](field/README.md);
 el ensamblaje Geom14 y su mapa físico validado aún faltan. **CREW HaT** (8 bobinas
-Halbach elípticas) avanza en paralelo a Geom14 y está más adelantado: geometría,
-mallado, GDML, importación y campo Biot-Savart validados de punta a punta, con
-comparación cuantitativa contra Elmer FEM y un ablation del patrón angular —
-pero **todavía no listo para dosimetría de producción**: la sección del
-conductor y el radio de regularización del campo son supuestos propios sin
-validar (ver `field/CREWHAT_STATUS.md`).
+Halbach elípticas) avanza en paralelo a Geom14 y es la geometría de producción:
+geometría, mallado, GDML, importación, campo Biot-Savart y campo Elmer FEM a
+escala real de nave, todos validados de punta a punta, con un ablation del
+patrón angular. **Campo de producción: Elmer FEM, no Biot-Savart** (decisión
+2026-09-11) — Biot-Savart sobreestima la dosis 36-48% en esta geometría porque
+trata cada bobina como un filamento delgado, no como el winding pack real (ver
+AGENTS.md, "Error de campo vs. error de dosis en Elmer"). La sección cuadrada
+del conductor y el radio de regularización de Biot-Savart siguen siendo
+supuestos propios aceptados por el equipo sin más validación posible (sin dato
+externo con el que contrastarlos, ver `field/CREWHAT_STATUS.md`) — no bloquean
+producción, quedan documentados como limitación.
 
 Ya existe un lanzador de producción para el segundo grupo de datos del
 equipo: `geant4/ActiveShield_Sim/scripts/run_organ_sweep.py`, 120 corridas
-(3 especies × 8 bins de energía × 5 posiciones radiales del fantoma), con
-el campo real del arreglo de 8 bobinas de CREW HaT a su corriente de
-diseño máxima y dosis equivalente (Sv) en los 6 tejidos de mayor riesgo
-estocástico (ICRP 103). Detalle en la sección ["Dosis por órgano y
+(3 especies × 8 bins de energía × 5 posiciones radiales del fantoma) ×
+repeticiones (`--repeats`, orden repetición-mayor por defecto), con el
+campo Elmer FEM real del arreglo de 8 bobinas de CREW HaT a su corriente
+de diseño máxima, la masa/material real de las bobinas
+(`/spacecraft/coilGeometry`, por defecto), y dosis equivalente (Sv) en los
+6 tejidos de mayor riesgo estocástico (ICRP 103), con media/std/IC95% entre
+repeticiones. Reparto de equipo vía `--only-positions` +
+`aggregate_organ_doses.py --results a.csv b.csv` (varios archivos).
+**El costo por corrida no es uniforme**: medido de 21,6s (bin de menor
+energía) a 730,4s (un bin intermedio de 8), con los dos bins de mayor
+energía probablemente más caros aún — cualquier presupuesto de tiempo
+debe usar esa curva real, no un promedio. Detalle en la sección ["Dosis
+por órgano y
 equivalente"](geant4/ActiveShield_Sim/README.md#dosis-por-órgano-y-equivalente-2026-09-10-campo-real-y-bins-desde-2026-09-11)
 de ese README. Physics list de producción: `Shielding` (decidido,
 2026-09-11, mismo que el piloto).
