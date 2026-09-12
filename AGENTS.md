@@ -306,20 +306,32 @@ fuentes y pendientes en
   las macros originales son historias de partículas, no 1000 corridas.
 
 **Decisiones confirmadas por el equipo:**
-- **Revertida 2026-09-10** (antes: "fantoma fijo, centrado en el eje a
-  media longitud; no barrido de posición"): reconsiderada porque el campo
-  Halbach de CREW HaT ya validado es genuinamente no uniforme
-  (0,42-0,72T dentro del anillo, asimetría discreta de 8 pliegues), a
-  diferencia de lo que probablemente motivó la decisión original. Ahora:
-  fantoma centrado a media longitud por defecto (retrocompatible, cero
-  cambio de comportamiento sin macro nueva), con
-  `/spacecraft/phantomOffsetX|Y <m>` disponibles para desplazarlo dentro
-  de `ShipInterior` — infraestructura para un barrido de posición, no el
-  barrido en sí (faltan rango/N de puntos y su integración con el
-  pipeline de bins de dosimetría). Detalle en `field/CREWHAT_STATUS.md`.
-- **Bins de energía + reponderación** para producción. La decisión ya está
-  tomada; faltan bordes/rango, especies, N/bin, orquestador y estimación de
-  incertidumbre por órgano. No portar muestreo continuo como plan de producción.
+- ~~Fantoma fijo, centrado en el eje a media longitud; no barrido de
+  posición.~~ **Revertido 2026-09-10, por dos motivos independientes que
+  llegaron el mismo día:** (1) el usuario pidió ver cómo varía la dosis
+  equivalente en los órganos de mayor riesgo estocástico de cáncer según
+  la posición del fantoma dentro de la nave — implementado como
+  `/spacecraft/phantomPositionCm <cm>`, desplazamiento a lo largo del eje
+  Z (el eje largo del cilindro); (2) el campo Halbach de CREW HaT ya
+  validado resultó ser genuinamente no uniforme (0,42-0,72 T dentro del
+  anillo, asimetría discreta de 8 pliegues) — implementado como
+  `/spacecraft/phantomOffsetX|Y <m>`, desplazamiento en la sección
+  transversal XY. Los dos comandos son independientes y se combinan sin
+  conflicto (ejes distintos); ambos con default 0 (retrocompatibles, cero
+  cambio de comportamiento sin macro nueva). `phantomOffsetX|Y` es solo
+  infraestructura de posicionamiento — el barrido en sí (rango, N de
+  puntos, integración con el pipeline de bins de dosimetría) sigue sin
+  implementar; ver `field/CREWHAT_STATUS.md`. `phantomPositionCm` sí tiene
+  un barrido completo, ver más abajo ("Dosis por órgano y equivalente").
+- **Bins de energía + reponderación** para producción. **Implementado
+  2026-09-11 para el análisis de riesgo estocástico** (ver la entrada de
+  "Dosis por órgano y equivalente" más abajo): bordes/rango (>99,9% del
+  flujo real por especie), especies (GCR_H, GCR_He, SEP_p) y N/bin
+  decididos ahí, `scripts/energy_bins.py` y `/gun/fixedEnergyMeV`. Sigue
+  pendiente para el **barrido de producción completo** (el que compara
+  blindaje pasivo/activo con las 8 bobinas a distintas configuraciones,
+  distinto del análisis de riesgo estocástico ya implementado): orquestador
+  a esa escala mayor y estimación de incertidumbre por órgano.
 - **Gmsh + Elmer + Python** para calcular y exportar el campo. No implementar
   un Halbach uniforme ficticio; no inventar dimensiones/corrientes de bobinas.
   Elmer se instala por `scripts/install.sh --with-elmer`; el venv cubre
@@ -345,8 +357,94 @@ fuentes y pendientes en
   diferidos, no bloquean la primera corrida de producción; se completan
   después si hay tiempo. Ver checklist para el detalle de qué 3 archivos
   (no 6) se exportan primero.
+- **Los 6 espectros reales completados (2026-09-10).** GCR máximo tuvo una
+  limitación de fecha: BON2020 en OLTARIS no acepta fechas más allá de enero
+  de 2023 (confirmado al intentar la ventana real del máximo del ciclo 25,
+  ene 2024–jul 2025), así que se usó 14-15/01/2023 en su lugar — la mejor
+  aproximación disponible en la herramienta, no el pico real (que según
+  NOAA/SWPC fue más tarde). SEP mínimo (Feb 1956, ajuste LaRC) se exportó sin
+  problemas. Con esto **ya no hace falta `--priority-only`**:
+  `select_spectrum_source.py oltaris` (sin `--only`) y `run_sweep.py` (sin
+  `--priority-only`) corren el barrido completo de 140 combinaciones —
+  probado con un piloto de las 4 combinaciones modelo×fase, todas con dosis
+  físicamente coherentes (GCR mayor en mínimo que en máximo, SEP mayor en
+  Oct1989 que en Feb1956). Detalle completo en el checklist.
 - Mantener material de devanados, soportes y crióstato en el modelo final:
   la contribución pasiva y los secundarios pueden aumentar o reducir dosis.
+- **Dosis por órgano y equivalente, riesgo estocástico (2026-09-10/11).**
+  `GCR_SEP_Sim` da dosis absoluta de cuerpo completo pero su fantoma es una
+  esfera sin órganos; para dosis por órgano y equivalente (Sv) hace falta
+  el fantoma ICRP110 real de `ActiveShield_Sim`. **Tres rondas de revisión**
+  (dos de reducción de alcance, una de corrección de un error de diseño):
+  - *Ronda 1 (2026-09-10):* dosis equivalente en los órganos de mayor
+    riesgo estocástico de cáncer, en función de la posición del fantoma,
+    con blindaje al máximo y el evento más peligroso de cada especie (GCR
+    en mínimo solar, SEP en Oct 1989). Campo **sintético uniforme**
+    (`field/generate_uniform_map.py`, evitaba el imán real de Bryam, aún
+    no validado en ese momento) a 10 T, fantoma desplazado a lo largo del
+    eje Z en 5 posiciones — 15 corridas.
+  - *Ronda 2 (2026-09-11):* el arreglo real de 8 bobinas de CREW HaT ya
+    estaba validado (ver más arriba) — se usa ese campo real en vez del
+    placeholder sintético, a su **corriente de diseño máxima fija** (1×10⁷
+    A por bobina, sin escalar), exportado a `.map` con
+    `field/generate_ellipse_array.py` + `field/compute_field_ellipse_array.py`
+    sobre `field/examples/crewhat_halbach_array_pilot.json`. Posición del
+    fantoma de `phantomPositionCm` (eje Z) a **`phantomOffsetX`** (radial
+    en XY, Y fijo en 0): el campo real de Bryam varía principalmente
+    radial/azimutalmente respecto al anillo de bobinas. Nave a escala real
+    de CREW HaT (`shipRadius=4.5m`, `shipHalfLength=5m`, este segundo valor
+    supuesto propio del equipo).
+  - *Ronda 3 (2026-09-11), corrige un error real, no una reducción de
+    alcance:* `ICRP110PhantomPrimaryGeneratorAction` usaba `SpectrumSampler`
+    para **muestreo continuo** del espectro (copiado de `GCR_SEP_Sim`) — el
+    mismo método que esta sección ya tenía registrado, más abajo, como
+    **"no portar como plan de producción"** para `ActiveShield_Sim` (la
+    decisión de "bins de energía + reponderación" es anterior a esta
+    tarea). Corregido: `/gun/fixedEnergyMeV <valor>` (nuevo) fuerza una
+    energía monoenergética fija en todos los primarios de la corrida, en
+    vez de muestrear — `SpectrumSampler` se conserva sin tocar y sigue
+    siendo el default (sin este comando) para `primary.mac`/demos, donde
+    no aplica la decisión de bins. `scripts/energy_bins.py` (nuevo) calcula
+    8 bins log-espaciados por especie (decisión 2026-09-11, evaluado contra
+    5/10 bins y distintos N/corrida por el costo en tiempo) dentro del
+    rango que cubre >99,9% del flujo/fluencia real de cada espectro
+    (calculado de los CSV reales, no el rango tabulado completo de OLTARIS
+    que tiene colas irrelevantes) y el peso físico real de cada bin.
+    `aggregate_organ_doses.py` combina cada `(especie,bin)` con su propio
+    peso en vez de un peso único por especie. Esto **multiplica el conteo
+    de corridas por 8** (de 15 a **120**: 3 especies × 8 bins × 5
+    posiciones) — tensión reconocida con "menos combinaciones y menos
+    tiempo"; se aceptó el costo para seguir la decisión ya tomada del
+    equipo. División de trabajo: `--only-positions` (nuevo, mismo criterio
+    que `--only-model` de `GCR_SEP_Sim`) reparte por posición completa —
+    3 posiciones = 72 corridas (60%), 2 posiciones = 48 corridas (40%).
+  **Ponderación radiobiológica (`w_R`, ICRP 103 Tabla A.3):** protón y pion
+  cargado = 2, alfa = 20, por especie (no por bin de energía — esta
+  ponderación simplificada de ICRP103 no depende de la energía). Limitación
+  explícita: pondera por la partícula *primaria* de la corrida, no por
+  partícula-en-cada-paso (un neutrón secundario hereda el `w_R` del
+  primario, no el suyo propio) — resolverlo por paso requeriría un
+  `SteppingAction` con filtro por tipo de partícula, fuera de alcance.
+  **6 categorías de riesgo estocástico** (ICRP 103 Tabla A.1, los seis
+  `w_T=0.12`): colon, pulmón, estómago, mama, médula ósea roja y "tejidos
+  restantes" (remainder, un compuesto de otros 14 tejidos que ICRP103 trata
+  como una sola categoría) — cada una agrupa varios `organ_id` de ICRP110
+  en un solo valor ponderado por masa, no una fila por `organ_id` (versión
+  anterior de este análisis). **Médula ósea roja, verificado contra
+  `AM_organs.dat`/`AM_spongiosa.dat`/`OrganMasses.dat` reales
+  (2026-09-11):** ICRP110 no la modela como `organ_id` propio — está
+  repartida como fracción de la dosis de "spongiosa" (hueso esponjoso) en
+  19 sitios esqueléticos, dada por `AM_spongiosa.dat` (fracciones
+  RBM/YBM/hueso por **ID de tejido**, columna "Tissue number" de
+  `AM_organs.dat`, no por `organ_id`) — masa total calculada (1,170 kg)
+  coincide exactamente con el valor de referencia ICRP para el adulto
+  masculino, validando la implementación. Fantoma masculino: la mama sí
+  está segmentada en ICRP110 para ambos sexos, pero `w_T=0.12` es un valor
+  promediado por sexo — la dosis en tejido mamario de un fantoma masculino
+  es una referencia dosimétrica/geométrica, no equivalente al riesgo
+  epidemiológico de cáncer de mama documentado en mujeres. Detalle de
+  comandos y scripts en
+  [README de ActiveShield_Sim](geant4/ActiveShield_Sim/README.md).
 
 **Propuestas y pendientes (no decisiones finales):**
 - El usuario indica un plan previo de 12 bobinas. Geom14 de ARSSEM es la
@@ -608,50 +706,46 @@ fuentes y pendientes en
   importaría. Ninguna configuración de producción cambió. Detalle, tabla
   y comandos reproducibles en `field/CREWHAT_STATUS.md`.
 
-### Segundo grupo de datos: lanzador de ActiveShield_Sim (2026-09-11)
+### Segundo grupo de datos: dos implementaciones en paralelo, resueltas por merge (2026-09-11)
 
-**Implementado:** `geant4/ActiveShield_Sim/scripts/run_sweep.py` — lanza
-las 15 corridas del segundo grupo del equipo (3 especies más peligrosas
-× 5 posiciones del fantoma, campo del arreglo Halbach de CREW HaT a su
-intensidad de diseño, ~10T de pico). A diferencia de `gcrsim`,
-`ICRP110phantoms` usa `G4GeneralParticleSource` en vez de un
-`SpectrumSampler` propio — `scripts/spectrum_to_gps.py` puentea los
-mismos 3 CSV reales de OLTARIS ya exportados para GCR_SEP_Sim
-(`gcr_proton_solarmin`, `gcr_alpha_solarmin`, `sep_proton_solarmax` —
-reutilizados como "especies más peligrosas", ya priorizados por ser los
-casos de mayor dosis por especie) hacia `/gps/ene/type Arb` +
-`/gps/hist/point`, escalando energía MeV/amu→MeV total por número de
-masa para iones (igual conversión que `PrimaryGeneratorAction.cc` de
-GCR_SEP_Sim). La dosis por órgano usa el scorer original del ejemplo
-ICRP110 (`ICRP110UserScoreWriter`, ya funcional — no hubo que construir
-mapeo vóxel→órgano). `scripts/aggregate_organ_dose.py` postprocesa el
-`ICRP110.out` de cada corrida a dosis equivalente (Sv) en los órganos de
-mayor riesgo estocástico (ICRP 103: médula ósea roja vía "medullary
-cavity" — único proxy que da ICRP110 —, colon, pulmón, estómago, mama,
-gónadas), con wR fijo por partícula (protón=2, alfa=20) — **sin curva
-Q(L) por energía, marcado explícitamente como supuesto propio sin fijar
-por el equipo**, igual que la posición del fantoma en X (0-4m; solo 0 y
-2m tienen solapamiento confirmado por `tests/phantom_offset.mac`, 3-4m
-sin confirmar).
+**Historia real (para que no se repita el trabajo doble):** el mismo día,
+en paralelo y sin saberlo, se construyeron dos lanzadores distintos para
+el segundo grupo de datos. Bryam (esta sesión) hizo un lanzador rápido
+(`run_sweep.py`/`spectrum_to_gps.py`/`aggregate_organ_dose.py`) que
+puenteaba los 3 CSV de OLTARIS a `G4GeneralParticleSource` vía
+`/gps/ene/type Arb`+`/gps/hist/point`, sin tocar C++. Eddy, en paralelo,
+hizo la implementación completa y correcta: portó `SpectrumSampler.hh/.cc`
+de `GCR_SEP_Sim` a `ActiveShield_Sim` de verdad (`ICRP110PhantomPrimary
+GeneratorAction` reescrito, comandos `/gun/species`/`/gun/phase`/
+`/gun/fixedEnergyMeV` nuevos vía `ICRP110PhantomGeneratorMessenger`),
+implementó el pipeline de bins de energía que el equipo tenía acordado
+desde antes pero nunca hecho (`scripts/energy_bins.py`), y escribió el
+lanzador real (`scripts/run_organ_sweep.py` + `scripts/
+aggregate_organ_doses.py`, 120 corridas: 3 especies × 8 bins × 5
+posiciones) — ver la entrada "Dosis por órgano y equivalente, riesgo
+estocástico" más arriba para el detalle completo, con tres rondas de
+diseño documentadas.
 
-**Bloqueante real antes de poder correr esto:** el `.map` de campo del
-arreglo Halbach de 8 bobinas **no existe todavía en este repo**
-(`field/generated/crewhat_halbach_array/` solo tiene la geometría
-`.gdml`, no un `.map` — `compute_field_ellipse_array.py` se usó hasta
-ahora solo para comparar puntos contra Elmer, nunca para generar la
-grilla completa que `/spacecraft/fieldMap` necesita). El lanzador aborta
-con un mensaje explícito si falta. Tampoco existe todavía ninguna macro
-que combine geometría+campo+fantoma+scorer de este arreglo — las únicas
-macros previas (`import_crewhat_halbach_array.mac`,
-`import_crewhat_ellipse_field.mac`) prueban geometría o campo por
-separado, nunca los cuatro elementos juntos — así que la primera corrida
-del lanzador será también la primera validación de esa combinación
-completa; correr con `--limit 1` antes del barrido completo.
+**Al hacer `git pull` de esos 8 commits, se eliminó el lanzador rápido de
+Bryam** (`run_sweep.py`/`spectrum_to_gps.py`/`aggregate_organ_dose.py`,
+y su sección de README correspondiente) por quedar estrictamente
+superado: usaba GPS en vez del `SpectrumSampler` real, muestreo continuo
+en vez de los bins ya acordados, y un wR/agrupación de órganos ad-hoc
+que el trabajo de Eddy ya resuelve con más rigor (médula ósea roja
+verificada contra `AM_spongiosa.dat` real, no un proxy de nombre de
+texto). No se perdió nada de valor: la única pieza de ese trabajo que sí
+sigue vigente es el cambio de physics list (ver abajo) y la corrección
+de estado de CREW HaT, ambas conservadas aquí.
 
-**Physics list cambiado a `Shielding`** (`ICRP110phantoms.cc`, antes
-`QGSP_BIC_HP`) — decisión de equipo, mismo physics list que ya usa
-`GCR_SEP_Sim` (vía `G4PhysListFactory`, mismo patrón). Recompilado y
-verificado con `ctest` (2 tests, ambos pasan, incluido `passive_layers`).
+**Physics list, contradicción real detectada en el merge, resuelta:**
+Bryam cambió `ICRP110phantoms.cc` de `QGSP_BIC_HP` a `Shielding` el mismo
+día (`G4PhysListFactory`, mismo patrón que `GCR_SEP_Sim`) — un archivo
+que el trabajo de Eddy no tocó, así que el merge lo conservó sin
+conflicto, pero la documentación de Eddy todavía decía "sigue siendo
+QGSP_BIC_HP" (escrita antes de conocer ese cambio paralelo). Corregido
+en `geant4/ActiveShield_Sim/README.md`: `Shielding` es la physics list
+vigente. Recompilado y verificado con `ctest` tras el merge (2 tests,
+ambos pasan).
 
 **Corrección de estado, CREW HaT no está "completamente validado" para
 dosimetría de producción** (aclarando la bitácora previa): geometría,
@@ -691,10 +785,10 @@ Proyecto GEANT4 en C++ (CMake), ejecutable `gcrsim`. Piezas clave:
 
 - `DetectorConstruction` / `DetectorMessenger`: geometría `World → ShipHull (aluminio, 0.3 cm) → ShipInterior (vacío) → Phantom`. El campo magnético, cuando está activo, está **confinado al interior de la nave** (no a todo el mundo, como antes). Comandos nuevos: `/detector/astronautX <cm>` (posición del astronauta), `/detector/hullThicknessCm <cm>` (espesor del casco). Comandos de blindaje legado (`/detector/shield`, `/detector/alThickness`, `/detector/polyThickness`) siguen existiendo pero no se usan en el barrido nuevo.
 - `PrimaryGeneratorAction` / `GeneratorMessenger`: comando nuevo `/gun/phase max|min` para elegir la fase solar, además de `/gun/model GCR|SEP` ya existente.
-- `data/`: 6 archivos de espectro de energía, uno por combinación modelo×fase (`gcr_proton_solarmax.csv`, `gcr_proton_solarmin.csv`, `gcr_alpha_solarmax.csv`, `gcr_alpha_solarmin.csv`, `sep_proton_solarmax.csv`, `sep_proton_solarmin.csv`). **Son placeholders** (max y min son idénticos por ahora) — pendiente reemplazarlos con datos reales antes de sacar conclusiones científicas. **Estos 6 archivos ya NO se versionan directamente** (ver `.gitignore`) — son el destino generado por `scripts/select_spectrum_source.py <fuente>` a partir de `data/sources/<fuente>/*.csv`, que sí se versiona y es la fuente de verdad. Fuentes en `data/sources/`: `spenvis/` (plan B, ISO-15390+ESP-PSYCHIC, ya no es la fuente activa) y `oltaris/` (activa desde 2026-09-08: BON2020 para GCR, evento histórico Oct 1989/Feb 1956-LaRC para SEP — carpeta y README pendientes de poblar con los exports reales, ver checklist). `SpectrumSampler` es agnóstico a la fuente (solo lee dos columnas energía/flujo), así que cambiar de fuente no toca código C++, solo qué CSV se copia a `data/`.
+- `data/`: 6 archivos de espectro de energía, uno por combinación modelo×fase (`gcr_proton_solarmax.csv`, `gcr_proton_solarmin.csv`, `gcr_alpha_solarmax.csv`, `gcr_alpha_solarmin.csv`, `sep_proton_solarmax.csv`, `sep_proton_solarmin.csv`). **Estos 6 archivos ya NO se versionan directamente** (ver `.gitignore`) — son el destino generado por `scripts/select_spectrum_source.py <fuente>` a partir de `data/sources/<fuente>/*.csv`, que sí se versiona y es la fuente de verdad. Fuentes en `data/sources/`: `spenvis/` (plan B, ISO-15390+ESP-PSYCHIC, placeholders, ya no es la fuente activa) y `oltaris/` (**activa, completa desde 2026-09-10**: BON2020 para GCR mínimo/máximo, evento histórico Oct 1989/Feb 1956-LaRC para SEP — los 6 archivos son datos reales, verificados y probados, ver checklist). `SpectrumSampler` es agnóstico a la fuente (solo lee dos columnas energía/flujo), así que cambiar de fuente no toca código C++, solo qué CSV se copia a `data/`.
 - `macros/legacy/`: las 4 macros de escenarios de blindaje pasivo (`escenario1-4`), conservadas para referencia pero ya no reflejan el esquema de resultados actual.
 - `scripts/run_sweep.py`: corre automáticamente las 140 combinaciones del barrido (4 evento×fase × 7 campo × 5 posición), con semillas aleatorias fijas por corrida para reproducibilidad. Soporta `--n-events` y `--limit` (nota: `--limit N` corre las primeras N combinaciones en el orden del barrido, no necesariamente una por cada modelo/fase) para hacer una corrida piloto antes del barrido completo. También soporta `--repeats` (repeticiones por combinación, para estadística) y `--only-model GCR|SEP` (repartir el barrido en equipo, ver README.md). El manifiesto (`sweep_manifest.csv`) y el CSV de resultados se escriben por append, corrida por corrida, así que un corte a la mitad no pierde lo ya corrido; resume está activado **por defecto** y salta las combinaciones `(índice, repetición)` que ya tengan `exit_code 0` en el manifiesto — usar `--no-resume` para forzar rehacer todo desde cero (ver sección correspondiente en README.md). El default de `--n-events` (y el `BASE_SEED`) vienen de `geant4/sweep_config.py`, compartido entre proyectos — ver ese archivo antes de hardcodear un número de eventos "oficial" en un script nuevo. Los parámetros específicos de esta geometría (campo uniforme, posiciones del astronauta) NO están ahí a propósito, porque `ActiveShield_Sim` tendrá un espacio de parámetros distinto (bobinas Halbach) una vez que exista — `ActiveShield_Sim` todavía no tiene lanzador por bins: faltan la definición de energías/configuraciones y los pesos físicos. Su lector de mapa ya existe; no confundirlo con un mapa físico validado.
-- Resultados: `resultados_dosis_sweep.csv` (columnas `modelo,fase,field_T,astronaut_x_m,n_eventos,edep_MeV,masa_kg,dosis_Gy`), una fila por corrida.
+- Resultados: `resultados_dosis_sweep.csv` (columnas `modelo,fase,field_T,astronaut_x_m,n_eventos,edep_MeV,masa_kg,dosis_Gy,dosis_absoluta_Gy`), una fila por corrida. `dosis_Gy` es la dosis cruda sin ponderar (QA); `dosis_absoluta_Gy` es la normalización física real (Gy/día para GCR, Gy del evento completo para SEP) — ver "Dosis absoluta implementada" en Pendientes conocidos.
 
 ### Nota técnica: partículas atrapadas en el campo (importante)
 
@@ -718,14 +812,39 @@ Barrido completo (140 corridas):
 
 ## Pendientes conocidos
 
-- **Reemplazar los 6 CSV placeholder de `data/sources/` con espectros reales por fase solar.** Modelos elegidos, ambos vía **OLTARIS** (acceso aprobado 2026-09-08, reemplaza el plan intermedio con SPENVIS): **Badhwar-O'Neill 2020** para GCR (periodos históricos de mínimo/máximo solar), **evento histórico** para SEP (Oct 1989 = máximo, Feb 1956 ajuste LaRC = mínimo — no el modelo probabilístico ESP-PSYCHIC). CREME96 se había descartado antes porque su componente de GCR está anclado a datos de 1986-87; ISO-15390/SPENVIS y ESP-PSYCHIC/SPENVIS quedaron como plan B si OLTARIS no se aprobaba a tiempo, ya no es el camino activo. Checklist de qué exportar de cada modelo: [`docs/checklist_espectros_reales.md`](geant4/GCR_SEP_Sim/docs/checklist_espectros_reales.md).
-- **Dosis absoluta pendiente de implementar.** El piloto calcula Gy por los
-  N eventos simulados. Producción requiere respuestas por bin y ponderación
-  con flujo GCR (incluye tiempo) o fluencia SEP por evento (sin tiempo extra).
-  Los factores de área y ángulo dependen de la definición del export y del
-  muestreo entrante: no multiplicar un flujo omnidireccional por el área de
-  una esfera sin derivar esa normalización. Ver la fórmula y condiciones en
-  `geant4/ActiveShield_Sim/docs/modelo_realista.md`. Gy y Sv no son equivalentes.
+- ~~Reemplazar los 6 CSV placeholder de `data/sources/` con espectros reales por fase solar.~~ **Hecho (2026-09-10), los 6 son reales.** Modelos: **Badhwar-O'Neill 2020** para GCR (mínimo 31/12/2019-01/01/2020, máximo 14-15/01/2023 — limitado por BON2020 en OLTARIS, ver nota arriba), **evento histórico** para SEP (Oct 1989 = máximo, Feb 1956 ajuste LaRC = mínimo — no el modelo probabilístico ESP-PSYCHIC). Detalle completo: [`docs/checklist_espectros_reales.md`](geant4/GCR_SEP_Sim/docs/checklist_espectros_reales.md).
+- **Dosis absoluta implementada en el piloto GCR_SEP_Sim (2026-09-09).** El
+  scorer sigue calculando `dosis_Gy` (cruda, sin ponderar, por los N eventos
+  mezclados de una corrida — se conserva por QA) pero `resultados_dosis_sweep.csv`
+  ahora también trae `dosis_absoluta_Gy`, calculada en `RunAction::EndOfRunAction`
+  acumulando energía depositada y N por especie (`GCR_H`, `GCR_He`, `SEP_p`
+  — ver `PrimaryGeneratorAction::GetLastSpecies()`/`GetIntegratedFlux()`) y
+  combinando:
+
+      R[s] = edep_dep[s] (J) / (masa_fantoma_kg * N[s])         -- Gy por primario simulado de la especie s
+      W[s] = pi * R_esfera_fuente_cm^2 * integral_E Flujo_s(E) dE -- primarios reales que cruzan la esfera fuente
+      dosis_absoluta_Gy = suma_s R[s] * W[s]
+
+  `integral_E Flujo_s(E) dE` es el flujo/fluencia tal cual está en el CSV de
+  OLTARIS integrado por trapecios (`SpectrumSampler::GetIntegratedFlux()`),
+  sin reescalar por tiempo aparte: los CSV de GCR ya vienen en
+  `particles/(day*cm2)` (OLTARIS "Boundary Flux"), así que `dosis_absoluta_Gy`
+  para GCR es **Gy/día**, no Gy total ni Gy/s — no multiplicar de nuevo por
+  86400. Los de SEP vienen en `particles/cm2` (OLTARIS "Boundary Fluence",
+  ya integrada sobre todo el evento), así que `dosis_absoluta_Gy` para SEP
+  es la **dosis aguda del evento completo** (Oct 1989), sin factor de tiempo.
+  `pi * R^2` es el área de sección transversal de la esfera fuente (radio =
+  casco + 20 cm) — la relación estándar entre flujo omnidireccional y tasa
+  de partículas reales que cruzan una superficie convexa, independiente de
+  si el muestreo interno de direcciones es radial (como hoy) o con ley de
+  coseno. `aggregate_results.py` ya agrega esta columna (media/std/IC95%)
+  junto a `dosis_Gy`; degrada con aviso, no falla, si algún CSV viene de
+  antes de este cambio y no la trae. **Limitaciones que siguen igual:**
+  muestreo angular de entrada radial (no ley de coseno, simplificación del
+  piloto), GCR limitado a H+He, Gy no es Sv. La fórmula completa (con bins
+  de energía, para producción de `ActiveShield_Sim`) sigue en
+  `geant4/ActiveShield_Sim/docs/modelo_realista.md` — ese documento describe
+  un pipeline distinto (por bins/órgano), no el de este piloto.
 - Medir el tiempo del barrido completo con `--n-events 10000` real antes de dejarlo corriendo desatendido (un piloto con 200 eventos tomó ~2s/corrida; a 10000 eventos cada corrida será más lenta, sobre todo por la physics list `Shielding` — corran un piloto con el `--n-events` real primero para estimar el total de las 140 corridas).
 - **Bins ya acordados para ActiveShield_Sim.** Pendientes de implementación:
   respuesta por energía/especie/órgano, pesos físicos y su incertidumbre.

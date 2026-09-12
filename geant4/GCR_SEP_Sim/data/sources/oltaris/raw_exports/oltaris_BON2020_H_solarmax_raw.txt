@@ -1,0 +1,25 @@
+C	Boundary Flux (particles/((EU*-day-cm2)) vs. Energy (EU*) vs. Isotope
+C	Energy unit (EU*) is MeV for photon, electron, and positron; EU* is MeV/amu for all other particles.
+
+C	Created on Thu Sep 10 19:39:41 2026
+C	Job Name: H_min  [NOTA: campo "Job Name" quedo mal etiquetado -- la fecha real
+C	usada fue ENERO 2023 (confirmado por el usuario), no diciembre 2019/enero 2020.
+C	Esto es GCR MAXIMO (la mejor fecha disponible dentro del limite de BON2020 en
+C	OLTARIS, que segun el usuario "solo valida hasta enero del 2023"), no minimo.
+C	El pico real del ciclo 25 fue mas tarde (~2024-2025, NOAA/SWPC); esto es la
+C	mejor aproximacion disponible en la herramienta, ver docs/checklist_espectros_reales.md.]
+C	TARIS FORTRAN code version 5.01
+C	Fecha usada en OLTARIS (Defined by: Date): 14-15/01/2023
+
+C	 axis name= Energy unit= EU*
+C	 (mismo arreglo de energia de 125 puntos, 1.0e-02 a 1.0e+06 MeV/amu, que
+C	 el resto de exports de este proyecto -- ver oltaris_BON2020_H_solarmin_raw.txt)
+
+C	 axis name= Particle
+C	 (misma plantilla generica de 59 especies)
+
+NOTA: el bloque completo de 59 x 125 valores (mayormente ceros, con los datos
+reales de H/proton en el bloque de indice 1, verificado contando 25 filas de
+cero -- exactamente un bloque de particula -- antes del primer valor real) se
+omite aqui por brevedad -- son identicos, cifra por cifra, a los que ya se
+validaron y convirtieron en ../gcr_proton_solarmax.csv.

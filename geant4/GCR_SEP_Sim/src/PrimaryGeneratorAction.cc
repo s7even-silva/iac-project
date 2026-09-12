@@ -93,6 +93,7 @@ void PrimaryGeneratorAction::GeneratePrimaries(G4Event* anEvent)
   if (fModel == "SEP") {
     particle = table->FindParticle("proton");
     kineticEnergy = sepP->SampleEnergy() * MeV;
+    fLastSpecies = "SEP_p";
   } else {
     G4double u = G4UniformRand();
     G4double acc = 0.0;
@@ -106,10 +107,12 @@ void PrimaryGeneratorAction::GeneratePrimaries(G4Event* anEvent)
     if (name == "H") {
       particle = table->FindParticle("proton");
       kineticEnergy = gcrH->SampleEnergy() * MeV;
+      fLastSpecies = "GCR_H";
     } else {
       particle = ionTable->GetIon(Z, A, 0.0);
       G4double keMeVPerNucleon = gcrHe->SampleEnergy();
       kineticEnergy = keMeVPerNucleon * A * MeV;
+      fLastSpecies = "GCR_He";
     }
   }
 
@@ -119,4 +122,13 @@ void PrimaryGeneratorAction::GeneratePrimaries(G4Event* anEvent)
   fGun->SetParticleEnergy(kineticEnergy);
 
   fGun->GeneratePrimaryVertex(anEvent);
+}
+
+G4double PrimaryGeneratorAction::GetIntegratedFlux(const G4String& species) const
+{
+  const G4bool isMin = (fPhase == "min");
+  if (species == "GCR_H")  return (isMin ? fGCR_H_min  : fGCR_H_max)->GetIntegratedFlux();
+  if (species == "GCR_He") return (isMin ? fGCR_He_min : fGCR_He_max)->GetIntegratedFlux();
+  if (species == "SEP_p")  return (isMin ? fSEP_p_min  : fSEP_p_max)->GetIntegratedFlux();
+  return 0.0;
 }

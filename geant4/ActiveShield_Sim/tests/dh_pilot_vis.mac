@@ -40,9 +40,8 @@
 /vis/viewer/set/autoRefresh true
 /vis/verbose warnings
 
-# Same test beam as dh_pilot.mac, aimed through the coil.
-/gps/particle geantino
-/gps/ene/mono 1 MeV
-/gps/pos/centre -6 0 0 m
-/gps/direction 1 0 0
+# Same test beam as dh_pilot.mac -- GPS no longer wraps the generator
+# (rewritten 2026-09-10); position/direction sample isotropically instead.
+/gun/species GCR_H
+/gun/phase min
 /run/beamOn 10

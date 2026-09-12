@@ -30,11 +30,11 @@
 
 /run/initialize
 
-# Monoenergetic test beam, same pattern as the project's existing pilot
-# (AGENTS.md): outside the hull, aimed through the spacecraft axis.
-/gps/particle geantino
-/gps/ene/mono 1 MeV
-/gps/pos/centre -6 0 0 m
-/gps/direction 1 0 0
+# Test beam: ICRP110PhantomPrimaryGeneratorAction no longer wraps GPS
+# (rewritten 2026-09-10) -- position/direction are sampled isotropically
+# over a sphere enclosing the whole spacecraft, not aimed through the
+# axis as the old /gps/pos/direction commands did.
+/gun/species GCR_H
+/gun/phase min
 /tracking/verbose 1
 /run/beamOn 10

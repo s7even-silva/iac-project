@@ -8,9 +8,7 @@
 /phantom/setPhantomSex male
 /phantom/setPhantomSection head
 /run/initialize
-/gps/particle geantino
-/gps/ene/mono 1 MeV
-/gps/pos/centre 4 0 0 m
-/gps/direction -1 0 0
+/gun/species GCR_H
+/gun/phase min
 /tracking/verbose 1
 /run/beamOn 1

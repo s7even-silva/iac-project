@@ -75,6 +75,17 @@ foreach(_script ${ICRPphantoms_SCRIPTS})
     )
 endforeach()
 
+# OLTARIS GCR/SEP spectra for ICRP110PhantomPrimaryGeneratorAction
+# (SpectrumSampler reads "data/<file>.csv" relative to the working
+# directory, same convention as GCR_SEP_Sim). The versioned source of
+# truth is data/sources/oltaris/*.csv (matches the .gitignore exception
+# "geant4/**/data/sources/**/*.csv" -- a bare data/*.csv is NOT versioned,
+# same reasoning as GCR_SEP_Sim's data/ vs data/sources/ split, see
+# AGENTS.md); this copies those files flat into build/data/ (no "sources/
+# oltaris" subdirectory) so the runtime relative path resolves.
+file(GLOB ICRPphantoms_OLTARIS_CSV ${PROJECT_SOURCE_DIR}/data/sources/oltaris/*.csv)
+file(COPY ${ICRPphantoms_OLTARIS_CSV} DESTINATION ${PROJECT_BINARY_DIR}/data)
+
 #set(ICRPphantoms_DATADIR
 #   ICRPdata
 #)
