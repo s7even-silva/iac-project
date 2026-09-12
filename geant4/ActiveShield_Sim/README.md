@@ -309,6 +309,13 @@ depende de cuánto pesa el overhead fijo de carga de ICRPdata, que no
 paraleliza, frente al `/run/beamOn`, que sí). `/run/numberOfThreads` es
 comando PreInit — el macro lo pone antes de `/run/initialize`.
 
+**`--repeats N` (2026-09-11, default 1):** repite las 120 combinaciones N
+veces con semillas distintas (`--repeats 5` = 600 corridas), mismo patrón
+que `GCR_SEP_Sim/scripts/run_sweep.py`. Resume indexa por `(index,
+repeticion)`. Necesario si se quiere media/std/IC95% por combinación —
+sin esto solo hay una estimación puntual por (especie,bin,posición), sin
+barra de error.
+
 **`scripts/aggregate_organ_doses.py`:** usa `energy_bins.py` para los pesos
 `W[s,bin]`, aplica `w_R` (ICRP 103 Tabla A.3: protón/pion cargado = 2, alfa
 = 20, por especie no por bin — **pondera por la partícula primaria de la

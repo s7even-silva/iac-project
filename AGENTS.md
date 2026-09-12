@@ -791,6 +791,103 @@ ya expone `/spacecraft/addPassiveLayerCm <material> <espesor_cm>`
 existentes, no requieren tocar C++. Pendiente: solo escribir las 5
 macros de ejemplo (no hecho todavía en este cambio).
 
+### Error de campo vs. error de dosis en Elmer, y extensión a escala real (2026-09-11)
+
+**Pregunta del equipo: ¿vale la pena refinar más la malla de Elmer del
+arreglo de 8 bobinas, más allá de r2 (padding=2,5/air-size=0,20,
+2,3%-11,2% de error de campo)?** Se generaron por primera vez los `.map`
+de las dos soluciones Elmer ya existentes (r1: padding=2,0/air-size=0,30;
+r2) — nunca se habían exportado a formato Geant4, solo comparado en 7
+puntos sueltos — y se corrió la misma configuración exacta (semilla,
+energía, eventos) con cada una:
+
+| Campo | Error de campo (7 puntos) | Dosis total |
+|---|---|---|
+| r1 | 2,4%-15,4% | 5,342e-08 Gy |
+| r2 | 2,3%-11,2% | 5,426e-08 Gy |
+
+**r1 vs r2 difieren solo ~1,6% en dosis**, muy por debajo de la
+diferencia de error de campo — refinar más allá de r2 tiene rendimientos
+decrecientes ya agotados, no amerita el riesgo de memoria del siguiente
+paso. Resultado de convergencia citable en el paper.
+
+**Hallazgo más importante, no buscado inicialmente:** comparando esas
+mismas dos corridas contra Biot-Savart (el campo que usa la producción
+real) en la misma configuración: **Biot-Savart da ~48% más dosis que
+Elmer** — 30 veces la diferencia r1-vs-r2. Repetido después a escala
+real de nave (shipRadius=4,5m/shipHalfLength=5m, ver abajo): **Biot-Savart
+sigue dando ~36% más dosis que Elmer**. El margen que realmente importa
+para el paper no es la resolución de malla, es si Biot-Savart (más
+barato, el que corre `run_organ_sweep.py` hoy) es dosimétricamente
+equivalente a Elmer FEM — con este dato, no está claro que lo sea.
+**Advertencia explícita:** ambas comparaciones son de una sola semilla,
+una sola especie/energía/posición, sin repeticiones — un indicio fuerte,
+no una validación estadística lista para publicar tal cual.
+
+**Extender el dominio de Elmer a escala real de nave: intentado
+directamente, resultó barato.** El dominio de r1/r2 (padding≤2,5) solo
+cubre hasta Z=±6,3-6,8m, menor que el radio de la esfera fuente a escala
+real (`shipRadius=4,5m/shipHalfLength=5m` → ~6,94m, ver
+`GetSourceSphereRadius()`). Se regeneró el dominio con `mesh_exterior.py
+--padding 3,5 --air-size 0,30` (mismo `air-size` grueso que r1, solo más
+padding) sobre el mismo conductor ya mallado: **18,5s, 3,6GB de pico,
+1,56M tetraedros** (menos que r2) — mucho más barato de lo que la
+extrapolación ingenua de volumen sugería. El solve completo (`ElmerGrid`
++ `ElmerSolver`, IDs de cuerpo verificados contra `case.sif` antes de
+correr) tomó **~5,3 minutos, 7,3GB de pico** — cómodo dentro de esta
+máquina (15GB+11GB swap). **El campo a esta escala es más preciso, no
+menos**, que r1/r2 en los mismos 7 puntos (1,7%-6,3% de error vs.
+Biot-Savart) — el límite artificial de un dominio más chico distorsiona
+más el campo cerca de la región de interés que una malla más grande con
+la misma resolución gruesa.
+
+**Bug real encontrado y corregido al exportar el `.map` a esta escala:**
+`field/elmer_to_map.py`'s `resample()` (ya usado por `compare_elmer_array.py`
+solo en 7 puntos sueltos, nunca en una grilla completa) dejaba ~1% de los
+nodos de una grilla regular sin valor. Diagnóstico verificado por fuerza
+bruta contra todos los tetraedros (no un supuesto): esos nodos caen a
+~3,4-3,8x el radio de regularización de Biot-Savart del centro de una
+bobina — es decir, genuinamente dentro del volumen físico del conductor,
+donde Elmer nunca calculó "aire" porque ahí hay material sólido. No es un
+bug de bucketing espacial. Corregido en `field/elmer_array_to_map.py`
+(script nuevo, ver abajo) rellenando esos nodos con el valor del nodo de
+aire válido más cercano — justificado porque son ~1% de la grilla, todos
+a un radio donde ninguna trayectoria de dosimetría del interior de la
+nave pasaría (el sólido del conductor se importa aparte vía
+`/spacecraft/coilGeometry` y detiene partículas ahí antes de que ese
+valor de campo puntual importe). Falla explícitamente si el porcentaje de
+nodos sin resolver excede 5% (mesh genuinamente roto, no solo bordes de
+conductor). Verificado que no cambia nada para r1/r2 (mismo SHA256 antes
+y después del fix, ya que ahí no había nodos problemáticos).
+
+**Nuevo:** `field/elmer_array_to_map.py` — exporta una solución Elmer del
+arreglo (ascii VTU) a `.map`, sin pasar por el `domain.json` que exige el
+CLI de `elmer_to_map.py` (pensado para el piloto DH de una sola bobina,
+no para el método `discrete_conductor_global_air` de `mesh_exterior.py`
+que usan las corridas del arreglo) — reutiliza `load_vtu()`/`resample()`
+de ese módulo directamente, igual que ya hacía `compare_elmer_array.py`
+para puntos sueltos.
+
+### Repeticiones en `run_organ_sweep.py` (2026-09-11)
+
+**Implementado:** `--repeats N` (default 1, retrocompatible) — multiplica
+las 120 combinaciones por N (ej. `--repeats 5` = 600 corridas), mismo
+patrón de semillas que `GCR_SEP_Sim/scripts/run_sweep.py`
+(`BASE_SEED + 1000*rep + 2*index`). Resume ahora indexa por `(index,
+repeticion)`, no solo `index`. `aggregate_organ_doses.py` corregido para
+sumar `edep_J` y `n_eventos` de todas las repeticiones de una misma
+combinación antes de calcular `R = edep/(masa*N)` (pool de eventos de
+Monte Carlo independientes — estadísticamente más correcto que promediar
+`R` directamente) — antes de este fix, agregar filas de repeticiones
+habría hecho que cada combinación silenciosamente usara solo los datos de
+la ÚLTIMA repetición leída, descartando las demás sin error. Verificado
+con una corrida real de 3 repeticiones: la suma de `n_eventos` da
+exactamente 3×N (no 3×142×N, el bug que más importaba evitar, ya que cada
+repetición escribe ~142 filas de órgano que comparten el mismo N). No se
+implementó todavía el cálculo de std/IC95% entre repeticiones (solo el
+pool de eventos) — pendiente si el equipo lo quiere para el paper, mismo
+principio que `GCR_SEP_Sim/scripts/aggregate_results.py`.
+
 ## Estructura de `geant4/GCR_SEP_Sim/`
 
 Proyecto GEANT4 en C++ (CMake), ejecutable `gcrsim`. Piezas clave:

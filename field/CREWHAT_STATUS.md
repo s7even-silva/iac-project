@@ -674,3 +674,17 @@ angularmente por su estructura de 8 pliegues, a diferencia del campo
 uniforme del piloto), y falta integrarlo con el pipeline de bins de
 dosimetría (todavía sin implementar) para que el barrido de posición sea
 una dimensión más de ese barrido combinatorio, no un barrido aparte.
+
+## Elmer a escala real de nave, y error de campo vs. error de dosis (2026-09-11)
+
+Detalle completo, cifras y comandos en `AGENTS.md`, sección "Error de
+campo vs. error de dosis en Elmer, y extensión a escala real". Resumen:
+r1 (padding=2,0) vs r2 (padding=2,5) difieren solo ~1,6% en dosis pese a
+2,4-15,4% vs 2,3-11,2% de error de campo — refinar más allá de r2 no vale
+la pena. Extender el dominio a escala real (`shipRadius=4,5m`,
+`padding=3,5/air-size=0,30`) resultó barato (18,5s mallado + 5,3min
+solve, 7,3GB de pico) y dio un campo MÁS preciso (1,7%-6,3% de error),
+no menos. Biot-Savart (producción actual) da 36-48% más dosis que Elmer
+en las mismas condiciones — brecha mucho mayor que la de resolución de
+malla, sin repeticiones ni escala completa todavía, así que es indicio
+fuerte, no validación estadística cerrada.
