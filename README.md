@@ -10,9 +10,10 @@ cargue las mismas instrucciones sin duplicar su contenido.
 casco de referencia Al de 1.5 cm, envolvente para bobinas externas y lector de
 campo global. Existe un [piloto Double Helix y campo de referencia](field/README.md);
 el ensamblaje Geom14 y su mapa físico validado aún faltan. **CREW HaT** (8 bobinas
-Halbach elípticas) avanza en paralelo a Geom14 y es la geometría de producción:
-geometría, mallado, GDML, importación, campo Biot-Savart y campo Elmer FEM a
-escala real de nave, todos validados de punta a punta, con un ablation del
+Halbach elípticas, **variante CORC — no la cinta 12mm, ver corrección abajo**)
+avanza en paralelo a Geom14 y es la geometría de producción: geometría,
+mallado, GDML, importación, campo Biot-Savart y campo Elmer FEM a escala
+real de nave, todos validados de punta a punta, con un ablation del
 patrón angular. **Campo de producción: Elmer FEM, no Biot-Savart** (decisión
 2026-09-11) — Biot-Savart sobreestima la dosis 36-48% en esta geometría porque
 trata cada bobina como un filamento delgado, no como el winding pack real (ver
@@ -21,6 +22,15 @@ del conductor y el radio de regularización de Biot-Savart siguen siendo
 supuestos propios aceptados por el equipo sin más validación posible (sin dato
 externo con el que contrastarlos, ver `field/CREWHAT_STATUS.md`) — no bloquean
 producción, quedan documentados como limitación.
+
+**Corrección (2026-09-12):** el equipo había decidido construir y comparar
+dos conductores (cinta 12mm, CORC) — eso se siguió para los pilotos de una
+sola bobina, pero **el arreglo completo de 8 bobinas siempre se ensambló
+con CORC (winding pack 0,67m), nunca con la cinta 12mm (1,43m)**,
+descubierto solo ahora al preparar los archivos para `field/production/`.
+Ningún resultado del arreglo (Biot-Savart, Elmer, ablation, ni la
+comparación de dosis) es de la cinta 12mm. Detalle en AGENTS.md; generar
+el arreglo con la cinta sigue pendiente si el paper lo necesita.
 
 Ya existe un lanzador de producción para el segundo grupo de datos del
 equipo: `geant4/ActiveShield_Sim/scripts/run_organ_sweep.py`, 120 corridas

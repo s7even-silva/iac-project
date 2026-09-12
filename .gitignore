@@ -28,6 +28,12 @@ ICRPdata/
 *.fld
 *.map
 field/maps/
+# Excepcion: los .map "bendecidos" de produccion (y su GDML de bobinas),
+# curados a mano en field/production/ -- para que clonar el repo alcance
+# para correr run_organ_sweep.py sin instalar Elmer/Gmsh ni regenerar nada
+# (ver field/production/README.md). No confundir con field/generated/,
+# que sigue siendo scratch/regenerable y NO se versiona.
+!field/production/**
 
 # ─── Resultados de simulación (usa siempre esta carpeta) ───
 output/

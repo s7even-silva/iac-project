@@ -280,25 +280,40 @@ cada corrida se archiva antes de lanzar la siguiente. Nave a escala real de
 CREW HaT (`shipRadius=4.5m`, `shipHalfLength=5m`, fijos en la macro).
 
 **Campo de producción: Elmer FEM a escala real (2026-09-11), no
-Biot-Savart.** `--field-map`/`--coil-geometry` ya traen default
-(`build/crewhat_elmer_fullscale.map`, `field/generated/crewhat_halbach_array/
-halbach_array.gdml`) — no hace falta pasarlos si ya generaste esos
-archivos. Por qué se cambió de Biot-Savart a Elmer: ver AGENTS.md, "Error
-de campo vs. error de dosis en Elmer, y extensión a escala real" — en
-corto, Biot-Savart sobreestima la dosis 36-48% en esta geometría porque
-trata cada bobina como un filamento delgado, no como el winding pack real.
-Para regenerar el `.map` de Elmer desde cero (entorno `field/.venv` para
-mallar/exportar, más Elmer instalado vía `scripts/install.sh --with-elmer`
-para el solve — ver `AGENTS.md` para los comandos exactos de
-`mesh_exterior.py`/`ElmerGrid`/`ElmerSolver`/`field/elmer_array_to_map.py`).
-El `.map` de Biot-Savart anterior (`build/crewhat_niac_max.map`) se
-conserva para comparación explícita (`--field-map ../build/crewhat_niac_max.map`).
+Biot-Savart.** `--field-map`/`--coil-geometry` ya traen default apuntando
+a `field/production/` (versionado en git, ver más abajo) — no hace falta
+pasarlos ni generar nada si clonaste el repo después de este cambio. Por
+qué se cambió de Biot-Savart a Elmer: ver AGENTS.md, "Error de campo vs.
+error de dosis en Elmer, y extensión a escala real" — en corto,
+Biot-Savart sobreestima la dosis 36-48% en esta geometría porque trata
+cada bobina como un filamento delgado, no como el winding pack real.
+El `.map` de Biot-Savart anterior (`field/production/crewhat_niac_max.map`)
+se conserva para comparación explícita
+(`--field-map ../field/production/crewhat_niac_max.map`).
+
+**Corrección (2026-09-12): el arreglo de 8 bobinas es CORC (winding pack
+0,67m), no la cinta 12mm (1,43m).** Descubierto revisando el JSON fuente
+al preparar estos archivos para `field/production/` — ver AGENTS.md para
+el detalle completo. No afecta la validez de la comparación
+Biot-Savart-vs-Elmer (ambos usan la misma geometría CORC), pero si algún
+resultado se reporta como "cinta 12mm", es un error — todo lo del arreglo
+hasta ahora es CORC. El GDML se llama `crewhat_corc_array.gdml` en
+`field/production/`, no `halbach_array.gdml`, precisamente para que este
+error no se repita.
 
 `/spacecraft/coilGeometry` (la masa/material real de las bobinas, no solo
 su campo) también se importa por defecto ahora — decisión de equipo ya
 registrada en AGENTS.md ("Mantener material de devanados..."), que el
 lanzador nunca había seguido hasta este cambio. `--no-coil-geometry` para
 comparar sin ellas.
+
+**`field/production/`:** único lugar donde `.map`/GDML de producción sí
+se versionan (excepción deliberada en `.gitignore`, `!field/production/**`
+— `field/generated/` sigue sin versionarse). 12MB: los dos `.map`
+(Elmer y Biot-Savart) con sus manifiestos SHA256, el GDML CORC del
+arreglo con su manifiesto/materiales/config fuente. Suficiente para
+clonar el repo, compilar, y correr `run_organ_sweep.py` sin instalar
+Elmer/Gmsh ni regenerar nada — ver `field/production/README.md`.
 
 Manifiesto + resume, mismo patrón que `GCR_SEP_Sim/scripts/run_sweep.py`.
 `--only-positions` reparte el barrido en equipo por posición completa
