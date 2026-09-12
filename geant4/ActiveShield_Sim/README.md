@@ -323,6 +323,10 @@ corridas (40%); `aggregate_organ_doses.py --results a.csv b.csv` junta los
 CSV de ambas personas en una sola pasada (acepta varios archivos/patrones
 glob). Salida: `resultados_organo_sweep.csv`.
 
+**Reparto acordado (2026-09-12):** Bryam corre `--only-positions 2,3,4`
+(72 corridas, 60% — consistente con la nota de Eddy más arriba, laptop
+más rápida), Eddy corre `--only-positions 0,1` (48 corridas, 40%).
+
 **Costo por corrida, NO uniforme entre bins de energía (medido
 2026-09-11, 14 hilos, con coilGeometry, 10000 eventos reales, GCR_H,
 posición 0):** 21,6s (bin0, 17,8 MeV/amu) → 21,8s (bin1) → 34,1s (bin2) →
