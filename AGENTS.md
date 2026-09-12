@@ -770,6 +770,18 @@ de que esto dé un campo razonable cerca de la bobina"). Es la geometría
 más avanzada del proyecto, no la geometría ya certificada para publicar
 dosis.
 
+**Decisión de equipo (2026-09-11): estos dos supuestos se aceptan tal
+cual para la corrida de producción, sin más trabajo de validación.** No
+hay dato externo con el que contrastar ninguno de los dos (ninguna
+fuente da la segunda dimensión del winding pack ni un radio de
+regularización de referencia), así que seguir intentando validarlos no
+es un problema de tiempo de cómputo sino de falta de dato — no
+convergería con más esfuerzo. Se documentan como limitación conocida del
+modelo, no como pendiente abierto. El CORC (segunda opción de conductor)
+sigue sin pasar por Elmer en absoluto (ni bobina individual ni arreglo)
+— la producción usa la cinta de 12mm, así que esto no bloquea, pero si
+se quiere reportar CORC como alternativa validada, falta ese paso.
+
 **Matriz pasiva/activa A-E (ver `docs/modelo_realista.md`) confirmada
 como fácil de realizar sin código nuevo:** `ICRP110PhantomConstruction`
 ya expone `/spacecraft/addPassiveLayerCm <material> <espesor_cm>`
