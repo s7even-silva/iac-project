@@ -1017,6 +1017,23 @@ CORC de las 8 bobinas — nombrado explícitamente `corc`, no genérico
 defaults de `run_organ_sweep.py` (`DEFAULT_FIELD_MAP`/
 `DEFAULT_COIL_GEOMETRY`) apuntan aquí, no a `build/`/`field/generated/`.
 
+**Corrección del half-size del `.map` de Elmer, 7,2m → 7,6m (2026-09-12,
+a pedido de un usuario que notó, con razón, que 7,2m parecía muy poco):**
+el dominio mallado real es `X:±11,8m, Y:±13,8m, Z:±7,8m` — no es un cubo,
+porque el arreglo Halbach tampoco lo es (vive en el plano XY, radio 8m,
+mucho más extendido ahí que a lo largo de Z, el eje de la nave).
+`elmer_array_to_map.py` genera un `.map` cúbico (mismo half-size en los 3
+ejes) por simplicidad, así que queda limitado por el eje más corto (Z) —
+7,2m dejaba solo 0,26m de margen sobre el radio de la esfera fuente real
+de la nave (~6,94m). Subido a 7,6m (margen 0,66m contra la esfera fuente,
+0,235m contra el límite real de malla en Z) **reusando la misma solución
+Elmer ya calculada** — sin remallar ni resolver de nuevo, solo repetir el
+resampleo con `--half-size` mayor. Verificado: mismo ~1% de nodos dentro
+de conductores que antes (312 de 32.768), dentro del límite de seguridad
+de `_fill_conductor_gaps()`. Pendiente si se necesita más margen todavía:
+un `.map` no-cúbico que aproveche el espacio real disponible en X/Y —
+`elmer_array_to_map.py` no lo soporta hoy (un solo `--half-size`).
+
 **Piloto de 8 bins (1 por bin, GCR_H, posición 0), con la configuración
 final (14 hilos, bobinas incluidas, 10000 eventos reales) — hallazgo
 crítico para el presupuesto de tiempo:**
