@@ -268,6 +268,12 @@ def main():
                               "el indice global de cada corrida se asigna ANTES de filtrar, asi que las semillas "
                               "no cambian sin importar como se reparta). Ej.: 3 posiciones (72 de 120 corridas, "
                               "60%%) para una maquina mas rapida, las otras 2 (48 corridas, 40%%) para la otra.")
+    parser.add_argument("--skip-bins", type=str, default=None,
+                         help="Lista separada por comas de bin_index a OMITIR (0-7), para todas las especies -- "
+                              "ej. '--skip-bins 7' salta el bin de mayor energia (el mas caro, ver AGENTS.md) "
+                              "para correrlo aparte despues (otra maquina, distribuido, etc.). Se puede combinar "
+                              "con --only-positions. No cambia los indices globales de los demas bins -- el "
+                              "resume sigue funcionando igual si mas tarde se corre sin este flag.")
     parser.add_argument("--limit", type=int, default=None,
                          help="Solo correr las primeras N combinaciones ya filtradas (piloto)")
     parser.add_argument("--repeats", type=int, default=1,
@@ -308,6 +314,9 @@ def main():
     if args.only_positions is not None:
         wanted = {float(x) for x in args.only_positions.split(",")}
         combos = [c for c in combos if c["offset_x_m"] in wanted]
+    if args.skip_bins is not None:
+        skip = {int(x) for x in args.skip_bins.split(",")}
+        combos = [c for c in combos if c["bin_index"] not in skip]
     if args.limit is not None:
         combos = combos[:args.limit]
 
