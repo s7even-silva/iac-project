@@ -90,6 +90,15 @@ un entorno sin acceso a sudo). No instala Elmer — el solver FEM del campo
 magnético todavía no está integrado al flujo del proyecto (ver `AGENTS.md`
 y `field/GEOM14_STATUS.md`).
 
+**Nodo de cómputo (voluntarios/CI, 2026-09-12):** si la máquina solo va a
+**correr** los barridos ya existentes, no a regenerar geometría/campo,
+usa `bash scripts/install_compute_node.sh` en vez del de arriba — Geant4
+sin Qt6 (build `noqt`, misma física/resultado, verificado bit a bit
+idéntico), sin `field/.venv` ni Elmer, ~400MB menos de instalación.
+`field/production/` ya trae lo necesario para correr sin regenerar
+nada. Detalle en `AGENTS.md`, sección "Instalación mínima para nodos de
+cómputo".
+
 ### Instalación manual
 
     conda env create -f environment.yml

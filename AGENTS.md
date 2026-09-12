@@ -1114,6 +1114,63 @@ Barrido completo (140 corridas):
 
     python3 ../scripts/run_sweep.py
 
+### Instalación mínima para nodos de cómputo (2026-09-12)
+
+`scripts/install_compute_node.sh` (nuevo) — para una máquina que solo va
+a CORRER los barridos ya existentes (voluntarios, CI, VMs), no a
+regenerar geometría/campo. Verificado, no supuesto: los 7 build strings
+de `geant4=11.4.2` en conda-forge se agrupan en 3 familias (`noqt_*`,
+`qt_*`, `py3xx_*`) que comparten exactamente la misma física/GDML/datos —
+extraje y comparé el `Geant4Config.cmake` real de una build `qt_` y una
+`noqt_` directamente (sin instalar un entorno completo para la segunda,
+solo el `.conda` del paquete): la única diferencia es
+`Geant4_qt_FOUND ON` vs `OFF`, que decide si el config exige
+Qt6Core/Gui/Widgets/OpenGLWidgets al configurar cmake. `environment.yml`
+dejaba `geant4=11.4.2` sin fijar variante (el mismo patrón que ya había
+causado el bug histórico de EXPAT/ZLIB) y por eso terminó resolviendo a
+`qt_1bf189c_1` en esta máquina, con `qt6-main` y ~32 paquetes
+transitivos de la pila Qt/X11 desktop (dbus, fontconfig, wayland,
+xcb-util-*, etc.) — medido: ~400MB instalados de más, sin necesitarlos
+nunca para correr en modo batch.
+
+**`environment.headless.yml`** (nuevo) fija `geant4=11.4.2=noqt_*`
+explícitamente y quita `qt6-main` — `conda create --dry-run` confirma que
+resuelve sin ninguno de esos ~32 paquetes. `xorg-libx11` se mantiene: el
+`vis_raytracer_x11` del config sigue en `ON` incluso en el build noqt (no
+depende de la variante qt/noqt), así que X11 sigue siendo requerido —
+mucho más liviano que Qt6 completo, pero no se puede quitar sin
+recompilar Geant4 con esa opción apagada (fuera de alcance).
+
+**`-DWITH_GEANT4_UIVIS=OFF`** — ya existía en `ActiveShield_Sim/
+CMakeLists.txt` (heredado del ejemplo oficial, nunca usado hasta ahora);
+agregado el mismo patrón a `GCR_SEP_Sim/CMakeLists.txt` para paridad.
+Evita pedir los componentes `ui_all`/`vis_all` de `find_package(Geant4
+...)` — no hacen falta para correr en modo batch, y el build noqt no
+tiene Qt6 para satisfacerlos de todos modos.
+
+**Verificado de punta a punta, no solo que compila:** creé
+`geant4_env_headless` de verdad, compilé los dos proyectos con
+`-DWITH_GEANT4_UIVIS=OFF`, `ctest` pasa, y — la prueba que realmente
+importa — corrí la misma configuración exacta (semilla, energía, campo,
+eventos) que ya había corrido antes en el entorno completo con Qt:
+**dosis idéntica bit a bit** (8,0049e-08 Gy en ambos). El build noqt da
+el mismo resultado físico, no es una aproximación.
+
+**No incluye** `field/.venv` ni Elmer — un nodo de cómputo no regenera
+geometría/campo, usa directamente `field/production/` (ya versionado en
+git, ver más arriba). Si algún día se necesita regenerar algo en la
+misma máquina, seguir usando `scripts/install.sh` completo, no este.
+
+**Sobre si convendría una rama de git aparte para esto:** no — un script
+adicional en la misma rama (lo que se hizo) no tiene el riesgo de
+divergencia/reconciliación que sí tuvo el trabajo paralelo de Bryam/Eddy
+en `ActiveShield_Sim` esta misma sesión (dos implementaciones del mismo
+lanzador, una se descartó al hacer merge). Una rama serviría si el plan
+fuera cambiar el comportamiento de la rama principal de forma
+incompatible por un tiempo — aquí el objetivo es que cualquiera, en
+`main`, elija entre `install.sh` (completo) o `install_compute_node.sh`
+(mínimo) según lo que necesite, sin que uno le oculte cambios al otro.
+
 ## Pendientes conocidos
 
 - ~~Reemplazar los 6 CSV placeholder de `data/sources/` con espectros reales por fase solar.~~ **Hecho (2026-09-10), los 6 son reales.** Modelos: **Badhwar-O'Neill 2020** para GCR (mínimo 31/12/2019-01/01/2020, máximo 14-15/01/2023 — limitado por BON2020 en OLTARIS, ver nota arriba), **evento histórico** para SEP (Oct 1989 = máximo, Feb 1956 ajuste LaRC = mínimo — no el modelo probabilístico ESP-PSYCHIC). Detalle completo: [`docs/checklist_espectros_reales.md`](geant4/GCR_SEP_Sim/docs/checklist_espectros_reales.md).
