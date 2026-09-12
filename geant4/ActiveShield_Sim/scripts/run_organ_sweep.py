@@ -343,7 +343,7 @@ def main():
 
     total_runs = len(combos) * args.repeats
     print(f"Corriendo {len(combos)} combinacion(es) x {args.repeats} repeticion(es) = {total_runs} corridas "
-          f"(n_events={args.n_events}, campo=NIAC max fijo) con {binary_path.name} en {build_dir}")
+          f"(n_events={args.n_events}, campo={field_map.name}) con {binary_path.name} en {build_dir}")
 
     n_failed = 0
     n_skipped = 0
