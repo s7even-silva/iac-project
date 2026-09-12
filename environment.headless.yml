@@ -1,0 +1,52 @@
+name: geant4_env_headless
+# Entorno minimo para NODOS DE COMPUTO (CI, voluntarios, VMs) que solo
+# necesitan compilar y CORRER las simulaciones ya existentes -- no
+# regenerar geometria/campo (eso sigue viviendo en field/.venv + Elmer,
+# ver environment.yml/scripts/install.sh --with-elmer, y no lo necesita
+# un nodo de computo porque field/production/ ya trae los .map/GDML
+# de produccion versionados en git).
+#
+# Diferencias con environment.yml (verificado 2026-09-12, no supuesto):
+# - geant4 fijado a un build "noqt_*" explicito, no solo "=11.4.2" (que
+#   deja al solver elegir libremente entre variantes qt_*/noqt_*/py3xx,
+#   el mismo problema de fondo que ya causo el bug historico de
+#   EXPAT/ZLIB documentado en environment.yml). Confirmado extrayendo el
+#   Geant4Config.cmake real de ambas variantes: la libreria de fisica,
+#   GDML, datos y todo lo que usan las simulaciones son IDENTICOS entre
+#   qt_* y noqt_* -- la unica diferencia real es
+#   `Geant4_qt_FOUND ON` (variante qt) vs `OFF` (noqt), que controla si
+#   Geant4Config.cmake exige Qt6Core/Gui/Widgets/OpenGLWidgets al
+#   configurar un proyecto rio abajo (find_dependency(), no una libreria
+#   que el propio geant4 declare como dependencia en tiempo de
+#   ejecucion). Compilar con -DWITH_GEANT4_UIVIS=OFF (ver
+#   geant4/*/CMakeLists.txt) evita pedir los componentes ui_all/vis_all
+#   por completo, pero la variante del PAQUETE (qt_* vs noqt_*) es la que
+#   de verdad decide si Qt6 se instala o no -- ambos cambios son
+#   independientes y hacen falta los dos para el ahorro real.
+# - Sin qt6-main ni sus ~32 paquetes transitivos de la pila Qt/X11
+#   desktop (dbus, fontconfig, wayland, xcb-util-*, etc.) -- medido en
+#   esta maquina: ~400MB instalados de menos, sin contar la descarga
+#   comprimida (mas chica). xorg-libx11 SI se mantiene: el
+#   `vis_raytracer_x11` de Geant4Config.cmake sigue en ON incluso en el
+#   build noqt (no depende de la variante qt/noqt), asi que X11 sigue
+#   siendo requerido -- es mucho mas liviano que Qt6 completo, no se
+#   puede quitar sin recompilar Geant4 desde cero con esa opcion apagada
+#   (fuera de alcance).
+# - Sin qt6-main tambien implica que el instalador de sistema no necesita
+#   libglu1-mesa (esa dependencia es de Gmsh/field/.venv, no de Geant4 --
+#   ver el comentario de scripts/install.sh).
+channels:
+  - conda-forge
+dependencies:
+  - geant4=11.4.2=noqt_*
+  - cmake=4.4.1
+  - gcc_linux-64=15.2.0
+  - gxx_linux-64=15.2.0
+  - gfortran_linux-64=15.2.0
+  - expat
+  - zlib
+  - clhep=2.4.7.2
+  - xerces-c=3.3.0
+  - freetype
+  - hdf5
+  - xorg-libx11
