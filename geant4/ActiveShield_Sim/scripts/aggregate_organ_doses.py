@@ -60,11 +60,29 @@ verificar contra el archivo real").
 import argparse
 import csv
 import math
+import statistics
 import sys
 from collections import defaultdict
 from pathlib import Path
 
 import energy_bins
+
+# Mismo criterio que GCR_SEP_Sim/scripts/aggregate_results.py (valores
+# criticos t de Student, dos colas, 95%), copiado en vez de importado --
+# proyectos separados, sin un modulo compartido de estadistica todavia.
+T_TABLE_95 = {
+    1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7: 2.365,
+    8: 2.306, 9: 2.262, 10: 2.228, 11: 2.201, 12: 2.179, 13: 2.160, 14: 2.145,
+    15: 2.131, 16: 2.120, 17: 2.110, 18: 2.101, 19: 2.093, 20: 2.086,
+    21: 2.080, 22: 2.074, 23: 2.069, 24: 2.064, 25: 2.060, 26: 2.056,
+    27: 2.052, 28: 2.048, 29: 2.045, 30: 2.042,
+}
+
+
+def t_critical_95(df):
+    if df <= 0:
+        return float("nan")
+    return T_TABLE_95.get(df, 1.96)
 
 # Categorias ICRP 103 Tabla A.1, w_T=0.12 -- 5 de las 6 son un OR de palabras
 # clave sobre el nombre real de organo (ver AM_organs.dat), excluyendo
@@ -209,10 +227,42 @@ def build_rbm_organ_fractions(organ_metadata, rbm_fraction_by_tissue):
     return rbm_organ_fractions
 
 
+def expand_result_paths(patterns):
+    """patrones (rutas o globs) -> lista de Path existentes, en el orden dado.
+    Mismo principio que expand_inputs() de GCR_SEP_Sim/scripts/aggregate_results.py
+    -- reparto en equipo: cada persona corre run_organ_sweep.py con su propio
+    --only-positions en su propia maquina/build, y esto junta sus CSV en una
+    sola pasada sin tener que concatenarlos a mano (que exige no duplicar el
+    encabezado)."""
+    import glob
+    paths = []
+    for pattern in patterns:
+        matches = sorted(glob.glob(str(pattern)))
+        if matches:
+            paths.extend(Path(p) for p in matches)
+        else:
+            paths.append(Path(pattern))
+    return paths
+
+
+def iter_result_rows(paths):
+    """DictReader encadenado sobre varios CSV con el mismo encabezado --
+    lee cada archivo una vez por cada vez que se llama esta funcion (los dos
+    pases del script la llaman dos veces cada uno; para el tamano tipico de
+    este barrido -- unas pocas decenas de miles de filas -- releer no es un
+    costo real)."""
+    for path in paths:
+        with open(path, newline="") as f:
+            yield from csv.DictReader(f)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--results", type=Path, default=None,
-                         help="resultados_organo_sweep.csv (default: <repo>/build/resultados_organo_sweep.csv)")
+    parser.add_argument("--results", type=str, nargs="+", default=None,
+                         help="uno o mas resultados_organo_sweep.csv (acepta patrones glob entre comillas) -- "
+                              "para juntar el trabajo repartido en equipo (ej. --results "
+                              "'resultados_personaA.csv' 'resultados_personaB.csv'). Default: "
+                              "<repo>/build/resultados_organo_sweep.csv")
     parser.add_argument("--spectra-dir", type=Path, default=None,
                          help="Carpeta con los CSV de OLTARIS (default: <ActiveShield_Sim>/data)")
     parser.add_argument("--icrp-data-dir", type=Path, default=None,
@@ -230,14 +280,17 @@ def main():
 
     project_root = Path(__file__).resolve().parent.parent
     build_dir = project_root / "build"
-    results_path = args.results or (build_dir / "resultados_organo_sweep.csv")
+    results_paths = expand_result_paths(args.results) if args.results else [build_dir / "resultados_organo_sweep.csv"]
     spectra_dir = args.spectra_dir or (project_root / "data" / "sources" / "oltaris")
     icrp_data_dir = args.icrp_data_dir or (build_dir / "ICRPdata")
-    out_path = args.out or (results_path.parent / "resultados_organo_agregados.csv")
+    out_path = args.out or (results_paths[0].parent / "resultados_organo_agregados.csv")
     risk_out_path = out_path.parent / "resultados_riesgo_estocastico.csv"
 
-    if not results_path.is_file():
-        sys.exit(f"ERROR: no se encontro {results_path}. Corre run_organ_sweep.py primero.")
+    missing = [p for p in results_paths if not p.is_file()]
+    if missing:
+        sys.exit(f"ERROR: no se encontro(aron) {missing}. Corre run_organ_sweep.py primero (o revisa el patron).")
+    if len(results_paths) > 1:
+        print(f"Juntando {len(results_paths)} archivo(s) de resultados: {[str(p) for p in results_paths]}")
 
     # Radio de la esfera fuente, mismo criterio que
     # ICRP110PhantomConstruction::GetSourceSphereRadius (media diagonal del
@@ -284,19 +337,26 @@ def main():
     # n_events_by_run[(especie, bin_index, offset_x_m)] = N, sumado UNA VEZ
     # por repeticion (no por fila de organo -- cada repeticion escribe ~142
     # filas de organo que comparten el mismo n_eventos).
+    # *_rep versions (sufijo _rep) mantienen cada repeticion por separado --
+    # necesario para poder calcular media/std/IC95% ENTRE repeticiones mas
+    # abajo, no solo el punto pooled (que ya promedia/suma sobre repeticiones
+    # y por lo tanto no puede dar una barra de error).
     edep_by_run = defaultdict(lambda: defaultdict(float))
     n_events_by_run_rep = {}  # (run_key, repeticion) -> n
-    with open(results_path, newline="") as f:
-        for row in csv.DictReader(f):
-            n = int(row["n_eventos"])
-            if n == 0:
-                continue
-            run_key = (row["especie"], int(row["bin_index"]), float(row["offset_x_m"]))
-            edep_by_run[run_key][int(row["organo_id"])] += float(row["edep_J"])
-            n_events_by_run_rep[(run_key, int(row.get("repeticion", 0) or 0))] = n
+    edep_by_run_rep = defaultdict(lambda: defaultdict(float))  # (run_key,repeticion) -> {organo_id: edep_J}
+    for row in iter_result_rows(results_paths):
+        n = int(row["n_eventos"])
+        if n == 0:
+            continue
+        run_key = (row["especie"], int(row["bin_index"]), float(row["offset_x_m"]))
+        rep = int(row.get("repeticion", 0) or 0)
+        edep_by_run[run_key][int(row["organo_id"])] += float(row["edep_J"])
+        n_events_by_run_rep[(run_key, rep)] = n
+        edep_by_run_rep[(run_key, rep)][int(row["organo_id"])] += float(row["edep_J"])
     n_events_by_run = defaultdict(int)
     for (run_key, _rep), n in n_events_by_run_rep.items():
         n_events_by_run[run_key] += n
+    reps_seen = sorted({rep for (_run_key, rep) in n_events_by_run_rep})
 
     # --- CSV completo por organo_id (sin agrupar), R[o,s,bin] = dose_gy_run/N,
     # pooled sobre repeticiones. dose_gy_run ya es edep_J/masa_organo de ESA
@@ -304,15 +364,14 @@ def main():
     # sum(dose_gy_run_i * n_i) / sum(n_i) = sum(edep_i)/(masa*sum(n_i)),
     # sin necesitar la masa explicita aqui (se cancela en el promedio). ---
     _dose_n_sum = defaultdict(lambda: [0.0, 0])  # (organo_id,offset,especie,bin) -> [sum(dose*n), sum(n)]
-    with open(results_path, newline="") as f:
-        for row in csv.DictReader(f):
-            n = int(row["n_eventos"])
-            if n == 0:
-                continue
-            key4 = (int(row["organo_id"]), float(row["offset_x_m"]), row["especie"], int(row["bin_index"]))
-            acc = _dose_n_sum[key4]
-            acc[0] += float(row["dose_gy_run"]) * n
-            acc[1] += n
+    for row in iter_result_rows(results_paths):
+        n = int(row["n_eventos"])
+        if n == 0:
+            continue
+        key4 = (int(row["organo_id"]), float(row["offset_x_m"]), row["especie"], int(row["bin_index"]))
+        acc = _dose_n_sum[key4]
+        acc[0] += float(row["dose_gy_run"]) * n
+        acc[1] += n
     r_by_key = defaultdict(dict)  # (organo_id, offset_x_m) -> {(species,bin_index): R}
     for (organo_id, offset_x_m, especie, bin_index), (dose_n_sum, n_sum) in _dose_n_sum.items():
         r_by_key[(organo_id, offset_x_m)][(especie, bin_index)] = dose_n_sum / n_sum
@@ -385,6 +444,94 @@ def main():
                         "D_absorbida_SEP_Gy_evento": d_abs_sep, "D_equivalente_SEP_Sv_evento": d_eq_sep,
                     })
         print(f"Vista de riesgo estocastico (6 categorias ICRP103 w_T=0.12, por offset radial): {risk_out_path}")
+
+        # --- Placeholder de media/std/SEM/IC95%/CV ENTRE repeticiones
+        # (--repeats de run_organ_sweep.py, ver AGENTS.md) -- distinto de la
+        # vista pooled de arriba, que suma eventos entre repeticiones y por
+        # lo tanto da un mejor punto estimado pero NINGUNA barra de error.
+        # Aqui, cada repeticion se combina por separado (R por repeticion,
+        # no pooled) para obtener una lista de D_equivalente independientes,
+        # y ESA lista es la que se resume con estadistica -- mismo criterio
+        # (t de Student) que GCR_SEP_Sim/scripts/aggregate_results.py.
+        # Con --repeats 1 (default hasta ahora) esto da n=1 por celda: se
+        # imprime igual, con std/CV en blanco, para que la forma del CSV no
+        # cambie el dia que sí haya mas de una repeticion.
+        stats_out_path = out_path.parent / "resultados_riesgo_estocastico_repeticiones.csv"
+        stats_fieldnames = ["categoria", "offset_x_m", "n_repeticiones",
+                             "D_equivalente_GCR_Sv_dia_media", "D_equivalente_GCR_Sv_dia_std",
+                             "D_equivalente_GCR_Sv_dia_sem", "D_equivalente_GCR_Sv_dia_ic95_low",
+                             "D_equivalente_GCR_Sv_dia_ic95_high", "D_equivalente_GCR_Sv_dia_cv_pct",
+                             "D_equivalente_SEP_Sv_evento_media", "D_equivalente_SEP_Sv_evento_std",
+                             "D_equivalente_SEP_Sv_evento_sem", "D_equivalente_SEP_Sv_evento_ic95_low",
+                             "D_equivalente_SEP_Sv_evento_ic95_high", "D_equivalente_SEP_Sv_evento_cv_pct"]
+
+        def summarize(values):
+            """[valores por repeticion] -> (media, std, sem, ic95_low, ic95_high, cv_pct),
+            con "" para las que no se pueden calcular con n<2 (std/sem/ic95/cv)."""
+            n = len(values)
+            mean = statistics.fmean(values) if n else float("nan")
+            if n < 2:
+                return mean, "", "", "", "", ""
+            std = statistics.stdev(values)
+            sem = std / math.sqrt(n)
+            half_width = t_critical_95(n - 1) * sem
+            cv_pct = (std / mean * 100.0) if mean else float("nan")
+            return mean, std, sem, mean - half_width, mean + half_width, cv_pct
+
+        with open(stats_out_path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=stats_fieldnames)
+            writer.writeheader()
+            for category, organ_ids in {**category_organ_ids,
+                                         **({"red_bone_marrow": None} if rbm_organ_fractions else {})}.items():
+                mass_kg = pooled_mass_kg.get(category, 0.0)
+                if mass_kg <= 0:
+                    continue
+                for offset_x_m in offsets:
+                    d_eq_gcr_by_rep, d_eq_sep_by_rep = [], []
+                    for rep in reps_seen:
+                        r_by_bin = {}
+                        for species, bin_idx in species_bins:
+                            run_key = (species, bin_idx, offset_x_m)
+                            key_rep = (run_key, rep)
+                            if key_rep not in n_events_by_run_rep:
+                                continue
+                            n = n_events_by_run_rep[key_rep]
+                            edep_this_rep = edep_by_run_rep[key_rep]
+                            if category == "red_bone_marrow":
+                                edep = sum(edep_this_rep.get(oid, 0.0) * frac
+                                           for oid, frac in rbm_organ_fractions.items())
+                            else:
+                                edep = sum(edep_this_rep.get(oid, 0.0) for oid in organ_ids)
+                            r_by_bin[(species, bin_idx)] = (edep / mass_kg) / n
+                        if not r_by_bin:
+                            continue
+                        _d_abs_gcr, d_eq_gcr, _d_abs_sep, d_eq_sep = combine_bins(r_by_bin)
+                        d_eq_gcr_by_rep.append(d_eq_gcr)
+                        d_eq_sep_by_rep.append(d_eq_sep)
+                    if not d_eq_gcr_by_rep and not d_eq_sep_by_rep:
+                        continue
+                    gcr_stats = summarize(d_eq_gcr_by_rep) if d_eq_gcr_by_rep else (float("nan"),)*6
+                    sep_stats = summarize(d_eq_sep_by_rep) if d_eq_sep_by_rep else (float("nan"),)*6
+                    writer.writerow({
+                        "categoria": category, "offset_x_m": offset_x_m,
+                        "n_repeticiones": len(reps_seen),
+                        "D_equivalente_GCR_Sv_dia_media": gcr_stats[0],
+                        "D_equivalente_GCR_Sv_dia_std": gcr_stats[1],
+                        "D_equivalente_GCR_Sv_dia_sem": gcr_stats[2],
+                        "D_equivalente_GCR_Sv_dia_ic95_low": gcr_stats[3],
+                        "D_equivalente_GCR_Sv_dia_ic95_high": gcr_stats[4],
+                        "D_equivalente_GCR_Sv_dia_cv_pct": gcr_stats[5],
+                        "D_equivalente_SEP_Sv_evento_media": sep_stats[0],
+                        "D_equivalente_SEP_Sv_evento_std": sep_stats[1],
+                        "D_equivalente_SEP_Sv_evento_sem": sep_stats[2],
+                        "D_equivalente_SEP_Sv_evento_ic95_low": sep_stats[3],
+                        "D_equivalente_SEP_Sv_evento_ic95_high": sep_stats[4],
+                        "D_equivalente_SEP_Sv_evento_cv_pct": sep_stats[5],
+                    })
+        if len(reps_seen) < 2:
+            print(f"ADVERTENCIA: solo {len(reps_seen)} repeticion(es) vista(s) -- std/SEM/IC95%/CV en blanco "
+                  f"en {stats_out_path}. Correr run_organ_sweep.py con --repeats >= 2 para tener barra de error.")
+        print(f"Media/std/IC95% entre repeticiones (placeholder, ver AGENTS.md): {stats_out_path}")
 
 
 if __name__ == "__main__":

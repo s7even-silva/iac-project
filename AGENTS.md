@@ -868,25 +868,126 @@ que usan las corridas del arreglo) — reutiliza `load_vtu()`/`resample()`
 de ese módulo directamente, igual que ya hacía `compare_elmer_array.py`
 para puntos sueltos.
 
-### Repeticiones en `run_organ_sweep.py` (2026-09-11)
+### Repeticiones, blindaje sólido y campo Elmer en `run_organ_sweep.py` (2026-09-11)
 
-**Implementado:** `--repeats N` (default 1, retrocompatible) — multiplica
-las 120 combinaciones por N (ej. `--repeats 5` = 600 corridas), mismo
-patrón de semillas que `GCR_SEP_Sim/scripts/run_sweep.py`
-(`BASE_SEED + 1000*rep + 2*index`). Resume ahora indexa por `(index,
-repeticion)`, no solo `index`. `aggregate_organ_doses.py` corregido para
-sumar `edep_J` y `n_eventos` de todas las repeticiones de una misma
-combinación antes de calcular `R = edep/(masa*N)` (pool de eventos de
-Monte Carlo independientes — estadísticamente más correcto que promediar
-`R` directamente) — antes de este fix, agregar filas de repeticiones
-habría hecho que cada combinación silenciosamente usara solo los datos de
-la ÚLTIMA repetición leída, descartando las demás sin error. Verificado
-con una corrida real de 3 repeticiones: la suma de `n_eventos` da
-exactamente 3×N (no 3×142×N, el bug que más importaba evitar, ya que cada
-repetición escribe ~142 filas de órgano que comparten el mismo N). No se
-implementó todavía el cálculo de std/IC95% entre repeticiones (solo el
-pool de eventos) — pendiente si el equipo lo quiere para el paper, mismo
-principio que `GCR_SEP_Sim/scripts/aggregate_results.py`.
+**Repeticiones, implementado:** `--repeats N` (default 1, retrocompatible)
+— multiplica las 120 combinaciones por N (ej. `--repeats 5` = 600
+corridas), mismo patrón de semillas que `GCR_SEP_Sim/scripts/run_sweep.py`
+(`BASE_SEED + 1000*rep + 2*index`). Resume indexa por `(index,
+repeticion)`, no solo `index`. **Orden repetición-mayor por defecto (no
+un flag):** el bucle corre todas las combinaciones de la repetición 0
+antes que cualquiera de la repetición 1 — con `--repeats 5` esto da un
+primer resultado completo y usable (120 combinaciones, 1 repetición)
+mucho antes de terminar las 600, en vez de tener las 120 a medio
+terminar durante casi toda la corrida. El resume por `(index,
+repeticion)` no depende del orden de iteración, así que esto no cambia
+qué combinaciones quedan pendientes si se corta a la mitad.
+
+`aggregate_organ_doses.py` corregido para sumar `edep_J` y `n_eventos` de
+todas las repeticiones de una misma combinación antes de calcular
+`R = edep/(masa*N)` (pool de eventos de Monte Carlo independientes —
+estadísticamente más correcto que promediar `R` directamente) — antes de
+este fix, agregar filas de repeticiones habría hecho que cada combinación
+silenciosamente usara solo los datos de la ÚLTIMA repetición leída,
+descartando las demás sin error. Verificado con una corrida real de 3
+repeticiones: la suma de `n_eventos` da exactamente 3×N (no 3×142×N, el
+bug que más importaba evitar, ya que cada repetición escribe ~142 filas
+de órgano que comparten el mismo N).
+
+**Media/std/SEM/IC95%/CV entre repeticiones, implementado (placeholder):**
+nuevo `resultados_riesgo_estocastico_repeticiones.csv` — a diferencia de
+la vista pooled (que suma eventos entre repeticiones y da mejor punto
+estimado pero ninguna barra de error), aquí cada repetición se combina
+por separado para obtener una lista de `D_equivalente` independientes,
+resumida con el mismo criterio (t de Student) que
+`GCR_SEP_Sim/scripts/aggregate_results.py` (tabla `T_TABLE_95` copiada,
+no importada — proyectos separados, sin módulo de estadística
+compartido todavía). Con `--repeats 1` (lo único corrido hasta ahora)
+imprime una advertencia explícita y deja std/CV en blanco, sin romperse
+— listo para cuando se corra con `--repeats ≥2` de verdad.
+
+**Reparto de equipo, `aggregate_organ_doses.py --results` ahora acepta
+varios archivos (con patrones glob):** cada persona corre su propio
+`--only-positions` en su máquina, y cualquiera de los dos junta ambos CSV
+en una sola pasada (`--results personaA.csv personaB.csv`) sin tener que
+concatenarlos a mano evitando duplicar el encabezado. Verificado
+simulando el split real (2 posiciones en un archivo, 2 distintas en
+otro): el CSV agregado tiene exactamente las filas esperadas, sin
+duplicar ni perder ninguna — funciona porque `--only-positions` ya
+garantiza posiciones disjuntas entre personas (semillas deterministas
+por índice global, asignado antes de filtrar).
+
+**`/spacecraft/coilGeometry`, implementado (antes no se usaba en
+absoluto):** decisión de equipo ya registrada más arriba ("Mantener
+material de devanados, soportes y crióstato en el modelo final"),
+respaldada por los papers de blindaje activo citados en
+`docs/modelo_realista.md` (SR2S, Ambroglini et al.) que modelan la masa
+de la bobina como parte del blindaje, no solo su campo — pero el
+lanzador nunca la había usado: corría solo con el efecto del campo sobre
+trayectorias, sin la masa de las bobinas ni sus secundarios. Corregido:
+`--coil-geometry` (default: `field/generated/crewhat_halbach_array/
+halbach_array.gdml`, verificado geométricamente idéntico —salvo ruido de
+punto flotante ~1e-15— al usado para generar el mapa de campo de
+producción) más `/spacecraft/worldHalfSize 14 m`. `--no-coil-geometry`
+disponible para comparar sin ellas. Probado sin solapamientos.
+**Costo real medido: ~10-20s → ~21-24s por corrida en los bins de
+energía más baja** — las bobinas ahora generan secundarios de verdad.
+
+**Campo de producción cambiado de Biot-Savart a Elmer FEM a escala real
+(decisión de equipo, 2026-09-11):** `--field-map` ahora tiene default
+(`build/crewhat_elmer_fullscale.map`, ya no requerido explícitamente) —
+antes de este cambio, ninguna combinación mencionaba qué campo específico
+era "el de producción" fuera de la CLI. Motivo: ver la entrada "Error de
+campo vs. error de dosis en Elmer" más abajo — Biot-Savart sobreestima
+dosis 36-48% frente a Elmer en la misma configuración porque trata cada
+bobina como un filamento con núcleo de 6,7cm, mucho menor que el winding
+pack real (~1,4m), y la región de la nave no está lo bastante lejos del
+arreglo (radio Halbach 8m) para que esa aproximación sea buena ahí. Elmer
+resuelve la distribución de corriente real sobre la sección del
+conductor. `build/crewhat_niac_max.map` (Biot-Savart) se conserva para
+comparación, ya no es el default. **Sin verificar todavía en vivo la
+combinación exacta Elmer+coilGeometry dentro de `run_organ_sweep.py`**
+(cada pieza se probó por separado — Elmer a mano, coilGeometry con
+Biot-Savart — pero no las tres juntas en el lanzador real): el directorio
+de build estaba ocupado corriendo el piloto de 8 bins (ver abajo) cuando
+se hizo este cambio; verificar con `--limit 1` antes de un barrido real.
+
+**Piloto de 8 bins (1 por bin, GCR_H, posición 0), con la configuración
+final (14 hilos, bobinas incluidas, 10000 eventos reales) — hallazgo
+crítico para el presupuesto de tiempo:**
+
+| Bin | Energía (MeV/amu) | Tiempo real |
+|---|---|---|
+| 0 | 17,8 | 21,6s |
+| 1 | 56,2 | 21,8s |
+| 2 | 177,8 | 34,1s |
+| 3 | 562,3 | 72,6s |
+| 4 | 1778,3 | 275,3s |
+| 5 | 5623,4 | 730,4s |
+| 6-7 | 17780-56230 | (completar aquí cuando termine la corrida) |
+
+El costo **no es uniforme entre bins** — cada bin de energía tarda
+aproximadamente 2,3-2,7x el anterior, un factor >30x ya confirmado entre
+el bin más barato y el bin5, con los dos bins más caros (los de mayor
+energía, más producción de secundarios) todavía sin medir. Cualquier
+presupuesto de tiempo para el barrido de 120 (o 600 con repeticiones)
+corridas debe usar esta curva real, no un promedio plano — el bin7 solo
+podría, extrapolando el mismo factor, tardar del orden de una hora por
+corrida.
+
+**Matriz pasiva/activa A-E: NO duplica el conteo, lo multiplica por hasta
+5x, y no es necesaria completa para el resultado central.** Si el único
+argumento del paper es "el blindaje magnético activo reduce la dosis",
+alcanza con 2 casos (A: nave sola sin nada, C: con campo — la producción
+actual), no los 5 — eso sí sería una duplicación (2x), manejable. Correr
+los 5 casos completos a resolución plena (120 combinaciones × repeticiones,
+cada uno) multiplicaría el costo por 5, que combinado con la curva de
+costo real de arriba, probablemente no es viable en el tiempo disponible.
+Recomendación: A y C a resolución plena; B/D/E (si hay tiempo) a
+resolución reducida (solo los 2-3 bins que concentran ~80% del peso
+físico de cada especie, ver la nota de adecuación de bins más abajo, y
+solo la posición central) en vez del barrido completo — suficiente para
+una comparación indicativa sin pagar el costo completo tres veces más.
 
 ## Estructura de `geant4/GCR_SEP_Sim/`
 

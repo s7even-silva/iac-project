@@ -55,23 +55,27 @@ unico inmediatamente despues de cada corrida, antes de lanzar la siguiente.
 
 Requiere:
 - ActiveShield_Sim ya compilado (ver README.md / AGENTS.md).
-- El .map del arreglo de 8 bobinas ya generado (entorno field/.venv, NO
-  geant4_env -- este script no lo genera):
-    python3 field/generate_ellipse_array.py field/examples/crewhat_halbach_array_pilot.json field/generated/crewhat_halbach_array_production
-    python3 field/compute_field_ellipse_array.py field/generated/crewhat_halbach_array_production/array_current_paths.json build/crewhat_niac_max.map --half-size 13.0 --spacing 0.75
+- El GDML solido de las 8 bobinas y su .map de campo Elmer FEM a escala
+  real ya generados (entorno field/.venv, NO geant4_env -- este script no
+  los genera). --field-map/--coil-geometry ya traen el default correcto
+  (build/crewhat_elmer_fullscale.map, field/generated/crewhat_halbach_array/
+  halbach_array.gdml) si ya los generaste siguiendo AGENTS.md ("Error de
+  campo vs. error de dosis en Elmer, y extension a escala real"). Para
+  comparar contra el Biot-Savart anterior (ya no el default, ver ahi por
+  que): --field-map ../build/crewhat_niac_max.map.
 
 Uso:
-    python3 run_organ_sweep.py --field-map ../build/crewhat_niac_max.map
-    python3 run_organ_sweep.py --field-map ../build/crewhat_niac_max.map --n-events 100 --limit 2  # piloto
-    python3 run_organ_sweep.py --field-map ../build/crewhat_niac_max.map --no-resume
+    python3 run_organ_sweep.py
+    python3 run_organ_sweep.py --n-events 100 --limit 2  # piloto
+    python3 run_organ_sweep.py --no-resume
     # Repartir en equipo (60/40 EXACTO por corridas, por posicion completa --
     # cada posicion trae sus 24 combinaciones de especie x bin, 5 posiciones
     # x 24 = 120):
-    python3 run_organ_sweep.py --field-map ../build/crewhat_niac_max.map --only-positions 2,3,4  # 72 corridas (60%)
-    python3 run_organ_sweep.py --field-map ../build/crewhat_niac_max.map --only-positions 0,1    # 48 corridas (40%)
+    python3 run_organ_sweep.py --only-positions 2,3,4  # 72 corridas (60%)
+    python3 run_organ_sweep.py --only-positions 0,1    # 48 corridas (40%)
     # Con repeticiones para media/std/IC95% (ver aggregate_organ_doses.py) --
     # multiplica el total: 120 x 5 = 600 corridas.
-    python3 run_organ_sweep.py --field-map ../build/crewhat_niac_max.map --repeats 5
+    python3 run_organ_sweep.py --repeats 5
 
 Resume esta activado por defecto (mismo criterio que GCR_SEP_Sim/run_sweep.py):
 al relanzar el mismo comando se saltan los indices de corrida que ya tengan
@@ -98,6 +102,30 @@ import energy_bins  # noqa: E402
 # con mas posiciones/especies/bins sin revisarlo antes.
 SHIP_RADIUS_M = 4.5      # escala real de CREW HaT (NIAC, diametro Starship)
 SHIP_HALF_LENGTH_M = 5.0  # supuesto propio, ninguna fuente da la longitud axial
+WORLD_HALF_SIZE_M = 14.0  # encierra el arreglo (halbach_radius=8m) + margen, mismo valor que import_crewhat_halbach_array.mac
+# Geometria SOLIDA de las 8 bobinas (material HTS real, no solo su campo) --
+# decision de equipo (AGENTS.md, "Mantener material de devanados, soportes y
+# crioestato en el modelo final: la contribucion pasiva y los secundarios
+# pueden aumentar o reducir dosis") -- sin esto, la corrida solo ve el EFECTO
+# del campo sobre trayectorias, nunca las bobinas como blindaje/fuente de
+# secundarios. Mismo array_current_paths.json (mismas corrientes/posiciones,
+# solo ruido de punto flotante ~1e-15 entre generaciones) que compute_field_
+# ellipse_array.py uso para generar el .map de produccion -- geometria y
+# campo son consistentes entre si.
+DEFAULT_COIL_GEOMETRY = (Path(__file__).resolve().parent.parent.parent.parent
+                          / "field" / "generated" / "crewhat_halbach_array" / "halbach_array.gdml")
+# Elmer FEM a escala real de nave, no Biot-Savart -- decision de equipo
+# 2026-09-11 (ver AGENTS.md, "Error de campo vs. error de dosis en Elmer, y
+# extension a escala real"): Biot-Savart trata cada bobina como un filamento
+# con nucleo de regularizacion de 6,7cm, mucho menor que el winding pack
+# real (~1,4m); la region de la nave (radio 4,5-6,9m) no esta lo bastante
+# lejos del arreglo (radio Halbach 8m) para que esa aproximacion sea buena
+# ahi. Medido: Biot-Savart da 36-48% MAS dosis que Elmer en la misma
+# configuracion (una sola semilla, no una validacion estadistica cerrada
+# todavia) -- Elmer resuelve la distribucion de corriente real sobre la
+# seccion del conductor, Biot-Savart no. build/crewhat_niac_max.map
+# (Biot-Savart) se conserva en disco para comparacion, ya no es el default.
+DEFAULT_FIELD_MAP = (Path(__file__).resolve().parent.parent.parent.parent / "build" / "crewhat_elmer_fullscale.map")
 # Radial en XY; Y fijo en 0 (ver docstring). Interior de la nave es
 # shipRadius(4.5m)-hullThickness(1.5cm) menos el medio-ancho del fantoma en
 # X (~0.271m) = margen seguro ~4.2m; 4.0m ya se probo sin solapamientos.
@@ -114,7 +142,8 @@ MACRO_TEMPLATE = """\
 
 /spacecraft/shipRadius {ship_radius_m} m
 /spacecraft/shipHalfLength {ship_half_length_m} m
-/spacecraft/fieldMap {field_map}
+/spacecraft/worldHalfSize {world_half_size_m} m
+{coil_geometry_line}/spacecraft/fieldMap {field_map}
 /spacecraft/fieldScale 1.0
 /spacecraft/phantomOffsetX {offset_x_m} m
 /spacecraft/phantomOffsetY 0 m
@@ -201,8 +230,18 @@ def parse_icrp110_out(out_path):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--field-map", type=Path, required=True,
-                         help="Ruta al .map del arreglo de 8 bobinas (field/compute_field_ellipse_array.py)")
+    parser.add_argument("--field-map", type=Path, default=DEFAULT_FIELD_MAP,
+                         help="Ruta al .map del arreglo de 8 bobinas. Default (2026-09-11): el FEM de Elmer a "
+                              "escala real (build/crewhat_elmer_fullscale.map), no Biot-Savart -- ver AGENTS.md "
+                              "para por que. Pasar build/crewhat_niac_max.map explicitamente para comparar "
+                              "contra el Biot-Savart anterior.")
+    parser.add_argument("--coil-geometry", type=Path, default=DEFAULT_COIL_GEOMETRY,
+                         help="GDML solido de las 8 bobinas (default: field/generated/crewhat_halbach_array/"
+                              "halbach_array.gdml)")
+    parser.add_argument("--no-coil-geometry", action="store_true",
+                         help="Omitir /spacecraft/coilGeometry -- solo el efecto del campo sobre trayectorias, "
+                              "sin masa/secundarios de las bobinas. NO es el comportamiento de produccion "
+                              "(ver AGENTS.md, 'Mantener material de devanados...'); usar solo para comparar.")
     parser.add_argument("--build-dir", type=Path, default=None,
                          help="Directorio de build con ICRP110phantoms compilado (default: <repo>/build)")
     parser.add_argument("--n-events", type=int, default=sweep_config.DEFAULT_N_EVENTS,
@@ -234,6 +273,7 @@ def main():
     build_dir = (args.build_dir or (project_root / "build")).resolve()
     binary_path = build_dir / "ICRP110phantoms"
     field_map = args.field_map.resolve()
+    coil_geometry = None if args.no_coil_geometry else args.coil_geometry.resolve()
 
     if not binary_path.is_file():
         sys.exit(f"ERROR: no se encontro {binary_path}. Compila ActiveShield_Sim primero (ver README.md).")
@@ -241,6 +281,10 @@ def main():
         sys.exit(f"ERROR: no se encontro {field_map}. Generalo con field/generate_ellipse_array.py + "
                   "field/compute_field_ellipse_array.py primero (entorno field/.venv, no geant4_env -- "
                   "ver docstring de este script).")
+    if coil_geometry is not None and not coil_geometry.is_file():
+        sys.exit(f"ERROR: no se encontro {coil_geometry}. Generalo con field/generate_ellipse_array.py + "
+                  "field/mesh_swept.py + field/mesh_to_gdml.py, o pasa --no-coil-geometry para omitirlo "
+                  "(no es el comportamiento de produccion, ver AGENTS.md).")
 
     generated_dir = build_dir / "macros" / "generated_organ"
     logs_dir = build_dir / "logs_organ"
@@ -294,8 +338,15 @@ def main():
     n_failed = 0
     n_skipped = 0
     run_n = 0
-    for combo in combos:
-        for rep in range(args.repeats):
+    # Orden repeticion-mayor (todas las combinaciones de rep=0 antes que
+    # cualquiera de rep=1): con --repeats>1, esto da un primer resultado
+    # completo y usable (las 120 combinaciones con 1 repeticion) mucho antes
+    # que terminar todo el barrido, en vez de tener 120 combinaciones a
+    # medio terminar durante la mayor parte de la corrida. El resume por
+    # (index, repeticion) no depende del orden de iteracion, asi que esto
+    # no cambia que combinaciones quedan pendientes si se corta a la mitad.
+    for rep in range(args.repeats):
+        for combo in combos:
             run_n += 1
             if (combo["index"], rep) in done_runs:
                 n_skipped += 1
@@ -305,8 +356,10 @@ def main():
             seed2 = seed1 + 1
 
             macro_path = generated_dir / f"organ_run_{combo['index']:03d}_r{rep:02d}.mac"
+            coil_geometry_line = f"/spacecraft/coilGeometry {coil_geometry}\n" if coil_geometry is not None else ""
             macro_path.write_text(MACRO_TEMPLATE.format(
                 ship_radius_m=SHIP_RADIUS_M, ship_half_length_m=SHIP_HALF_LENGTH_M,
+                world_half_size_m=WORLD_HALF_SIZE_M, coil_geometry_line=coil_geometry_line,
                 field_map=field_map, offset_x_m=f"{combo['offset_x_m']:.3f}",
                 seed1=seed1, seed2=seed2,
                 species=combo["species"], phase=combo["phase"],
