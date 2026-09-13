@@ -71,9 +71,13 @@ docker run --rm --network host \
 `--network host` corresponde a la prueba local en Linux. `WORKER_ONCE=1`
 termina después de procesar un job; sin ese parámetro, continúa consultando.
 `BUILD_DIR` apunta al build compilado (default `ActiveShield_Sim/build`).
-`WORKER_THREADS` limita los hilos pedidos a Geant4 (default 1); no establece
-un límite de memoria del contenedor. Para uso continuo montar un volumen en
-`/var/lib/geant4-worker` y usar `--restart unless-stopped`.
+`WORKER_THREADS` limita los hilos pedidos a Geant4 (`=1` explícito arriba, a
+propósito, para una prueba rápida y predecible). Sin fijarlo, el default real
+(2026-09-13, corrige un bug donde caía silenciosamente a 1 sin importar la
+máquina) es `os.cpu_count()` leído *dentro* del contenedor -- todos los CPUs
+que Docker le asignó, no un número fijo. No establece un límite de memoria
+del contenedor. Para uso continuo montar un volumen en `/var/lib/geant4-worker`
+y usar `--restart unless-stopped`.
 
 Cada job identifica `(species, bin_index, offset_x_m, repeticion)`. El worker
 usa `--only-species`, `--only-bins`, `--only-positions`, `--limit 1`,

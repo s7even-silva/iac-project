@@ -45,7 +45,15 @@ BUILD_DIR = Path(os.environ.get("BUILD_DIR", REPO_ROOT / "geant4" / "ActiveShiel
 WORKER_LABEL = os.environ.get("WORKER_LABEL", "")
 WORKER_ID_FILE = Path(os.environ.get("WORKER_ID_FILE", "/var/lib/geant4-worker/worker_id"))
 HEARTBEAT_INTERVAL_S = float(os.environ.get("HEARTBEAT_INTERVAL_S", "30"))
-WORKER_THREADS = int(os.environ.get("WORKER_THREADS", "1"))
+# Sin WORKER_THREADS explicito, usar TODOS los CPUs que este proceso ve
+# -- os.cpu_count() dentro de un contenedor Docker refleja los CPUs que
+# el propio Docker le asigno (todo el host, salvo que install-worker.ps1
+# haya pasado --cpus), no un numero fijo. Bug real corregido aqui
+# (2026-09-13): el default anterior era "1" a secas, asi que cualquier
+# voluntario que instalara sin pasar -WorkerThreads corria Geant4 en un
+# solo nucleo sin importar cuantos tuviera la maquina -- confirmado en
+# vivo con una PC de 16 nucleos al 100% en solo uno.
+WORKER_THREADS = int(os.environ.get("WORKER_THREADS") or (os.cpu_count() or 1))
 POLL_INTERVAL_S = float(os.environ.get("POLL_INTERVAL_S", "30"))
 
 # Sesion compartida: si el coordinator exige WORKER_TOKEN (ver app.py),
