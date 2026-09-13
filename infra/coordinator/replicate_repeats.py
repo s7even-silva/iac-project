@@ -8,8 +8,15 @@ min_cpu_count de cada job de la repeticion base tal cual, cambiando solo
 `repeticion`. Idempotente via el mismo UNIQUE constraint que ya usa
 insert_job() -- correrlo dos veces con el mismo --repeats no duplica nada.
 
+Requiere sembrar la repeticion base PRIMERO -- para el barrido completo
+de ActiveShield_Sim (120 combinaciones, no solo los jobs sembrados a
+mano hasta ahora), usar seed_full_sweep.py antes de este script.
+
 Uso:
-    # Agrega repeticiones 1,2,3,4 para cada combinacion que ya exista con
+    # 1) Siembra las 120 combinaciones de la repeticion 0 (una sola vez):
+    python3 seed_full_sweep.py --n-events 10000
+
+    # 2) Agrega repeticiones 1,2,3,4 para cada combinacion que ya exista con
     # repeticion=0 (lo tipico: ejecutar una vez que la primera pasada esta
     # sembrada, sin esperar a que termine de correr):
     python3 replicate_repeats.py --repeats 4

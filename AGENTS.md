@@ -1457,6 +1457,32 @@ real — ya no solo local sin contenedor:**
     cambio (confirmado por el mismo manifiesto); offsets 0,1 de GCR_H y
     cualquier otra combinación dependen del manifiesto de Eddy, no
     versionado — quedan sin poblar hasta confirmar su estado real.
+  - **Sembrado del barrido completo, herramienta lista (2026-09-13):**
+    hasta este punto la cola solo tenía 11 de las 120 combinaciones
+    reales (los bins 6-7 de GCR_He/SEP_p que faltaban) — antes de poder
+    replicar repeticiones (ver el punto siguiente) hacía falta sembrar
+    las 120 completas de la repetición 0. `infra/coordinator/
+    seed_full_sweep.py` (nuevo) las crea todas de una vez (`python3
+    seed_full_sweep.py --n-events 10000`), reusando el mismo
+    `insert_job()`/`ON CONFLICT DO NOTHING` que `seed_jobs.py` — no pisa
+    ninguno de los 11 jobs ya en curso (`done`/`running` se preservan
+    intactos, verificado con una prueba que simula exactamente ese
+    estado). Prioridad y requisitos mínimos por especie, no un criterio
+    único para las tres:
+    - GCR_H/GCR_He: `priority = bin_index` (bin7 primero) y
+      `min_ram_gb=8`/`min_cpu_count=4` desde `bin_index>=6` — el mismo
+      criterio ya usado a mano, justificado por la curva de costo real
+      medida (energía real = MeV/amu × número másico, ver "GCR_He...
+      resultando MÁS caro que GCR_H a la misma energía nominal").
+    - **SEP_p, prioridad invertida** — el usuario confirmó en producción
+      que sus corridas de energía **baja** (`bin_index` chico) tardan
+      notablemente más que las de energía alta, el patrón opuesto al de
+      GCR_H/GCR_He. `priority = 7 - bin_index` (bin0 primero) y el
+      requisito de RAM/CPU se exige en `bin_index<=1`, no en los altos.
+      Sin una tabla de tiempos fina por bin para SEP_p todavía (a
+      diferencia de la medida para GCR_H) — esto solo captura la
+      **dirección** del efecto, no la magnitud exacta; ajustar el umbral
+      si se mide con más precisión más adelante.
   - **5 repeticiones, herramienta lista (2026-09-13):**
     `infra/coordinator/replicate_repeats.py` (nuevo) lee todos los jobs
     ya sembrados en una repetición base (`repeticion=0` por defecto) y
