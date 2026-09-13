@@ -1,0 +1,56 @@
+# Imagen del worker de computo distribuido: repo completo + Geant4
+# 11.4.2 headless (via scripts/install_compute_node.sh, sin Elmer/Qt) + los
+# dos binarios de produccion YA compilados en build time. Ver
+# infra/worker/worker.py y AGENTS.md ("Computo distribuido") para el diseno
+# completo.
+#
+# Build (desde la raiz del repo):
+#   docker build -f docker/Dockerfile.geant4-worker -t geant4-worker .
+#
+# Run:
+#   docker run -d --name geant4-worker --restart unless-stopped \
+#     -e COORDINATOR_URL=http://<ip-coordinator>:8000 \
+#     -e WORKER_LABEL=vm-1 \
+#     -v geant4-worker-id:/var/lib/geant4-worker \
+#     geant4-worker
+ARG BASE_IMAGE=ubuntu:24.04
+FROM ${BASE_IMAGE}
+
+# BASE_IMAGE can be a previously built local worker for an offline rebuild.
+# The default remains a clean Ubuntu base; install_compute_node.sh is reused.
+RUN if dpkg-query -W -f='${Status}\n' build-essential curl ca-certificates libgl1 git python3-pip > /tmp/worker-packages 2>/dev/null \
+       && ! grep -qv '^install ok installed$' /tmp/worker-packages; then true; \
+    else apt-get update && apt-get install -y --no-install-recommends \
+        build-essential curl ca-certificates libgl1 git python3-pip \
+        && rm -rf /var/lib/apt/lists/*; fi
+
+
+# conda.anaconda.org corto la descarga de paquetes grandes de Geant4 (datos
+# de fisica, cientos de MB) mas de una vez en este entorno de build -- sin
+# esto, install_compute_node.sh fallaba a mitad de "Downloading and
+# Extracting Packages" con CondaHTTPError/ReadTimeoutError. Mas reintentos
+# y timeouts mas largos, antes de invocar el script (no se toca ese script,
+# es reusado tal cual -- ver AGENTS.md).
+RUN printf 'remote_max_retries: 10\nremote_read_timeout_secs: 120.0\nremote_connect_timeout_secs: 30.0\n' > /root/.condarc
+
+COPY . /opt/iac-project
+WORKDIR /opt/iac-project
+
+# Instala Miniconda + geant4_env_headless y compila GCR_SEP_Sim/ActiveShield_Sim
+# con ctest como gate -- si algo no compila, el build de Docker falla aqui,
+# no en produccion. --skip-system porque las dependencias de sistema (arriba)
+# ya se instalaron en esta capa (el script asume `sudo`, innecesario como root).
+RUN bash scripts/install_compute_node.sh --skip-system
+
+RUN pip install --break-system-packages --no-cache-dir -r infra/worker/requirements.txt
+
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENV PYTHONUNBUFFERED=1
+ENV BUILD_DIR=/opt/iac-project/geant4/ActiveShield_Sim/build
+ENV WORKER_ID_FILE=/var/lib/geant4-worker/worker_id
+ENV COORDINATOR_URL=http://localhost:8000
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["python3", "/opt/iac-project/infra/worker/worker.py"]

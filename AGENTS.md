@@ -1211,6 +1211,179 @@ incompatible por un tiempo — aquí el objetivo es que cualquiera, en
 `main`, elija entre `install.sh` (completo) o `install_compute_node.sh`
 (mínimo) según lo que necesite, sin que uno le oculte cambios al otro.
 
+## Cómputo distribuido para el barrido de ActiveShield_Sim (2026-09-12)
+
+**Por qué:** el reparto manual entre 2 laptops (`--only-positions`) llegó a
+un límite concreto — el bin7 de GCR_He (3 corridas, offsets 2/3/4) se
+proyectó en 5-6h por corrida y se decidió diferirlo explícitamente para
+"correrse aparte después con cómputo distribuido" (ver la entrada de arriba,
+"Piloto de 8 bins"/"Decisión bin7 de GCR_He"). El equipo (con acceso a
+GitHub Education/crédito de nube) decidió construir un coordinator/worker
+reusable en vez de resolver solo esas 3 corridas ad-hoc, en una rama nueva
+(`infra/distributed-sweep`) para no interferir con quien sigue corriendo el
+barrido normal en `main`.
+
+**Diseño, implementado en `infra/`:**
+- **Grano del job = una sola combinación** `(species, bin_index,
+  offset_x_m, repeticion)`, no una posición completa (24 combinaciones) —
+  el costo por combinación varía ~250x (20s a 85min, ver tabla de arriba),
+  así que empaquetar por posición mezclaría jobs baratos y carísimos,
+  perdiendo el paralelismo real que se necesita para el caso urgente
+  (aislar cada corrida de bin7 a su propia VM).
+- **Coordinator** (`infra/coordinator/`): FastAPI + SQLite (WAL, claim
+  atómico vía `BEGIN IMMEDIATE` para que dos workers no reciban el mismo
+  job), con endpoints `register/heartbeat/jobs/next/start/result/fail/
+  health`. Una tarea de fondo reencola a `pending` cualquier job
+  `claimed`/`running` cuyo worker no dé heartbeat en 6h — umbral generoso
+  a propósito, porque una corrida legítima de bin6/7 tarda horas y un
+  timeout corto duplicaría cómputo caro en vez de solo esperar de más.
+  `infra/coordinator/seed_jobs.py` puebla la cola escribiendo directo a la
+  SQLite (no expuesto por HTTP, para no abrir esa superficie sin
+  autenticación — ver riesgos abajo).
+- **Worker** (`infra/worker/worker.py`): hace poll al coordinator, traduce
+  el job recibido a `run_organ_sweep.py --only-species X --only-positions Y
+  --only-bins Z --limit 1`, y al terminar filtra
+  `resultados_organo_sweep.csv` a solo las filas de ese job antes de
+  subirlo (el CSV se acumula entre jobs por el resume propio del script —
+  nunca se sube completo, o se reportarían de nuevo resultados de jobs
+  anteriores de ese mismo worker).
+- **`--only-species`/`--only-bins` en `run_organ_sweep.py` no se tocaron
+  desde esta rama** — coincidencia real de trabajo paralelo (mismo patrón
+  ya documentado más arriba para "Segundo grupo de datos"): esta rama
+  necesitaba exactamente ese filtro para el worker, y Bryam lo agregó en
+  `main` el mismo día (commit `13b31f9`, motivado por su propio hallazgo —
+  `--skip-bins 7` saltaba el bin7 de las 3 especies, no solo de GCR_He) con
+  `--only-bins` además, más directo que construir el complemento con
+  `--skip-bins` como se había planeado aquí originalmente. Al detectarlo
+  (esta rama estaba fast-forward un commit detrás de `main`), se descartó
+  la implementación propia duplicada de `--only-species` y se rebaseó sobre
+  `main`, adoptando la de Bryam sin cambios — `worker.py` usa
+  `--only-bins` directo. Ningún archivo de producción se modifica desde
+  esta rama; `install_compute_node.sh` y `field/production/*` se reusan
+  sin cambios.
+- **`--repetition-start` en `run_organ_sweep.py`** (nuevo, aditivo): el
+  worker necesitaba pedir exactamente la repetición del job (no siempre
+  desde 0) sin barrer repeticiones anteriores — `for rep in
+  range(args.repetition_start, args.repetition_start + args.repeats)` en
+  vez de `range(args.repeats)`. Con `--repeats 1` (lo que usa el worker)
+  corre solo ese índice exacto. Único cambio de esta rama a un archivo de
+  producción, además de `--only-species`/`--only-bins` ya mencionados
+  (esos sí vinieron de `main`, ver arriba).
+- **Docker** (`docker/Dockerfile.geant4-worker`): reusa
+  `scripts/install_compute_node.sh --skip-system` tal cual (no reescrito),
+  con `COPY . .` para traer el repo completo — incluye `field/production/`
+  ya versionado, así que la imagen no necesita Elmer/Gmsh ni regenerar
+  campo/geometría. `ARG BASE_IMAGE=ubuntu:24.04` permite reconstruir rápido
+  reusando una imagen ya compilada como base (`--build-arg
+  BASE_IMAGE=geant4-worker:previa`) cuando solo cambia una capa posterior
+  a la compilación (ej. `entrypoint.sh`) — evita recompilar Geant4 desde
+  cero (~10 min) por un cambio de una línea. `docker/entrypoint.sh` activa
+  `geant4_env_headless` explícitamente antes del `CMD`, porque un
+  contenedor no interactivo no carga el `.bashrc` donde vive el `conda
+  init` que el script ya deja configurado. El `ctest` del script corre en
+  build time como gate: si algo no compila, el `docker build` falla ahí,
+  no en producción.
+  - **Bug real encontrado y corregido probando la imagen de verdad:** el
+    `entrypoint.sh` inicial tenía `set -euo pipefail` alrededor de `source
+    conda.sh && conda activate` — los scripts que Geant4/conda-forge
+    instala en `etc/conda/activate.d/` (ej.
+    `activate-geant4-data-abla.sh`, que exporta `G4ABLADATA`) referencian
+    variables sin inicializar antes de asignarlas, un patrón estándar de
+    conda que no es compatible con `set -u`. El contenedor fallaba al
+    arrancar con `G4ABLADATA: unbound variable`, antes de llegar siquiera
+    a ejecutar el worker. Corregido: `set +u` / `set -u` alrededor
+    únicamente del `source`+`conda activate`, dejando `-e`/`pipefail`
+    activos en el resto del script.
+  - Dos bugs de ruta encontrados antes de ese: `/opt/miniconda3`
+    hardcodeado no existe (`install_compute_node.sh` usa
+    `$MINICONDA_DIR`, default `$HOME/miniconda3` — como root en el
+    contenedor, `$HOME=/root`, no `/opt`); y descargas de
+    `conda.anaconda.org` cortándose a mitad de paquetes grandes de datos
+    de Geant4 (no un bug de código, red intermitente del entorno de
+    build) — mitigado con un `.condarc` con `remote_max_retries: 10`
+    antes de invocar el script.
+- **Worker, endurecido tras la primera ronda de pruebas:** cada intento
+  corre en un directorio de trabajo propio (`tempfile.TemporaryDirectory`,
+  symlinks al binario/datos ya compilados en `BUILD_DIR` — no copia los
+  ~5GB del build) para que dos intentos consecutivos del mismo worker
+  nunca compartan ni pisen el CSV/manifiesto del otro. Heartbeat corre en
+  un hilo daemon separado (`heartbeat_loop`, intervalo propio
+  `HEARTBEAT_INTERVAL_S`) del loop principal de poll/ejecutar — necesario
+  porque una corrida de bin6/7 puede tardar horas: sin esto, el worker
+  nunca mandaría heartbeat mientras el subprocess corre, y el coordinator
+  lo reencolaría de forma prematura pese a estar vivo. El subprocess corre
+  en su propio grupo de procesos (`start_new_session=True` +
+  `os.killpg`) para que un `SIGTERM` (`docker stop`) termine también al
+  binario de Geant4, no solo al script Python padre.
+- **Coordinator, endurecido en el mismo sentido:** `submit_result` ahora
+  valida que las filas del CSV subido correspondan exactamente al job
+  asignado (especie, bin, offset, repetición, n_events) antes de
+  aceptarlo — rechaza con 422 si no coinciden, en vez de confiar
+  ciegamente en lo que sube el worker. Cada intento de subida escribe a un
+  subdirectorio único (`results/job_{id}/{uuid4().hex}/`) para que un
+  worker reencolado por timeout que termina reportando tarde no pueda
+  sobreescribir los archivos de un intento ya aceptado como `done`
+  (verificado con test: la segunda subida es rechazada con 409 y los
+  archivos originales quedan intactos). `DB_PATH`/`STALE_JOB_TIMEOUT_S`
+  configurables por variable de entorno, útil para aislar la base de una
+  corrida de pruebas de la de producción.
+
+**Dónde corre el coordinator y las imágenes del worker:** el coordinator es
+liviano (solo orquesta, no computa) y se recomienda correrlo en una VM
+pequeña propia (misma cuenta de crédito educativo que los workers), no en
+una plataforma serverless (Vercel no sirve — necesita un proceso de larga
+duración con disco persistente para la SQLite). La imagen del worker se
+publica en GHCR (gratis con GitHub, integrado a Actions) y cada VM worker
+corre `docker run -d --restart unless-stopped -e COORDINATOR_URL=...
+ghcr.io/<usuario>/geant4-worker:<tag>` sin necesitar el repo clonado aparte.
+
+**Verificado end-to-end de punta a punta (2026-09-12/13), incluyendo Docker
+real — ya no solo local sin contenedor:**
+- 10 tests de `infra/coordinator/test_coordinator.py` pasan: registro,
+  claim atómico bajo concurrencia simulada con hilos, ciclo completo
+  pending→done, rechazo de un worker que reporta un job que no es suyo
+  (409), reencolado por heartbeat vencido, límite de reintentos agotados
+  (`failed` tras 3 intentos), rechazo de una subida tardía que intenta
+  sobreescribir un resultado ya aceptado, y que `start` exige que el
+  worker que lo marca sea el mismo que lo reclamó.
+- **Imagen Docker construida y corriendo el worker real de punta a
+  punta**: `docker build -f docker/Dockerfile.geant4-worker .` completa
+  (compila Geant4 headless + ambos binarios con `ctest` como gate) y el
+  worker, corriendo dentro del contenedor (`--network host` contra un
+  coordinator en el host), reclamó un job de prueba (`SEP_p bin1
+  offset_x_m=1.0, n_events=100`), ejecutó `run_organ_sweep.py` de verdad
+  dentro de Geant4, generó **142 filas de dosis por órgano**, las filtró y
+  las subió — el coordinator las guardó en disco y marcó el job `done`.
+  Este es el escenario que antes de este cambio nunca se había probado
+  (Elmer+coilGeometry+Docker+coordinator juntos).
+- Imagen final consolidada como `geant4-worker:latest` (los tags
+  intermedios de iteración del build se descartaron).
+
+**Riesgos aceptados explícitamente en este primer corte (no resueltos, ver
+`seed_jobs.py`/`app.py` para el detalle):**
+- **Sin autenticación de workers** — cualquiera con la URL del coordinator
+  puede registrarse y reclamar/reportar jobs. Aceptable mientras el
+  coordinator no tenga IP pública sin restricción (VPN/firewall/IP
+  allowlist); si se expone públicamente, agregar un `shared_secret` por
+  variable de entorno antes.
+- **Sin backup automático** de `infra/coordinator/data/` (SQLite +
+  resultados subidos) — mitigación manual (copiar el directorio) hasta que
+  el volumen lo justifique. Decisión ya tomada de no usar S3/R2 en esta
+  fase.
+- El reencolado por heartbeat vencido puede, en el peor caso, duplicar
+  cómputo si un worker legítimo tarda más que el umbral de 6h sin poder
+  mandar heartbeat (ej. red caída pero el proceso sigue vivo) — se prefirió
+  este riesgo (poco probable, y el costo es "recomputar", no perder datos)
+  sobre un timeout corto que reencolaría corridas de horas que iban a
+  terminar bien. El heartbeat en hilo separado (ver arriba) reduce aún más
+  la probabilidad de este caso: ya no depende de que el loop principal
+  esté libre para mandar heartbeat.
+
+**Pendiente, no bloqueante:** desplegar el coordinator en una VM real,
+publicar la imagen en GHCR vía un workflow de GitHub Actions, y correr las
+3 corridas reales de GCR_He bin7 (offsets 2,3,4) que motivaron esta
+infraestructura — todo eso es el siguiente paso, no parte de este cambio.
+
 ## Pendientes conocidos
 
 - ~~Reemplazar los 6 CSV placeholder de `data/sources/` con espectros reales por fase solar.~~ **Hecho (2026-09-10), los 6 son reales.** Modelos: **Badhwar-O'Neill 2020** para GCR (mínimo 31/12/2019-01/01/2020, máximo 14-15/01/2023 — limitado por BON2020 en OLTARIS, ver nota arriba), **evento histórico** para SEP (Oct 1989 = máximo, Feb 1956 ajuste LaRC = mínimo — no el modelo probabilístico ESP-PSYCHIC). Detalle completo: [`docs/checklist_espectros_reales.md`](geant4/GCR_SEP_Sim/docs/checklist_espectros_reales.md).
@@ -1297,3 +1470,17 @@ propio archivo con su propia cuenta.
 
 - **Documentación siempre al día:** cualquier cambio de código, metodología o proceso de equipo debe venir acompañado de la actualización correspondiente en `README.md` y/o `AGENTS.md` en el mismo cambio (no como tarea pendiente para después). Si un commit modifica comportamiento (flags nuevos, cambios de esquema de datos, nuevos pasos de flujo de trabajo), la documentación se actualiza junto con el código, no en un commit aparte ni "cuando haya tiempo".
 - **Sin coautoría en commits:** no incluir línea de `Co-Authored-By` (ni ninguna otra atribución de coautoría) en los mensajes de commit de este repositorio, sin importar quién o qué haya generado el cambio.
+
+### Continuación del primer corte distribuido
+
+El worker mantiene heartbeat durante las simulaciones, usa un directorio
+independiente por intento y selecciona la repetición exacta mediante el flag
+aditivo `run_organ_sweep.py --repetition-start` (default 0, semillas originales).
+`WORKER_THREADS` y `WORKER_ONCE` facilitan las pruebas locales. El coordinator
+valida la identidad del CSV/manifiesto y guarda entregas en rutas únicas para
+que un worker reasignado no sobrescriba resultados aceptados. Los timeouts
+alcanzan `failed` cuando agotan los intentos. Las pruebas aisladas usan
+`COORDINATOR_DB`, `STALE_JOB_TIMEOUT_S` y `REQUEUE_SWEEP_INTERVAL_S`; no se
+reduce el timeout de seis horas por defecto. Flujo y límites en
+[infra/README.md](infra/README.md). Elmer, nube y publicación GHCR quedan fuera
+del primer corte local acordado.
