@@ -165,18 +165,21 @@ necesita estar disponible todo el tiempo.
 
 **¿Cómo dejo de prestar mi PC (aunque sea por un rato)?**
 
-Si instalaste con el **instalador automático de Windows**, usa
-`pause-worker.ps1` (descárgalo del mismo link que `install-worker.ps1`),
-no `docker stop` directo — el instalador dejó un watchdog corriendo cada
-30 min que volvería a levantar el contenedor solo si lo detienes con
-`docker stop` a secas:
+Si instalaste con el **instalador automático de Windows**, el propio
+instalador ya dejó dos scripts listos en `C:\ProgramData\Geant4Worker\`
+— no hace falta descargar nada aparte. Usa esos, no `docker stop`
+directo: el instalador dejó un watchdog corriendo cada 30 min que
+volvería a levantar el contenedor solo si lo detienes con `docker stop`
+a secas.
 ```powershell
-.\pause-worker.ps1 pause
+C:\ProgramData\Geant4Worker\pause-worker.ps1
 ```
 Para retomar:
 ```powershell
-.\pause-worker.ps1 resume
+C:\ProgramData\Geant4Worker\resume-worker.ps1
 ```
+(Si vuelves a correr `install-worker.ps1` mientras está pausado, respeta
+la pausa — no reactiva el contenedor por su cuenta.)
 
 Si instalaste manualmente (Linux/Mac, sin el instalador de Windows):
 ```bash
