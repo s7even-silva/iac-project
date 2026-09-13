@@ -30,13 +30,19 @@ Si tu PC necesita instalar WSL2 por primera vez, Windows va a pedir
 volver a iniciar sesión continúa solo (se abre una ventana negra
 mostrando el progreso, no hace falta que corras nada de nuevo).
 
-Para identificarte con tu propio nombre en vez del nombre de tu PC:
+Por defecto te identifica en el coordinator con el nombre de tu PC. Para
+usar tu propio nombre en cambio, hace falta una sintaxis un poco distinta
+(no puedes simplemente agregar `-WorkerLabel` después de `| iex`, porque
+el script ya se ejecutó dentro del pipe):
 ```powershell
-irm https://raw.githubusercontent.com/s7even-silva/iac-project/infra/distributed-sweep/infra/deploy/install-worker.ps1 | iex; .\install-worker.ps1 -WorkerLabel "laptop-juan"
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/s7even-silva/iac-project/infra/distributed-sweep/infra/deploy/install-worker.ps1))) -WorkerLabel "laptop-juan"
 ```
-(o descarga el script primero con `Guardar como` desde el link de
-arriba si prefieres revisarlo antes de correrlo, y ejecútalo con
-`.\install-worker.ps1 -WorkerLabel "laptop-juan"`).
+Más simple si prefieres: descarga el script primero con `Guardar como`
+desde ese mismo link, ábrelo en una carpeta, y desde ahí corre en
+PowerShell (como administrador):
+```powershell
+.\install-worker.ps1 -WorkerLabel "laptop-juan"
+```
 
 **Para quitar todo después** (contenedor + las tareas automáticas que
 el instalador programó — Docker Desktop en sí no se desinstala):
