@@ -24,6 +24,22 @@ tome efecto.
 **Windows/Mac:** instalar [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 normal, abrirlo una vez para que arranque el motor.
 
+**Importante en Windows/Mac (no aplica a Linux):** por defecto, Docker
+Desktop **no** arranca solo cuando prendes tu PC — hay que abrir la
+aplicación manualmente cada vez, o el worker no puede correr aunque
+tenga `--restart unless-stopped` (esa opción solo hace que el
+*contenedor* se retome una vez que el motor de Docker ya esté
+corriendo). Para que quede realmente automático:
+
+1. Abrir Docker Desktop → ícono de engranaje (**Settings**) → pestaña
+   **General**.
+2. Activar **"Start Docker Desktop when you sign in"** (el nombre
+   exacto puede variar un poco según la versión).
+
+Con esto, el motor de Docker arranca solo al iniciar sesión en tu PC, y
+el contenedor se retoma solo detrás — no hace falta abrir la ventana de
+Docker Desktop para nada después de la primera vez.
+
 ## 2. Correr el worker (un solo comando)
 
 ```bash
