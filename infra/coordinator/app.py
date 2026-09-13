@@ -17,6 +17,7 @@ import io
 import math
 import sqlite3
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
@@ -185,9 +186,35 @@ def get_jobs(status: str | None = None):
     return [row_to_dict(r) for r in rows]
 
 
+# Mismo umbral que count_workers_online() en db.py -- un worker con
+# heartbeat mas viejo que esto se reporta offline aqui tambien, en vez de
+# depender de la columna 'status' guardada (que nunca se pone a
+# 'offline' por si sola, ver el bug documentado en AGENTS.md).
+ONLINE_THRESHOLD_S = 300
+
+
 @app.get("/api/v1/workers")
 def get_workers():
-    return [row_to_dict(r) for r in db.list_workers()]
+    now = datetime.now(timezone.utc)
+    out = []
+    for r in db.list_workers():
+        d = row_to_dict(r)
+        # Calculado con el reloj del SERVIDOR, no el del cliente que
+        # consulta este endpoint -- un instalador de Windows corriendo en
+        # la PC de un voluntario no debe decidir "reciente" comparando el
+        # timestamp del Coordinator contra su propio reloj local, que
+        # puede estar desfasado (adelantado, atrasado, zona horaria mal
+        # configurada). seconds_since_heartbeat/online ya vienen resueltos
+        # aqui; quien consuma este endpoint solo debe leer ese campo.
+        if d["last_heartbeat"]:
+            heartbeat_dt = datetime.fromisoformat(d["last_heartbeat"])
+            age_s = (now - heartbeat_dt).total_seconds()
+        else:
+            age_s = None
+        d["seconds_since_heartbeat"] = age_s
+        d["online"] = age_s is not None and age_s <= ONLINE_THRESHOLD_S
+        out.append(d)
+    return out
 
 
 @app.get("/api/v1/health")

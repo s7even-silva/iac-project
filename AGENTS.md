@@ -1552,28 +1552,104 @@ tener un único ejemplo de prueba local contra `127.0.0.1`.
 23 tests siguen pasando (los 4 fixes son PowerShell puro, no tocan
 `infra/coordinator`/`infra/worker`).
 
+**Quinta ronda de revisión externa (2026-09-13), 3 problemas reales más
+2 mejoras menores — la primera de estas rondas que también toca
+`infra/coordinator/app.py`, no solo el instalador:**
+
+- **`Save-LegacyWorkerId` (cuarta ronda) usaba `docker exec`, que
+  necesita el contenedor CORRIENDO.** El caso que ese fix existe para
+  cubrir es exactamente lo contrario — un contenedor de una instalación
+  anterior que el voluntario pudo haber dejado detenido. Corregido:
+  `docker cp` en vez de `docker exec` — lee el archivo directo del
+  filesystem del contenedor sin necesitar ningún proceso corriendo
+  dentro. Verificado que la lógica de reintento/limpieza del archivo
+  temporal (`$env:TEMP`) funciona tanto si el contenedor está corriendo
+  como detenido.
+- **`C:\ProgramData\Geant4Worker` no es necesariamente escribible por un
+  usuario normal.** El comentario del fix de pausa (tercera/cuarta
+  ronda) asumía que `pause-worker.ps1`/`resume-worker.ps1` (que corren
+  SIN elevación — el voluntario no debería necesitar "Run as
+  administrator" solo para pausar) podían escribir ahí sin más, pero eso
+  depende de las ACL resultantes de cada PC en particular, nunca
+  garantizado. Corregido: el archivo de estado (`worker.paused`) se
+  movió a `%LOCALAPPDATA%\Geant4Worker\` (perfil del propio usuario,
+  siempre escribible sin elevación) — separado del resto (logs,
+  self-copy, Scheduled Tasks), que sigue en `%ProgramData%` porque sí
+  necesita privilegios de administrador. `install-worker.ps1` corre
+  elevado con `RunLevel Highest` conservando el usuario actual (no un
+  token de `SYSTEM` distinto, ver `-UserId $env:USERNAME` en
+  `Register-ResumeTask`/`Register-WatchdogTask`), así que
+  `$env:LOCALAPPDATA` sigue resolviendo al perfil correcto incluso
+  dentro del instalador elevado.
+- **La comprobación de heartbeat "reciente" (segunda ronda) dependía del
+  reloj de la PC voluntaria, bug de diseño de sistema distribuido, no
+  solo un detalle.** `Test-WorkerRegistered` parseaba
+  `last_heartbeat` (hora del Coordinator) y lo comparaba contra
+  `(Get-Date)` de la PC Windows local — un reloj desfasado (adelantado,
+  atrasado, zona horaria mal configurada) podía hacer que un worker
+  recién conectado pareciera viejo, o uno realmente caído pareciera
+  reciente. Corregido en el lado correcto: `GET /api/v1/workers` en
+  `app.py` ahora calcula `seconds_since_heartbeat`/`online` con el reloj
+  del **servidor** (mismo umbral de 300s que ya usaba
+  `count_workers_online()` para `/health`, ahora compartido en vez de
+  duplicado con criterios distintos) y los devuelve ya resueltos; el
+  instalador solo lee `match.online`, sin ningún cálculo de fecha propio.
+  Esto también arregla de una vez el bug de `status` "online" indefinido
+  documentado arriba — `/workers` ya no depende de esa columna para
+  decidir si un worker está vivo.
+- **Mejora menor: comprobación explícita de arquitectura x86-64**
+  (`Test-ArchitectureSupported`, vía `$env:PROCESSOR_ARCHITECTURE`) antes
+  de descargar nada — tanto el instalador de Docker Desktop
+  (`/win/main/amd64/...`) como la imagen del worker son solo
+  linux/amd64; una PC Windows ARM64 (ej. Surface Pro X) fallaría a medias
+  con un error genérico en vez de un mensaje claro desde el principio.
+- **Mejora menor: comprobación de RAM total** (`Test-EnoughRam`, mínimo
+  4GB vía `Get-CimInstance Win32_ComputerSystem`) junto a la ya
+  existente de espacio en disco — evita que una PC con muy poca RAM
+  "instale bien" y falle recién horas después, a mitad de una
+  simulación, con un síntoma difícil de diagnosticar para un voluntario.
+- **Revisado y descartado explícitamente: reemplazar `busybox` (usado
+  para restaurar el `worker_id` rescatado dentro del volumen nuevo) por
+  `$WorkerImage`.** El usuario señaló correctamente que `busybox` era
+  una imagen adicional sin fijar por digest, una segunda cadena de
+  suministro a verificar sin necesidad. Corregido: se usa `$WorkerImage`
+  (la misma imagen del worker, ya fijada por SHA256, ya descargada por
+  el `docker pull` de unas líneas antes) con `--entrypoint sh` para el
+  contenedor descartable que escribe el archivo.
+
+23 tests siguen pasando; agregado y verificado en vivo (servidor real
+con `uvicorn`, no solo a nivel de función) que `GET /api/v1/workers`
+calcula `online`/`seconds_since_heartbeat` correctamente: un worker con
+heartbeat de hace 2h aparece `online: false` pese a que su columna
+`status` guardada sigue diciendo `"online"` — confirma que el fix
+resuelve la inconsistencia entre `/workers` y `/health` documentada
+arriba. No se agregó un test de `pytest` para este cálculo porque
+`app.py` no tiene suite propia con `TestClient`/`httpx` (la suite
+existente prueba `db.py` directamente y valida los endpoints por HTTP
+real en vivo, patrón ya establecido — agregar `httpx` solo para esto no
+se justificó).
+
 **Pendiente, no bloqueante:** publicar la imagen vía un workflow de
 GitHub Actions (hoy es push manual), reintentar Azure cuando soporte
 resuelva el bloqueo de región (opcional, GCP ya cubre la necesidad
 inmediata), y confirmar el estado real de las posiciones 0,1 del
 manifiesto de Eddy para poblar cualquier combinación que aún falte ahí.
 
-**Bug real conocido, sin arreglar a propósito (2026-09-13):**
-`GET /api/v1/workers` muestra `status: "online"` de forma indefinida
-para cualquier worker que alguna vez mandó un heartbeat exitoso —
-`touch_heartbeat()`/`upsert_worker()` solo escriben `status='online'`,
-nada pone `'offline'` cuando el heartbeat deja de llegar. Encontrado en
-vivo: el worker de prueba (`test-prod-verificacion`, detenido hace más
-de una hora) seguía apareciendo `"online"` en `/workers` mientras
-`/health`'s `workers_online` (que sí filtra por `last_heartbeat` reciente,
-ver `count_workers_online()`) correctamente mostraba 0 — inconsistencia
-entre los dos endpoints, no un fallo del conteo en sí. Se eliminó ese
-registro a mano (`DELETE FROM workers WHERE worker_id=...`) en vez de
-arreglar el bug de raíz — decisión explícita del usuario, no urgente
-mientras se recuerde leer `last_heartbeat` al revisar `/workers`
-manualmente. Fix pendiente si se retoma: que `/workers` compute el
-mismo criterio de "online" que ya usa `count_workers_online()`, en vez
-de confiar en la columna `status` guardada.
+**Bug real, encontrado 2026-09-13, corregido en la quinta ronda de
+revisión (ver más abajo):** `GET /api/v1/workers` mostraba
+`status: "online"` de forma indefinida para cualquier worker que alguna
+vez mandó un heartbeat exitoso — `touch_heartbeat()`/`upsert_worker()`
+solo escriben `status='online'`, nada ponía `'offline'` cuando el
+heartbeat dejaba de llegar. Encontrado en vivo: el worker de prueba
+(`test-prod-verificacion`, detenido hace más de una hora) seguía
+apareciendo `"online"` en `/workers` mientras `/health`'s
+`workers_online` (que sí filtra por `last_heartbeat` reciente, ver
+`count_workers_online()`) correctamente mostraba 0 — inconsistencia
+entre los dos endpoints, no un fallo del conteo en sí. En ese momento se
+eliminó el registro a mano (`DELETE FROM workers WHERE worker_id=...`)
+en vez de arreglar el bug de raíz. Resuelto de verdad más abajo, como
+parte de un fix más grande (el instalador de Windows necesitaba el mismo
+cálculo con el reloj del servidor, no solo `/workers`).
 
 **Revisión externa de `install-worker.ps1`/`uninstall-worker.ps1`
 (2026-09-13), varios bugs reales corregidos.** El usuario pidió una

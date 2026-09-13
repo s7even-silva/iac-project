@@ -20,9 +20,15 @@ param(
     [string]$Action
 )
 
-$LogDir = Join-Path $env:ProgramData "Geant4Worker"
-$PauseFile = Join-Path $LogDir "worker.paused"
-New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
+# %LOCALAPPDATA% (perfil del usuario actual), no %ProgramData% -- este
+# script corre SIN elevacion (el voluntario no deberia necesitar "Run as
+# administrator" solo para pausar/reanudar), y no hay garantia de que un
+# usuario estandar tenga permiso de escritura en ProgramData en toda
+# maquina. install-worker.ps1 usa la misma ruta para que el watchdog
+# (que si corre elevado) encuentre el mismo archivo.
+$UserStateDir = Join-Path $env:LOCALAPPDATA "Geant4Worker"
+$PauseFile = Join-Path $UserStateDir "worker.paused"
+New-Item -ItemType Directory -Force -Path $UserStateDir | Out-Null
 
 if ($Action -eq "pause") {
     New-Item -ItemType File -Force -Path $PauseFile | Out-Null

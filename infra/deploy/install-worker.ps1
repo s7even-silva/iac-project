@@ -12,9 +12,10 @@
     instalar Docker Desktop, activar su auto-inicio, correr el docker run)
     por un solo instalador idempotente:
 
-      1. Verifica que la CPU soporte virtualizacion y que este habilitada
-         en firmware (VT-x/AMD-V) -- sin esto ni WSL2 ni Docker pueden
-         funcionar, y el error que dan por separado no es claro.
+      1. Verifica arquitectura (x86-64), version de Windows, RAM total, y
+         que la CPU soporte virtualizacion y este habilitada en firmware
+         (VT-x/AMD-V) -- sin esto ni WSL2 ni Docker pueden funcionar, y el
+         error que dan por separado no es claro.
       2. Instala/actualiza WSL2 si hace falta. Si Windows exige reiniciar
          para terminar esa instalacion, el script se registra a si mismo
          (Scheduled Task de un solo uso, AtLogOn) para continuar
@@ -101,6 +102,17 @@ $WatchdogTaskName = "Geant4WorkerWatchdog"
 $SelfCopyPath = Join-Path $LogDir "install-worker.ps1"
 $PauseScriptPath = Join-Path $LogDir "pause-worker.ps1"
 $ResumeScriptPath = Join-Path $LogDir "resume-worker.ps1"
+# El voluntario debe poder pausar/reanudar SIN elevacion (pause-
+# worker.ps1/resume-worker.ps1 corren como su usuario normal, no como
+# administrador) -- C:\ProgramData es escribible por administradores por
+# defecto, pero no hay garantia de que un usuario estandar tenga permiso
+# de escritura ahi (depende de las ACL resultantes de esa maquina en
+# particular). El estado de pausa en si vive en el perfil del propio
+# usuario (%LOCALAPPDATA%, siempre escribible sin elevacion) en vez de
+# en $LogDir -- separado del resto (logs, self-copy, Scheduled Tasks),
+# que si necesitan privilegios de administrador y se quedan en ProgramData.
+$UserStateDir = Join-Path $env:LOCALAPPDATA "Geant4Worker"
+$PauseFile = Join-Path $UserStateDir "worker.paused"
 # Fijado a un commit concreto (no a la rama, que es mutable) -- asi el
 # codigo que corre despues de un reinicio es exactamente el mismo que
 # arranco la instalacion, no una version distinta si alguien pusheo
@@ -111,6 +123,12 @@ $InstallScriptUrl = "https://raw.githubusercontent.com/s7even-silva/iac-project/
 $MaxResumeAttempts = 3
 
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
+# $env:LOCALAPPDATA bajo una sesion elevada (RunLevel Highest, no un
+# token de SYSTEM distinto -- ver Register-ResumeTask/Register-
+# WatchdogTask, ambas usan -UserId $env:USERNAME) sigue resolviendo al
+# perfil del usuario actual, asi que esto crea la carpeta en el lugar
+# correcto sin tener que calcular la ruta del perfil aparte.
+New-Item -ItemType Directory -Force -Path $UserStateDir | Out-Null
 
 # $MyInvocation.MyCommand.Path es $null cuando el script corre via
 # "irm ... | iex" (sin archivo en disco, el metodo de instalacion de un
@@ -176,6 +194,45 @@ function Test-VirtualizationEnabled {
         Write-InstallLog "No se pudo verificar virtualizacion via Get-ComputerInfo ($_) -- se continua igual, wsl --install fallara mas claramente si de verdad falta." "WARN"
         return $true
     }
+}
+
+function Test-ArchitectureSupported {
+    # El instalador de Docker Desktop que se descarga mas abajo es
+    # especificamente el build amd64 (ver Install-DockerDesktop, URL con
+    # /win/main/amd64/) y la imagen del worker (geant4-worker) tambien se
+    # publica solo para linux/amd64 -- ninguno de los dos corre en Windows
+    # ARM64 (ej. Surface Pro X, laptops Snapdragon). Detectar esto ANTES de
+    # descargar nada, con un mensaje claro, en vez de que el instalador de
+    # Docker falle a medias con un error generico de arquitectura.
+    $arch = $env:PROCESSOR_ARCHITECTURE
+    Write-InstallLog "Arquitectura detectada: $arch"
+    if ($arch -ne "AMD64") {
+        Write-InstallLog "Esta PC es $arch, no AMD64/x86-64 -- el instalador de Docker Desktop y la imagen del worker que usa este script son solo para x86-64. No hay una via automatica para ARM64 todavia." "ERROR"
+        return $false
+    }
+    return $true
+}
+
+function Test-EnoughRam {
+    # Geant4 + el propio Docker Desktop (WSL2 de por medio) piden RAM real,
+    # no solo disco -- una PC con muy poca RAM total podria "instalar bien"
+    # y fallar recien horas despues, a mitad de una simulacion, con un
+    # sintoma dificil de diagnosticar para un voluntario (el proceso se cae
+    # o la PC se vuelve inusable). Verificar el total instalado ahora,
+    # con un mensaje explicito, en vez de descubrirlo asi.
+    param([double]$RequiredGb = 4.0)
+    try {
+        $totalGb = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 1)
+    } catch {
+        Write-InstallLog "No se pudo verificar la RAM total de esta PC ($_) -- se continua igual." "WARN"
+        return $true
+    }
+    if ($totalGb -lt $RequiredGb) {
+        Write-InstallLog "Esta PC tiene $totalGb GB de RAM (se recomiendan al menos $RequiredGb GB para correr Geant4 dentro de Docker/WSL2 sin quedarse sin memoria a mitad de una simulacion)." "ERROR"
+        return $false
+    }
+    Write-InstallLog "RAM total OK ($totalGb GB)."
+    return $true
 }
 
 function Test-WindowsVersionSupported {
@@ -541,13 +598,29 @@ function Save-LegacyWorkerId {
     # dentro de su filesystem efimero, rescatarlo ANTES de docker rm -f
     # -- de lo contrario esa PC reaparece en el Coordinator como una
     # maquina nueva, perdiendo su historial de heartbeat/identidad.
+    #
+    # docker cp, no docker exec -- bug real encontrado en revision: exec
+    # necesita un proceso corriendo DENTRO del contenedor, asi que fallaba
+    # silenciosamente (exit code distinto de 0, $existingId vacio) para
+    # cualquier worker viejo que estuviera detenido en ese momento --
+    # exactamente el caso que esta migracion existe para cubrir (un
+    # contenedor de una instalacion anterior no tiene por que estar
+    # corriendo cuando el voluntario vuelve a correr el instalador). "docker
+    # cp" lee directo del filesystem del contenedor sin necesitar que este
+    # en ejecucion.
     param([string]$ContainerName = "geant4-worker")
-    $existingId = docker exec $ContainerName cat /var/lib/geant4-worker/worker_id 2>$null
-    if ($LASTEXITCODE -eq 0 -and $existingId) {
+    $tmpFile = Join-Path $env:TEMP "geant4-worker-legacy-id-$(Get-Random).txt"
+    try {
+        docker cp "${ContainerName}:/var/lib/geant4-worker/worker_id" $tmpFile 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $tmpFile)) { return $null }
+        $existingId = (Get-Content -Path $tmpFile -Raw -ErrorAction SilentlyContinue)
+        if (-not $existingId) { return $null }
+        $existingId = $existingId.Trim()
         Write-InstallLog "Worker anterior sin volumen persistente -- rescatando su worker_id ($existingId) antes de recrearlo, para no perder su identidad en el Coordinator."
-        return $existingId.Trim()
+        return $existingId
+    } finally {
+        Remove-Item -Path $tmpFile -ErrorAction SilentlyContinue
     }
-    return $null
 }
 
 function Test-WorkerPaused {
@@ -557,13 +630,12 @@ function Test-WorkerPaused {
     # por probar), el instalador no debia deshacer esa pausa el mismo
     # arrancando o recreando el contenedor. Bug real encontrado en
     # revision: solo el watchdog conocia worker.paused, este script no.
-    $pauseFile = Join-Path $LogDir "worker.paused"
-    return Test-Path $pauseFile
+    return Test-Path $PauseFile
 }
 
 function Install-WorkerContainer {
     if (Test-WorkerPaused) {
-        Write-InstallLog "El worker esta pausado a proposito (existe $(Join-Path $LogDir 'worker.paused')) -- no se crea ni se arranca el contenedor. Corre '$ResumeScriptPath' primero si quieres reanudarlo." "WARN"
+        Write-InstallLog "El worker esta pausado a proposito (existe $PauseFile) -- no se crea ni se arranca el contenedor. Corre '$ResumeScriptPath' primero si quieres reanudarlo." "WARN"
         return
     }
 
@@ -628,8 +700,13 @@ function Install-WorkerContainer {
         # de que el worker arranque y genere uno propio -- un contenedor
         # descartable con el volumen ya montado es la forma mas simple de
         # escribir ahi sin necesitar herramientas del host para tocar
-        # volumenes de Docker directamente.
-        docker run --rm -v geant4-worker-data:/data busybox sh -c "echo -n '$legacyWorkerId' > /data/worker_id" 2>&1 | ForEach-Object { Write-InstallLog "  $_" }
+        # volumenes de Docker directamente. Se usa $WorkerImage (la misma
+        # imagen del worker, ya fijada por digest sha256 mas arriba) en vez
+        # de traer una imagen adicional (ej. busybox) sin fijar -- no
+        # agrega ninguna descarga nueva (ya se hizo docker pull de esta
+        # imagen unas lineas arriba) ni una segunda cadena de suministro
+        # que verificar.
+        docker run --rm -v geant4-worker-data:/data --entrypoint sh $WorkerImage -c "printf '%s' '$legacyWorkerId' > /data/worker_id" 2>&1 | ForEach-Object { Write-InstallLog "  $_" }
         if ($LASTEXITCODE -eq 0) {
             Write-InstallLog "worker_id anterior ($legacyWorkerId) restaurado en el volumen nuevo -- esta PC conserva su identidad en el Coordinator."
         } else {
@@ -678,29 +755,24 @@ function Test-WorkerRegistered {
     $headers = @{}
     if ($WorkerToken) { $headers["X-Worker-Token"] = $WorkerToken }
 
-    # Umbral generoso (90s) sobre el heartbeat cada 30s del worker (ver
-    # HEARTBEAT_INTERVAL_S en worker.py) -- suficiente margen para un
-    # heartbeat perdido puntual sin ser tan laxo que un worker realmente
-    # caido siga pareciendo "reciente" por mucho tiempo.
-    $freshnessThresholdS = 90
-
     $elapsed = 0
     while ($elapsed -lt $TimeoutSeconds) {
         try {
             $workers = Invoke-RestMethod -Uri "$CoordinatorUrl/api/v1/workers" -Headers $headers -TimeoutSec 10
             $match = $workers | Where-Object { $_.worker_id -eq $workerId }
-            if ($match -and $match.last_heartbeat) {
-                # last_heartbeat es ISO8601 con offset UTC (ver now_iso()
-                # en infra/coordinator/db.py) -- bug real corregido aqui:
-                # antes solo se comprobaba que el campo existiera, sin
-                # verificar que fuera reciente, asi que un registro VIEJO
-                # con heartbeat de hace horas tambien "pasaba".
-                $heartbeatTime = [datetime]::Parse($match.last_heartbeat, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind)
-                $ageSeconds = ((Get-Date).ToUniversalTime() - $heartbeatTime.ToUniversalTime()).TotalSeconds
-                if ($ageSeconds -le $freshnessThresholdS) {
-                    Write-InstallLog "Worker '$WorkerLabel' (id $workerId) confirmado en el Coordinator, heartbeat de hace $([math]::Round($ageSeconds, 1))s."
-                    return $true
-                }
+            # 'online'/'seconds_since_heartbeat' vienen YA calculados por
+            # el Coordinator (ver GET /api/v1/workers en app.py), con el
+            # reloj del SERVIDOR -- bug real corregido aqui: la version
+            # anterior parseaba last_heartbeat y lo comparaba contra
+            # (Get-Date) de esta PC Windows, así que un reloj local
+            # desfasado (adelantado, atrasado, zona horaria mal puesta)
+            # podia hacer que un worker recien conectado pareciera viejo,
+            # o uno realmente caido pareciera reciente. En un sistema
+            # distribuido, la unica hora que importa para decidir "esta
+            # vivo" es la del propio Coordinator.
+            if ($match -and $match.online) {
+                Write-InstallLog "Worker '$WorkerLabel' (id $workerId) confirmado en el Coordinator, heartbeat de hace $([math]::Round($match.seconds_since_heartbeat, 1))s."
+                return $true
             }
         } catch {
             # Reintento silencioso durante el polling -- normal mientras
@@ -726,12 +798,11 @@ function Register-WatchdogTask {
     Write-InstallLog "Registrando el watchdog que revisa el worker en cada inicio de sesion..."
     Save-SelfCopy
 
-    $pauseFile = Join-Path $LogDir "worker.paused"
     $watchdogScript = Join-Path $LogDir "watchdog.ps1"
     @"
 `$ErrorActionPreference = 'SilentlyContinue'
 `$LogFile = '$LogFile'
-`$PauseFile = '$pauseFile'
+`$PauseFile = '$PauseFile'
 function Log(`$m) { Add-Content -Path `$LogFile -Value ("[{0}] [WATCHDOG] {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), `$m) }
 
 # Bug real corregido aqui: antes el watchdog volvia a arrancar el
@@ -823,8 +894,10 @@ if ($isResume) {
 # quedar permanente).
 Unregister-ScheduledTask -TaskName $ResumeTaskName -Confirm:$false -ErrorAction SilentlyContinue
 
+if (-not (Test-ArchitectureSupported)) { exit 1 }
 if (-not (Test-WindowsVersionSupported)) { exit 1 }
 if (-not (Test-VirtualizationEnabled)) { exit 1 }
+if (-not (Test-EnoughRam)) { exit 1 }
 
 Install-Wsl2
 # Si Install-Wsl2 registro un reinicio, Register-ResumeTask ya llamo a
