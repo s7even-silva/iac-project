@@ -112,7 +112,7 @@ Docker Desktop para nada después de la primera vez.
 
 ```bash
 docker run -d --name geant4-worker --restart unless-stopped \
-  -e COORDINATOR_URL=http://34.134.100.224:8000 \
+  -e COORDINATOR_URL=https://coordinator.vlaboratory.org \
   -e WORKER_LABEL=<tu-nombre> \
   ghcr.io/s7even-silva/iac-project/geant4-worker:latest
 ```
@@ -182,7 +182,7 @@ Sí, dos formas:
 - **Limitar cuántos núcleos usa Geant4** (recomendado, más simple):
   ```bash
   docker run -d --name geant4-worker --restart unless-stopped \
-    -e COORDINATOR_URL=http://34.134.100.224:8000 \
+    -e COORDINATOR_URL=https://coordinator.vlaboratory.org \
     -e WORKER_LABEL=<tu-nombre> \
     -e WORKER_THREADS=2 \
     ghcr.io/s7even-silva/iac-project/geant4-worker:latest
@@ -194,7 +194,7 @@ Sí, dos formas:
   Docker):
   ```bash
   docker run -d --name geant4-worker --restart unless-stopped \
-    -e COORDINATOR_URL=http://34.134.100.224:8000 \
+    -e COORDINATOR_URL=https://coordinator.vlaboratory.org \
     -e WORKER_LABEL=<tu-nombre> \
     --cpus=2 --memory=4g \
     ghcr.io/s7even-silva/iac-project/geant4-worker:latest
@@ -230,6 +230,6 @@ docker logs -f geant4-worker
 ```
 O consultar el estado general del servidor desde cualquier navegador
 (computadora o celular):
-- http://34.134.100.224:8000/api/v1/health — resumen general
-- http://34.134.100.224:8000/api/v1/workers — lista de quién está
+- https://coordinator.vlaboratory.org/api/v1/health — resumen general
+- https://coordinator.vlaboratory.org/api/v1/workers — lista de quién está
   conectado ahora mismo (verás tu `WORKER_LABEL` ahí)

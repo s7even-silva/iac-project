@@ -1645,6 +1645,89 @@ error de WSL2. Ambos se corrigieron por separado: visibilidad del
 paquete a público (acción del usuario en GitHub) y validación real de
 WSL2/version en el script.
 
+**Segunda ronda de revisión externa (2026-09-13), 7 puntos más
+corregidos — la primera ronda no era suficiente para distribución
+amplia:**
+
+- **Bug crítico: el reinicio pospuesto no detenía el script.**
+  `Register-ResumeTask` registraba la tarea de resume y retornaba
+  normalmente sin importar la respuesta del usuario a "¿reiniciar
+  ahora?" — el flujo principal seguía de inmediato a
+  `Install-DockerDesktop` sobre un sistema donde WSL2 todavía no estaba
+  operativo (por eso se había llegado ahí). Corregido: `exit 0`
+  inmediatamente después de programar la tarea, reinicie el usuario
+  ahora o después.
+- **Heartbeat "reciente" nunca se verificaba de verdad.**
+  `Test-WorkerRegistered` solo comprobaba que el campo `last_heartbeat`
+  existiera (`if ($match -and $match.last_heartbeat)`), sin calcular su
+  antigüedad — un registro viejo con heartbeat de horas atrás también
+  "pasaba". Corregido: se parsea el timestamp ISO8601 (mismo formato de
+  `now_iso()` en `db.py`) y se exige que tenga ≤90s de antigüedad
+  (margen sobre el intervalo de heartbeat real de 30s).
+- **`docker rm -f` incondicional en cada re-ejecución, ya no.** Antes
+  recreaba el contenedor sin condición alguna — volver a correr el
+  instalador mientras una simulación llevaba horas la mataba
+  innecesariamente. Corregido: `Get-DesiredWorkerConfigHash` calcula un
+  hash SHA256 de toda la config deseada (imagen, URL, label, threads,
+  token, límites), se guarda como label Docker del contenedor
+  (`geant4-worker-config-hash`), y solo se recrea si el hash cambió o el
+  contenedor no estaba corriendo — si nada cambió, no se toca.
+- **`:latest` reemplazado por digest fijo.** Para reproducibilidad
+  científica (saber exactamente qué versión del worker produjo cada
+  resultado), `-WorkerImage` ahora tiene como default
+  `geant4-worker@sha256:db57b43f...` en vez de `:latest` — actualizar
+  este hash a mano cuando se publique una imagen nueva de verdad
+  (`docker buildx imagetools inspect` para obtenerlo).
+- **Detección de versión de WSL dependía del idioma de Windows,
+  eliminada.** La versión anterior parseaba la salida de `wsl --version`
+  buscando literalmente `"WSL version:"` — en un Windows configurado en
+  español (el caso real de los compañeros) esa cadena no aparece igual,
+  así que la detección fallaba silenciosamente sin decir nada.
+  Corregido: se corre `wsl --update` siempre (es idempotente, no hace
+  nada si ya está al día — comportamiento documentado de `wsl.exe`), sin
+  parsear ningún texto localizado, y ahora sí se revisa su exit code.
+- **`Sync-PathWithDockerCli` solo se llamaba tras instalar Docker
+  nuevo.** Si Docker Desktop ya estaba instalado desde antes (el caso de
+  los compañeros que ya tenían todo), el script nunca refrescaba el
+  PATH de ese proceso de PowerShell — podía seguir sin ver `docker`
+  aunque la instalación previa hubiera sido exitosa. Corregido: se
+  llama siempre al principio de `Start-DockerAndWait`, no solo dentro de
+  `Install-DockerDesktop`.
+- **Token sobre HTTP sin cifrar — resuelto con HTTPS real, no
+  aplazado.** El usuario señaló correctamente que mandar
+  `X-Worker-Token` por HTTP plano es contradictorio (el token viaja
+  igual de expuesto que si no existiera). Implementado **Caddy como
+  reverse proxy con TLS automático** (Let's Encrypt) delante del
+  coordinator: `infra/deploy/setup_https.sh` (nuevo) instala Caddy en la
+  VM ya viva sin recrearla ni tocar el servicio `geant4-coordinator`
+  (que sigue escuchando en `127.0.0.1:8000` sin cambios) — verificado en
+  vivo, sin interrumpir a los workers ya conectados en ese momento
+  (`bryam-parrot`, `bryam-local`; `jobs_running` se mantuvo en 3 durante
+  todo el proceso). Dominio: `coordinator.vlaboratory.org` (dominio
+  propio del usuario en Cloudflare, registro DNS tipo A → IP de la VM,
+  proxy de Cloudflare en modo "DNS only" para que la validación HTTP-01
+  de Let's Encrypt llegue directo a la VM). Certificado emitido
+  correctamente (confirmado en `journalctl -u caddy`:
+  `"certificate obtained successfully"`). `install-worker.ps1` y
+  `GUIA_VOLUNTARIOS.md` actualizados para usar
+  `https://coordinator.vlaboratory.org` como default — el puerto 8000
+  HTTP sigue abierto en paralelo (workers ya activos con la IP vieja
+  siguen funcionando sin tocar nada) hasta migrar a todos y cerrarlo.
+  **El token (`WORKER_TOKEN`) sigue sin activarse en la VM real** —
+  ahora que hay HTTPS, activar el token es el siguiente paso lógico,
+  pero sigue pendiente de coordinar con quien ya tiene workers corriendo
+  (mismo motivo que antes: no interrumpir sus corridas de horas).
+
+**Nota real sobre `gcloud` desde dentro de la propia VM:** el paso de
+`setup_https.sh` que intenta crear la regla de firewall (`gcloud compute
+firewall-rules create ...`) falla dentro de la VM con "insuficientes
+scopes de autenticación" — las VMs de GCE no traen credenciales de
+usuario con permisos de gestión de proyecto por defecto. Ese paso está
+en el script con manejo de error explícito (no aborta el resto), pero en
+la práctica hay que crear la regla de firewall desde una máquina con
+`gcloud` autenticado como usuario (no desde la VM misma), como se hizo
+aquí.
+
 ## Pendientes conocidos
 
 - ~~Reemplazar los 6 CSV placeholder de `data/sources/` con espectros reales por fase solar.~~ **Hecho (2026-09-10), los 6 son reales.** Modelos: **Badhwar-O'Neill 2020** para GCR (mínimo 31/12/2019-01/01/2020, máximo 14-15/01/2023 — limitado por BON2020 en OLTARIS, ver nota arriba), **evento histórico** para SEP (Oct 1989 = máximo, Feb 1956 ajuste LaRC = mínimo — no el modelo probabilístico ESP-PSYCHIC). Detalle completo: [`docs/checklist_espectros_reales.md`](geant4/GCR_SEP_Sim/docs/checklist_espectros_reales.md).

@@ -80,13 +80,17 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$CoordinatorUrl = "http://34.134.100.224:8000",
+    [string]$CoordinatorUrl = "https://coordinator.vlaboratory.org",
     [string]$WorkerLabel = $env:COMPUTERNAME,
     [int]$WorkerThreads = 0,
     [string]$WorkerToken = "",
     [string]$Cpus = "",
     [string]$MemoryLimit = "",
-    [string]$WorkerImage = "ghcr.io/s7even-silva/iac-project/geant4-worker:latest"
+    # Digest fijo, no :latest -- reproducibilidad cientifica: se puede
+    # saber exactamente que version del worker produjo cada resultado.
+    # Actualizar este hash cuando se publique una imagen nueva de
+    # verdad (docker buildx imagetools inspect ... para obtenerlo).
+    [string]$WorkerImage = "ghcr.io/s7even-silva/iac-project/geant4-worker@sha256:db57b43fb3671b88a735979bdaaa1c66c3fd11a9e1d7dd962e7f671799a177d5"
 )
 
 $ErrorActionPreference = "Stop"
@@ -253,6 +257,14 @@ function Register-ResumeTask {
     } else {
         Write-InstallLog "Reinicio pospuesto -- la tarea ya quedo programada, reinicia tu mismo cuando quieras y la instalacion continua sola."
     }
+
+    # Critico: el script NO debe seguir a Install-DockerDesktop/etc. en
+    # este proceso -- WSL2 todavia no esta operativo (por eso se llego
+    # aqui) sin importar si el reinicio fue ahora o se pospuso. Bug real
+    # encontrado en revision: antes esta funcion simplemente retornaba y
+    # el flujo principal continuaba de inmediato sobre un sistema a
+    # medio configurar.
+    exit 0
 }
 
 function Install-Wsl2 {
@@ -441,12 +453,38 @@ function Invoke-DockerPullWithRetry {
     }
 }
 
+function Get-DesiredWorkerConfigHash {
+    # Huella de todo lo que --docker run recibiria, para comparar contra
+    # un contenedor ya existente sin tener que enumerar campo por campo
+    # en dos lugares distintos.
+    $parts = @($WorkerImage, $CoordinatorUrl, $WorkerLabel, $WorkerThreads, $WorkerToken, $Cpus, $MemoryLimit) -join "|"
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($parts)
+    return [System.BitConverter]::ToString([System.Security.Cryptography.SHA256]::Create().ComputeHash($bytes))
+}
+
 function Install-WorkerContainer {
     Invoke-DockerPullWithRetry
+    $desiredHash = Get-DesiredWorkerConfigHash
 
     $existing = docker ps -a --filter "name=^geant4-worker$" --format "{{.Names}}" 2>&1
     if ($existing -eq "geant4-worker") {
-        Write-InstallLog "Ya existe un contenedor 'geant4-worker' -- se elimina para recrearlo con la config actual (no pierde jobs: el Coordinator reencola cualquier corrida que tuviera asignada)."
+        # No matar un worker que puede llevar horas de simulacion solo
+        # por volver a correr el instalador -- comparar la config
+        # deseada contra la etiqueta que dejamos en el contenedor
+        # anterior, y si coincide, no tocarlo. Bug real de la primera
+        # version: recreaba el contenedor incondicionalmente en cada
+        # ejecucion, sin importar si algo habia cambiado o no.
+        $existingHash = docker inspect geant4-worker --format '{{index .Config.Labels "geant4-worker-config-hash"}}' 2>$null
+        $isRunning = docker ps --filter "name=^geant4-worker$" --format "{{.Names}}" 2>$null
+        if ($existingHash -eq $desiredHash -and $isRunning -eq "geant4-worker") {
+            Write-InstallLog "El contenedor 'geant4-worker' ya existe, esta corriendo, y su configuracion no cambio -- no se toca (evita interrumpir una simulacion en curso)."
+            return
+        }
+        if ($isRunning -eq "geant4-worker") {
+            Write-InstallLog "La configuracion cambio (imagen/label/threads/token/limites) -- se recrea el contenedor. Si tenia una run asignada, el Coordinator la reencola sola tras el timeout de heartbeat (ver infra/README.md), no se pierde el resultado ya calculado hasta ahora." "WARN"
+        } else {
+            Write-InstallLog "Existe un contenedor 'geant4-worker' detenido -- se elimina para recrearlo."
+        }
         docker rm -f geant4-worker *> $null
     }
 
@@ -465,7 +503,9 @@ function Install-WorkerContainer {
     if ($MemoryLimit) { $limitArgs += @("--memory", $MemoryLimit) }
 
     Write-InstallLog "Creando el contenedor del worker..."
-    docker run -d --name geant4-worker --restart unless-stopped @envArgs @limitArgs $WorkerImage 2>&1 | ForEach-Object { Write-InstallLog "  $_" }
+    docker run -d --name geant4-worker --restart unless-stopped `
+        --label "geant4-worker-config-hash=$desiredHash" `
+        @envArgs @limitArgs $WorkerImage 2>&1 | ForEach-Object { Write-InstallLog "  $_" }
     if ($LASTEXITCODE -ne 0) { throw "docker run fallo." }
 
     Start-Sleep -Seconds 5
@@ -502,14 +542,29 @@ function Test-WorkerRegistered {
     $headers = @{}
     if ($WorkerToken) { $headers["X-Worker-Token"] = $WorkerToken }
 
+    # Umbral generoso (90s) sobre el heartbeat cada 30s del worker (ver
+    # HEARTBEAT_INTERVAL_S en worker.py) -- suficiente margen para un
+    # heartbeat perdido puntual sin ser tan laxo que un worker realmente
+    # caido siga pareciendo "reciente" por mucho tiempo.
+    $freshnessThresholdS = 90
+
     $elapsed = 0
     while ($elapsed -lt $TimeoutSeconds) {
         try {
             $workers = Invoke-RestMethod -Uri "$CoordinatorUrl/api/v1/workers" -Headers $headers -TimeoutSec 10
             $match = $workers | Where-Object { $_.worker_id -eq $workerId }
             if ($match -and $match.last_heartbeat) {
-                Write-InstallLog "Worker '$WorkerLabel' (id $workerId) confirmado en el Coordinator, con heartbeat reciente."
-                return $true
+                # last_heartbeat es ISO8601 con offset UTC (ver now_iso()
+                # en infra/coordinator/db.py) -- bug real corregido aqui:
+                # antes solo se comprobaba que el campo existiera, sin
+                # verificar que fuera reciente, asi que un registro VIEJO
+                # con heartbeat de hace horas tambien "pasaba".
+                $heartbeatTime = [datetime]::Parse($match.last_heartbeat, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind)
+                $ageSeconds = ((Get-Date).ToUniversalTime() - $heartbeatTime.ToUniversalTime()).TotalSeconds
+                if ($ageSeconds -le $freshnessThresholdS) {
+                    Write-InstallLog "Worker '$WorkerLabel' (id $workerId) confirmado en el Coordinator, heartbeat de hace $([math]::Round($ageSeconds, 1))s."
+                    return $true
+                }
             }
         } catch {
             # Reintento silencioso durante el polling -- normal mientras
