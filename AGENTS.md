@@ -1497,6 +1497,61 @@ de la cola) y quedó `running` confirmado por `GET /api/v1/jobs`.
 gente sin el proyecto instalado, esta guía para el equipo) en vez de
 tener un único ejemplo de prueba local contra `127.0.0.1`.
 
+**Cuarta ronda de revisión externa de `install-worker.ps1` (2026-09-13),
+4 puntos, todos bugs/gaps reales:**
+
+- **`$InstallScriptCommit` seguía apuntando a `5abd0fc`** pese a que el
+  script cambió sustancialmente en la tercera ronda — si alguien lo
+  corría vía `irm ... | iex` y necesitaba reiniciar por WSL2, `Save-
+  SelfCopy` habría descargado esa versión vieja para continuar tras el
+  reinicio, exactamente el escenario que ese pin existe para evitar.
+  Corregido: actualizado al SHA completo de 40 caracteres del commit que
+  introduce estos mismos fixes (no se puede apuntar al commit anterior,
+  porque este cambio modifica el propio archivo).
+- **La migración a volumen persistente (tercera ronda) no cubría un
+  worker instalado con la versión anterior, bug real de lógica:**
+  `Install-WorkerContainer` comparaba solo el config-hash contra la
+  etiqueta del contenedor existente — un worker viejo (sin el volumen
+  `geant4-worker-data`, de antes de ese fix) podía tener el mismo hash
+  igual, así que el instalador lo reportaba como "ya configurado,
+  correcto" y nunca migraba nada. Corregido con `Test-
+  WorkerVolumeMounted` (revisa `docker inspect --format
+  '{{range .Mounts}}...'`), ahora parte de la condición de "no tocar".
+  Además, antes de eliminar ese contenedor viejo, `Save-LegacyWorkerId`
+  rescata su `worker_id` real (`docker exec ... cat
+  /var/lib/geant4-worker/worker_id`) y lo restaura dentro del volumen
+  nuevo (`docker run --rm -v geant4-worker-data:/data busybox sh -c
+  'echo -n ... > /data/worker_id'`) antes de arrancar el contenedor
+  reemplazante — sin esto, la primera actualización de cualquier
+  voluntario que ya tuviera un worker corriendo desde antes de la
+  tercera ronda le habría hecho perder su identidad/historial en el
+  Coordinator igual, el mismo problema que ese fix se propuso resolver.
+- **La pausa (`worker.paused`, tercera ronda) solo la respetaba el
+  watchdog, no el propio instalador:** si alguien pausaba el worker y
+  volvía a correr `install-worker.ps1` (ej. para actualizar), el script
+  podía crear/arrancar el contenedor de nuevo sin que nadie lo pidiera,
+  deshaciendo la pausa. Corregido: `Install-WorkerContainer` comprueba
+  `Test-WorkerPaused` al principio y retorna sin tocar nada si existe
+  `worker.paused`; el flujo principal salta `Test-WorkerRegistered`/
+  `Register-WatchdogTask` en ese caso (no tendría sentido verificar que
+  algo esté corriendo cuando a propósito no se tocó).
+- **No existía un comando accesible y con nombre claro para pausar/
+  reanudar** — solo `pause-worker.ps1 pause`/`pause-worker.ps1 resume`
+  (parámetro posicional, fácil de escribir mal u olvidar) y ninguna
+  copia local automática (había que volver a descargarlo del repo cada
+  vez). Corregido: nuevo `resume-worker.ps1` (wrapper trivial sobre
+  `pause-worker.ps1 resume`, sin duplicar lógica) y `install-worker.ps1`
+  ahora descarga ambos a `C:\ProgramData\Geant4Worker\` (mismo `$LogDir`
+  ya usado para logs, escribible sin elevación extra una vez creado por
+  este instalador que sí corre elevado) — `Save-PauseResumeScripts`,
+  llamada desde `Save-SelfCopy`, así que quedan disponibles tanto tras
+  una instalación normal como tras una reanudación por reinicio.
+  `GUIA_VOLUNTARIOS.md` actualizada con la ruta fija en vez de "descarga
+  el script primero".
+
+23 tests siguen pasando (los 4 fixes son PowerShell puro, no tocan
+`infra/coordinator`/`infra/worker`).
+
 **Pendiente, no bloqueante:** publicar la imagen vía un workflow de
 GitHub Actions (hoy es push manual), reintentar Azure cuando soporte
 resuelva el bloqueo de región (opcional, GCP ya cubre la necesidad

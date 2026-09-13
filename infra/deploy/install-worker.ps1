@@ -99,6 +99,8 @@ $LogFile = Join-Path $LogDir "install-worker.log"
 $ResumeTaskName = "Geant4WorkerInstallResume"
 $WatchdogTaskName = "Geant4WorkerWatchdog"
 $SelfCopyPath = Join-Path $LogDir "install-worker.ps1"
+$PauseScriptPath = Join-Path $LogDir "pause-worker.ps1"
+$ResumeScriptPath = Join-Path $LogDir "resume-worker.ps1"
 # Fijado a un commit concreto (no a la rama, que es mutable) -- asi el
 # codigo que corre despues de un reinicio es exactamente el mismo que
 # arranco la instalacion, no una version distinta si alguien pusheo
@@ -122,6 +124,26 @@ function Save-SelfCopy {
         Copy-Item -Path $invokedPath -Destination $SelfCopyPath -Force
     } else {
         Invoke-WebRequest -Uri $InstallScriptUrl -OutFile $SelfCopyPath -UseBasicParsing
+    }
+    Save-PauseResumeScripts
+}
+
+function Save-PauseResumeScripts {
+    # C:\ProgramData\Geant4Worker (=$LogDir) es escribible sin elevacion
+    # adicional una vez que este instalador (que si corre elevado) creo
+    # el directorio -- se dejan pause-worker.ps1/resume-worker.ps1 ahi
+    # mismo para que el voluntario tenga un control real y accesible
+    # sobre su propio worker, sin depender de que recuerde donde esta
+    # worker.paused ni de volver a descargar nada de GitHub. Se traen
+    # del mismo commit fijo que el resto de este instalador (ver
+    # $InstallScriptCommit), no de la rama mutable.
+    $baseUrl = "https://raw.githubusercontent.com/s7even-silva/iac-project/$InstallScriptCommit/infra/deploy"
+    try {
+        Invoke-WebRequest -Uri "$baseUrl/pause-worker.ps1" -OutFile $PauseScriptPath -UseBasicParsing
+        Invoke-WebRequest -Uri "$baseUrl/resume-worker.ps1" -OutFile $ResumeScriptPath -UseBasicParsing
+        Write-InstallLog "pause-worker.ps1 / resume-worker.ps1 disponibles en $LogDir"
+    } catch {
+        Write-InstallLog "No se pudieron descargar pause-worker.ps1/resume-worker.ps1 ($_) -- se puede pausar/reanudar igual descargandolos a mano del repo (infra/deploy/)." "WARN"
     }
 }
 
@@ -500,25 +522,78 @@ function Get-DesiredWorkerConfigHash {
     return [System.BitConverter]::ToString([System.Security.Cryptography.SHA256]::Create().ComputeHash($bytes))
 }
 
+function Test-WorkerVolumeMounted {
+    # Un worker creado por una version anterior de este script (antes de
+    # que existiera el volumen nombrado geant4-worker-data) puede tener
+    # el mismo config-hash deseado sin tener el volumen -- Get-
+    # DesiredWorkerConfigHash nunca incluyo el volumen como parte del
+    # hash, asi que ese caso pasaria la comparacion de hash como si no
+    # hiciera falta ningun cambio, y el worker_id de ese voluntario se
+    # seguiria perdiendo en cada recreacion futura. Se comprueba aparte,
+    # explicitamente.
+    param([string]$ContainerName = "geant4-worker")
+    $mounts = docker inspect $ContainerName --format '{{range .Mounts}}{{.Name}}{{"\n"}}{{end}}' 2>$null
+    return ($mounts -split "`n") -contains "geant4-worker-data"
+}
+
+function Save-LegacyWorkerId {
+    # Si el contenedor viejo (sin volumen) ya tiene un worker_id real
+    # dentro de su filesystem efimero, rescatarlo ANTES de docker rm -f
+    # -- de lo contrario esa PC reaparece en el Coordinator como una
+    # maquina nueva, perdiendo su historial de heartbeat/identidad.
+    param([string]$ContainerName = "geant4-worker")
+    $existingId = docker exec $ContainerName cat /var/lib/geant4-worker/worker_id 2>$null
+    if ($LASTEXITCODE -eq 0 -and $existingId) {
+        Write-InstallLog "Worker anterior sin volumen persistente -- rescatando su worker_id ($existingId) antes de recrearlo, para no perder su identidad en el Coordinator."
+        return $existingId.Trim()
+    }
+    return $null
+}
+
+function Test-WorkerPaused {
+    # El watchdog ya respeta este archivo (ver Register-WatchdogTask) --
+    # pero si el voluntario pauso el worker a proposito y despues vuelve
+    # a correr install-worker.ps1 (ej. para una actualizacion, o solo
+    # por probar), el instalador no debia deshacer esa pausa el mismo
+    # arrancando o recreando el contenedor. Bug real encontrado en
+    # revision: solo el watchdog conocia worker.paused, este script no.
+    $pauseFile = Join-Path $LogDir "worker.paused"
+    return Test-Path $pauseFile
+}
+
 function Install-WorkerContainer {
+    if (Test-WorkerPaused) {
+        Write-InstallLog "El worker esta pausado a proposito (existe $(Join-Path $LogDir 'worker.paused')) -- no se crea ni se arranca el contenedor. Corre '$ResumeScriptPath' primero si quieres reanudarlo." "WARN"
+        return
+    }
+
     Invoke-DockerPullWithRetry
     $desiredHash = Get-DesiredWorkerConfigHash
 
     $existing = docker ps -a --filter "name=^geant4-worker$" --format "{{.Names}}" 2>&1
+    $legacyWorkerId = $null
     if ($existing -eq "geant4-worker") {
         # No matar un worker que puede llevar horas de simulacion solo
         # por volver a correr el instalador -- comparar la config
         # deseada contra la etiqueta que dejamos en el contenedor
-        # anterior, y si coincide, no tocarlo. Bug real de la primera
-        # version: recreaba el contenedor incondicionalmente en cada
-        # ejecucion, sin importar si algo habia cambiado o no.
+        # anterior, y si coincide Y el volumen persistente ya esta
+        # montado, no tocarlo. Bug real de la primera version: recreaba
+        # el contenedor incondicionalmente en cada ejecucion. Bug real
+        # de la segunda version (encontrado en revision externa): solo
+        # comparaba el hash, asi que un worker de una version anterior a
+        # la del volumen nombrado pasaba esta comprobacion como "ya
+        # configurado" sin tener el volumen, y nunca se migraba.
         $existingHash = docker inspect geant4-worker --format '{{index .Config.Labels "geant4-worker-config-hash"}}' 2>$null
         $isRunning = docker ps --filter "name=^geant4-worker$" --format "{{.Names}}" 2>$null
-        if ($existingHash -eq $desiredHash -and $isRunning -eq "geant4-worker") {
-            Write-InstallLog "El contenedor 'geant4-worker' ya existe, esta corriendo, y su configuracion no cambio -- no se toca (evita interrumpir una simulacion en curso)."
+        $hasVolume = Test-WorkerVolumeMounted
+        if ($existingHash -eq $desiredHash -and $isRunning -eq "geant4-worker" -and $hasVolume) {
+            Write-InstallLog "El contenedor 'geant4-worker' ya existe, esta corriendo, tiene el volumen persistente, y su configuracion no cambio -- no se toca (evita interrumpir una simulacion en curso)."
             return
         }
-        if ($isRunning -eq "geant4-worker") {
+        if (-not $hasVolume) {
+            Write-InstallLog "El contenedor 'geant4-worker' existente no tiene el volumen persistente (instalado por una version anterior de este script) -- se migra." "WARN"
+            $legacyWorkerId = Save-LegacyWorkerId
+        } elseif ($isRunning -eq "geant4-worker") {
             Write-InstallLog "La configuracion cambio (imagen/label/threads/token/limites) -- se recrea el contenedor. Si tenia una run asignada, el Coordinator la reencola sola tras el timeout de heartbeat (ver infra/README.md), no se pierde el resultado ya calculado hasta ahora." "WARN"
         } else {
             Write-InstallLog "Existe un contenedor 'geant4-worker' detenido -- se elimina para recrearlo."
@@ -547,6 +622,20 @@ function Install-WorkerContainer {
     # contenedor y la misma PC volvia a aparecer como worker nuevo en
     # el Coordinator, perdiendo su identidad.
     docker volume create geant4-worker-data *> $null
+
+    if ($legacyWorkerId) {
+        # Restaurar el worker_id rescatado DENTRO del volumen nuevo, antes
+        # de que el worker arranque y genere uno propio -- un contenedor
+        # descartable con el volumen ya montado es la forma mas simple de
+        # escribir ahi sin necesitar herramientas del host para tocar
+        # volumenes de Docker directamente.
+        docker run --rm -v geant4-worker-data:/data busybox sh -c "echo -n '$legacyWorkerId' > /data/worker_id" 2>&1 | ForEach-Object { Write-InstallLog "  $_" }
+        if ($LASTEXITCODE -eq 0) {
+            Write-InstallLog "worker_id anterior ($legacyWorkerId) restaurado en el volumen nuevo -- esta PC conserva su identidad en el Coordinator."
+        } else {
+            Write-InstallLog "No se pudo restaurar el worker_id anterior ($legacyWorkerId) en el volumen nuevo -- esta PC aparecera como worker nuevo en el Coordinator, sin perder ninguna run ya subida." "WARN"
+        }
+    }
 
     Write-InstallLog "Creando el contenedor del worker..."
     docker run -d --name geant4-worker --restart unless-stopped `
@@ -749,17 +838,28 @@ if (-not (Test-LinuxContainersMode)) { exit 1 }
 if (-not (Test-CoordinatorReachable)) { exit 1 }
 
 Install-WorkerContainer
-if (-not (Test-WorkerRegistered)) {
-    throw "El worker se creo pero no se confirmo conectado al Coordinator -- no se reporta exito. Revisa 'docker logs geant4-worker' y vuelve a correr este script."
+
+if (Test-WorkerPaused) {
+    # El worker esta pausado a proposito -- Install-WorkerContainer ya
+    # no creo/arranco nada (ver arriba), asi que comprobar que este
+    # registrado y corriendo ahora mismo no aplica ni tendria sentido.
+    Write-InstallLog ""
+    Write-InstallLog "=== Listo (worker pausado, sin cambios). ==="
+    Write-InstallLog "Para reanudarlo: $ResumeScriptPath"
+} else {
+    if (-not (Test-WorkerRegistered)) {
+        throw "El worker se creo pero no se confirmo conectado al Coordinator -- no se reporta exito. Revisa 'docker logs geant4-worker' y vuelve a correr este script."
+    }
+
+    Register-WatchdogTask
+
+    Write-InstallLog "=== Listo. El worker esta corriendo y conectado. ==="
+    Write-InstallLog "Ver progreso:  docker logs -f geant4-worker"
+    Write-InstallLog "Ver en la web: $CoordinatorUrl/api/v1/workers"
+    Write-InstallLog "Log completo de esta instalacion: $LogFile"
+    Write-InstallLog "Para pausar/reanudar: $PauseScriptPath / $ResumeScriptPath"
+    Write-InstallLog "Para quitar todo despues: infra/deploy/uninstall-worker.ps1"
 }
-
-Register-WatchdogTask
-
-Write-InstallLog "=== Listo. El worker esta corriendo y conectado. ==="
-Write-InstallLog "Ver progreso:  docker logs -f geant4-worker"
-Write-InstallLog "Ver en la web: $CoordinatorUrl/api/v1/workers"
-Write-InstallLog "Log completo de esta instalacion: $LogFile"
-Write-InstallLog "Para quitar todo despues: infra/deploy/uninstall-worker.ps1"
 
 if ($isResume) {
     # Esta ventana la abrio la Scheduled Task de resume sin que nadie la
