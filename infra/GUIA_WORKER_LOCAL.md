@@ -42,7 +42,7 @@ conda activate geant4_env
 
 mkdir -p "$HOME/.geant4-worker"
 nohup env \
-  COORDINATOR_URL=http://34.134.100.224:8000 \
+  COORDINATOR_URL=https://coordinator.vlaboratory.org \
   WORKER_LABEL=<tu-nombre> \
   WORKER_ID_FILE="$HOME/.geant4-worker/worker_id" \
   WORKER_THREADS=$(nproc) \
@@ -80,8 +80,8 @@ tail -f "$HOME/.geant4-worker/worker.log"
 ```
 
 O desde cualquier navegador:
-- http://34.134.100.224:8000/api/v1/health — resumen general
-- http://34.134.100.224:8000/api/v1/workers — verás tu `WORKER_LABEL` con
+- https://coordinator.vlaboratory.org/api/v1/health — resumen general
+- https://coordinator.vlaboratory.org/api/v1/workers — verás tu `WORKER_LABEL` con
   `status: online` una vez que mande el primer heartbeat.
 
 ## 4. Detenerlo

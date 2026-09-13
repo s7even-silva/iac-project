@@ -1728,6 +1728,91 @@ la práctica hay que crear la regla de firewall desde una máquina con
 `gcloud` autenticado como usuario (no desde la VM misma), como se hizo
 aquí.
 
+**Tercera ronda de revisión externa (2026-09-13) — dos fixes de la
+segunda ronda se habían quedado a medias, más 3 bugs nuevos reales:**
+
+- **`worker_id` no era persistente de verdad.** Se leía desde
+  `/var/lib/geant4-worker/worker_id` **dentro** del contenedor, pero sin
+  ningún volumen montado ahí — un `docker rm -f` (que el propio script
+  ejecuta cuando la config cambia, ver fix de la ronda anterior) borraba
+  ese filesystem junto con el contenedor, y la misma PC volvía a
+  aparecer como worker nuevo, sin conservar su identidad ni su historial
+  de heartbeats. Corregido: volumen Docker **nombrado**
+  (`geant4-worker-data`, no un bind mount a una ruta del host) montado
+  en `/var/lib/geant4-worker` — sobrevive a `docker rm -f`, solo se
+  pierde si alguien borra el volumen explícitamente.
+- **Dos fixes de la ronda anterior no se habían aplicado de verdad,
+  detectado al releer el código:** la detección de WSL2 seguía buscando
+  el texto literal `"WSL version:"` (dependiente del idioma de Windows,
+  exactamente el bug que se creía resuelto) y `Sync-PathWithDockerCli`
+  seguía llamándose solo una vez, dentro de `Install-DockerDesktop`, no
+  también al principio de `Start-DockerAndWait` como decía el commit
+  anterior. Ambos corregidos ahora de verdad — `wsl --update`
+  incondicional e idempotente sin parsear texto, con su exit code
+  revisado; `Sync-PathWithDockerCli` se llama siempre en
+  `Start-DockerAndWait`, cubriendo también a quien ya tenía Docker
+  Desktop instalado desde antes.
+- **Bug real de UX: el watchdog deshacía un `docker stop` voluntario.**
+  El watchdog (cada 30 min) no distinguía "el contenedor está detenido
+  porque se cayó" de "el usuario lo detuvo a propósito" — cualquier
+  `docker stop geant4-worker` se revertía solo en ≤30 min, haciendo
+  falsa la promesa de la guía de poder pausar cuando se quiera.
+  Corregido con un archivo de pausa explícito
+  (`%ProgramData%\Geant4Worker\worker.paused`) que el watchdog respeta
+  sin tocar el contenedor mientras exista. Nuevo
+  `infra/deploy/pause-worker.ps1` (`pause`/`resume`) para no exigirle al
+  usuario recordar la ruta del archivo ni mezclar `docker stop` directo
+  con el watchdog.
+- **Verificación de espacio en disco añadida** antes de `docker pull`
+  (`Test-EnoughDiskSpace`, mínimo 10GB) — antes, una PC con poco disco
+  descubría el problema recién al final de una descarga de ~5GB, en vez
+  de fallar rápido con un mensaje claro al principio.
+- **`$InstallScriptCommit` verificado y corregido — apuntaba a una
+  versión desactualizada del propio script.** El hash fijo para el
+  auto-resume post-reinicio (`5abd0fc`, del commit anterior a *todos*
+  los fixes de robustez de esta sesión) habría hecho que cualquiera que
+  necesitara reiniciar continuara la instalación con una versión rota
+  del script — exactamente el escenario que ese pin pretendía evitar.
+  Corregido a un SHA completo de 40 caracteres del commit real que
+  contiene estos fixes (no un short hash de 7).
+- **Riesgo documentado, no resuelto a propósito:** `WorkerToken`, si se
+  usa, queda visible en texto plano en los argumentos de la Scheduled
+  Task de resume (legible con `schtasks /query /tv` por cualquiera con
+  acceso a esa PC). Aceptable mientras `WORKER_TOKEN` no esté activado
+  en producción (ver más abajo); si se activa alguna vez, cifrar esto
+  con DPAPI/Credential Manager antes de tratarlo como control de acceso
+  real entre partes no confiables — decisión explícita del usuario de no
+  resolverlo ahora, para no invertir en algo que no está en uso.
+
+## ¿Qué es `WORKER_TOKEN` y por qué no está activado?
+
+Es un secreto compartido simple: si el coordinator arranca con la
+variable de entorno `WORKER_TOKEN` puesta, exige que todo request (salvo
+`/health`) traiga el header `X-Worker-Token` con ese mismo valor — sin
+eso, responde `401`. Sin `WORKER_TOKEN` configurado (el estado actual de
+la VM real), esa validación está completamente desactivada: cualquiera
+con la URL del coordinator puede registrarse como worker, leer jobs, o
+subir resultados, sin ninguna credencial.
+
+**No es necesario activarlo para que el barrido funcione** — el diseño
+entero (grano de job, reencolado por heartbeat, resultados con ruta
+única por intento) ya asume que los workers son de confianza, no que
+hace falta autenticarlos. Es una medida de defensa en caso de que la URL
+del coordinator se filtre más allá del equipo (por ejemplo, si queda
+indexada por un buscador, o alguien la comparte sin querer) — sin token,
+esa persona podría contaminar la cola con resultados falsos o
+sobrecargarla con registros basura; con token, no.
+
+**Por qué sigue sin activarse:** activarlo hoy requeriría coordinar con
+todos los que ya tienen un worker corriendo (Bryam en sus dos laptops,
+más los voluntarios que se sumaron después) para que agreguen
+`-e WORKER_TOKEN=...`/`-WorkerToken ...` a su comando **antes** de que el
+servidor empiece a exigirlo — si se activa primero en el servidor, todos
+esos workers empezarían a fallar con `401` a mitad de corridas que
+pueden durar horas. El código ya está listo en `app.py`/`worker.py`/
+`install-worker.ps1` desde la segunda ronda de revisión; falta solo la
+coordinación operativa, no más desarrollo.
+
 ## Pendientes conocidos
 
 - ~~Reemplazar los 6 CSV placeholder de `data/sources/` con espectros reales por fase solar.~~ **Hecho (2026-09-10), los 6 son reales.** Modelos: **Badhwar-O'Neill 2020** para GCR (mínimo 31/12/2019-01/01/2020, máximo 14-15/01/2023 — limitado por BON2020 en OLTARIS, ver nota arriba), **evento histórico** para SEP (Oct 1989 = máximo, Feb 1956 ajuste LaRC = mínimo — no el modelo probabilístico ESP-PSYCHIC). Detalle completo: [`docs/checklist_espectros_reales.md`](geant4/GCR_SEP_Sim/docs/checklist_espectros_reales.md).

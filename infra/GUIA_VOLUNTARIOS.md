@@ -164,6 +164,21 @@ Sí, sin problema. El sistema está pensado exactamente para eso — nadie
 necesita estar disponible todo el tiempo.
 
 **¿Cómo dejo de prestar mi PC (aunque sea por un rato)?**
+
+Si instalaste con el **instalador automático de Windows**, usa
+`pause-worker.ps1` (descárgalo del mismo link que `install-worker.ps1`),
+no `docker stop` directo — el instalador dejó un watchdog corriendo cada
+30 min que volvería a levantar el contenedor solo si lo detienes con
+`docker stop` a secas:
+```powershell
+.\pause-worker.ps1 pause
+```
+Para retomar:
+```powershell
+.\pause-worker.ps1 resume
+```
+
+Si instalaste manualmente (Linux/Mac, sin el instalador de Windows):
 ```bash
 docker stop geant4-worker
 ```
@@ -171,7 +186,7 @@ Para retomar después:
 ```bash
 docker start geant4-worker
 ```
-Para quitarlo del todo:
+Para quitarlo del todo (cualquier sistema):
 ```bash
 docker rm -f geant4-worker
 ```
