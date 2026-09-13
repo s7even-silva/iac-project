@@ -1433,19 +1433,34 @@ real — ya no solo local sin contenedor:**
   la VM con el mismo `cloud-init-coordinator.yaml` (formato estándar,
   funciona igual en ambos proveedores). URL pública:
   `http://34.134.100.224:8000`.
-- **Los 7 jobs reales pendientes ya están en la cola** (poblados
-  directamente en la VM vía SSH, `COORDINATOR_DB` apuntando a
+- **11 jobs reales pendientes en la cola** (poblados directamente en la
+  VM vía SSH, `COORDINATOR_DB` apuntando a
   `/var/lib/geant4-coordinator/coordinator.db` porque el servicio corre
-  como usuario `coordinator`, no con el default de `db.py`): 2 de
-  `GCR_He bin6` (offsets 0,1 — el resto de ese bin ya lo corrió Bryam
-  fuera del coordinator, confirmado leyendo
-  `resultados/organ_sweep_manifest_bryam.csv`) y las 5 posiciones
-  completas de `GCR_He bin7` (prioridad más alta, 20 vs 10) — el caso
-  que motivó esta infraestructura desde el principio, nunca corrido por
-  nadie. GCR_H y SEP_p bin6/7 en offsets 2,3,4 ya estaban completos
-  antes de este cambio (confirmado por el mismo manifiesto); offsets
-  0,1 de esas combinaciones dependen del manifiesto de Eddy, no
-  versionado — quedan sin poblar hasta confirmar su estado real.
+  como usuario `coordinator`, no con el default de `db.py`):
+  - 2 de `GCR_He bin6` (offsets 0,1 — el resto de ese bin ya lo corrió
+    Bryam fuera del coordinator, confirmado leyendo
+    `resultados/organ_sweep_manifest_bryam.csv`).
+  - 5 posiciones completas de `GCR_He bin7` (prioridad 20, la más
+    alta — el caso que motivó esta infraestructura desde el principio,
+    nunca corrido por nadie), con **requisito mínimo `min_ram_gb=8`,
+    `min_cpu_count=4`** (actualizado vía `UPDATE` directo sobre los
+    jobs ya poblados, no un flag de `seed_jobs.py` en este caso — el
+    usuario preguntó explícitamente por el riesgo de que una laptop
+    débil se lleve la run más pesada; `claim_next_job()` ya filtraba
+    por telemetría en vivo desde el cambio anterior, solo faltaba
+    usarlo en estos jobs).
+  - 4 de `SEP_p bin6`/`bin7` (offsets 0,1 en cada uno — el resto de
+    esos dos bins ya lo corrió Bryam, mismo manifiesto; SEP_p es mucho
+    más rápido que GCR_He en el mismo bin, así que sin requisito de
+    RAM/CPU, prioridad 5, la más baja de las tres especies).
+  - GCR_H bin6/7 en offsets 2,3,4 ya estaban completos antes de este
+    cambio (confirmado por el mismo manifiesto); offsets 0,1 de GCR_H y
+    cualquier otra combinación dependen del manifiesto de Eddy, no
+    versionado — quedan sin poblar hasta confirmar su estado real.
+  - **Pendiente, ya anunciado a los voluntarios pero no implementado
+    todavía:** 5 repeticiones por combinación (semillas distintas) para
+    poder calcular media/std/IC95% — mismo mecanismo de `seed_jobs.py`
+    con `--repeticion`, solo falta poblarlas cuando se decida el orden.
 - **Primer worker de producción real corriendo** (no una prueba
   descartable): `docker run -d --name geant4-worker-test ...` desde la
   máquina del usuario contra la VM de GCP, ya reclamó y está corriendo
