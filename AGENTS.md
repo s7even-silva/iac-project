@@ -1414,10 +1414,56 @@ real — ya no solo local sin contenedor:**
   la probabilidad de este caso: ya no depende de que el loop principal
   esté libre para mandar heartbeat.
 
-**Pendiente, no bloqueante:** desplegar el coordinator en una VM real,
-publicar la imagen en GHCR vía un workflow de GitHub Actions, y correr las
-3 corridas reales de GCR_He bin7 (offsets 2,3,4) que motivaron esta
-infraestructura — todo eso es el siguiente paso, no parte de este cambio.
+**Desplegado en producción real (2026-09-13):**
+- **Imagen publicada en GHCR** (manual, no vía workflow todavía):
+  `ghcr.io/s7even-silva/iac-project/geant4-worker:latest`.
+- **Coordinator corriendo 24/7 en una VM real** — no en Azure: la
+  suscripción "Azure for Students" del usuario rechazó la creación de
+  cualquier VM en `East US` y `West US 2` con el mismo error de
+  plataforma en los tres intentos (`RequestDisallowedByAzure: This
+  policy maintains a set of best available regions... contact
+  support`), incluso con `Microsoft.Compute`/`Network`/`Storage` ya
+  registrados — es una restricción de cuenta que solo soporte de Azure
+  puede levantar, no algo resoluble reintentando o cambiando de región.
+  Se migró a **GCP Always Free Tier** (`e2-micro`, zona `us-central1-a`,
+  dentro del límite gratuito permanente — no consume el crédito de
+  prueba de $300). `infra/deploy/provision_gcp_coordinator.sh` (nuevo,
+  paralelo a `provision_azure_coordinator.sh` que queda listo para
+  reintentar si Azure resuelve el bloqueo) crea la regla de firewall y
+  la VM con el mismo `cloud-init-coordinator.yaml` (formato estándar,
+  funciona igual en ambos proveedores). URL pública:
+  `http://34.134.100.224:8000`.
+- **Los 7 jobs reales pendientes ya están en la cola** (poblados
+  directamente en la VM vía SSH, `COORDINATOR_DB` apuntando a
+  `/var/lib/geant4-coordinator/coordinator.db` porque el servicio corre
+  como usuario `coordinator`, no con el default de `db.py`): 2 de
+  `GCR_He bin6` (offsets 0,1 — el resto de ese bin ya lo corrió Bryam
+  fuera del coordinator, confirmado leyendo
+  `resultados/organ_sweep_manifest_bryam.csv`) y las 5 posiciones
+  completas de `GCR_He bin7` (prioridad más alta, 20 vs 10) — el caso
+  que motivó esta infraestructura desde el principio, nunca corrido por
+  nadie. GCR_H y SEP_p bin6/7 en offsets 2,3,4 ya estaban completos
+  antes de este cambio (confirmado por el mismo manifiesto); offsets
+  0,1 de esas combinaciones dependen del manifiesto de Eddy, no
+  versionado — quedan sin poblar hasta confirmar su estado real.
+- **Primer worker de producción real corriendo** (no una prueba
+  descartable): `docker run -d --name geant4-worker-test ...` desde la
+  máquina del usuario contra la VM de GCP, ya reclamó y está corriendo
+  el primer job real (`GCR_He bin7 offset_x_m=0.0`).
+- **`infra/GUIA_VOLUNTARIOS.md`** (nuevo): instrucciones para reclutar
+  compañeros que presten CPU — instalar Docker, un solo `docker run`,
+  aclara explícitamente que apagar/prender la PC no pierde trabajo
+  (`--restart unless-stopped` + reencolado por heartbeat vencido ya
+  documentado arriba), cómo pausar (`docker stop`) sin desinstalar nada,
+  y cómo limitar recursos si no quieren ceder toda la PC
+  (`WORKER_THREADS` para límite lógico de Geant4, `--cpus`/`--memory`
+  de Docker para límite duro del contenedor).
+
+**Pendiente, no bloqueante:** publicar la imagen vía un workflow de
+GitHub Actions (hoy es push manual), reintentar Azure cuando soporte
+resuelva el bloqueo de región (opcional, GCP ya cubre la necesidad
+inmediata), y confirmar el estado real de las posiciones 0,1 del
+manifiesto de Eddy para poblar cualquier combinación que aún falte ahí.
 
 ## Pendientes conocidos
 

@@ -1,0 +1,42 @@
+#cloud-config
+# Deja el coordinator corriendo automaticamente al arrancar la VM, como
+# servicio systemd (sobrevive reinicios). No requiere Docker -- el
+# coordinator es liviano (FastAPI + SQLite), no necesita el entorno
+# pesado de Geant4 que si va en la imagen del worker.
+package_update: true
+packages:
+  - python3
+  - python3-venv
+  - python3-pip
+  - git
+
+write_files:
+  - path: /etc/systemd/system/geant4-coordinator.service
+    content: |
+      [Unit]
+      Description=ActiveShield_Sim compute coordinator
+      After=network.target
+
+      [Service]
+      Type=simple
+      WorkingDirectory=/opt/iac-project/infra/coordinator
+      Environment=COORDINATOR_DB=/var/lib/geant4-coordinator/coordinator.db
+      ExecStart=/opt/coordinator-venv/bin/uvicorn app:app --host 0.0.0.0 --port 8000
+      Restart=always
+      RestartSec=5
+      User=coordinator
+      Group=coordinator
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - useradd -r -s /usr/sbin/nologin coordinator || true
+  - git clone --depth 1 --branch infra/distributed-sweep https://github.com/s7even-silva/iac-project.git /opt/iac-project
+  - mkdir -p /var/lib/geant4-coordinator
+  - chown -R coordinator:coordinator /var/lib/geant4-coordinator
+  - python3 -m venv /opt/coordinator-venv
+  - /opt/coordinator-venv/bin/pip install --no-cache-dir -r /opt/iac-project/infra/coordinator/requirements.txt
+  - chown -R coordinator:coordinator /opt/coordinator-venv
+  - systemctl daemon-reload
+  - systemctl enable --now geant4-coordinator.service
