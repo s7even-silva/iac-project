@@ -24,6 +24,8 @@ Uso local (sin Docker, contra un build ya compilado):
 """
 import csv
 import io
+import math
+import multiprocessing
 import os
 import platform
 import subprocess
@@ -45,15 +47,118 @@ BUILD_DIR = Path(os.environ.get("BUILD_DIR", REPO_ROOT / "geant4" / "ActiveShiel
 WORKER_LABEL = os.environ.get("WORKER_LABEL", "")
 WORKER_ID_FILE = Path(os.environ.get("WORKER_ID_FILE", "/var/lib/geant4-worker/worker_id"))
 HEARTBEAT_INTERVAL_S = float(os.environ.get("HEARTBEAT_INTERVAL_S", "30"))
-# Sin WORKER_THREADS explicito, usar TODOS los CPUs que este proceso ve
-# -- os.cpu_count() dentro de un contenedor Docker refleja los CPUs que
-# el propio Docker le asigno (todo el host, salvo que install-worker.ps1
-# haya pasado --cpus), no un numero fijo. Bug real corregido aqui
-# (2026-09-13): el default anterior era "1" a secas, asi que cualquier
-# voluntario que instalara sin pasar -WorkerThreads corria Geant4 en un
-# solo nucleo sin importar cuantos tuviera la maquina -- confirmado en
-# vivo con una PC de 16 nucleos al 100% en solo uno.
-WORKER_THREADS = int(os.environ.get("WORKER_THREADS") or (os.cpu_count() or 1))
+
+
+def available_cpu_count() -> int:
+    """CPUs realmente disponibles para este proceso -- a diferencia de
+    os.cpu_count() (que siempre ve TODOS los CPUs del host, sin importar
+    ninguna cuota de Docker), esto respeta un limite --cpus/-Cpus si
+    existe. Verificado en vivo: con --cpus=2 sobre un host de 8 nucleos,
+    os.cpu_count() seguia reportando 8 -- --cpus es una cuota de TIEMPO
+    de CPU via cgroups, no una reduccion del numero de CPUs visibles al
+    proceso, asi que hay que leer el cgroup mismo, no confiar en
+    os.cpu_count(). Soporta cgroups v2 (cpu.max, la mayoria de Docker
+    Desktop/hosts Linux modernos) y v1 (cfs_quota_us/cfs_period_us,
+    hosts mas viejos) -- cae a os.cpu_count() si no hay limite
+    ("max") o no se puede leer ningun cgroup (ej. corriendo sin Docker,
+    ver GUIA_WORKER_LOCAL.md)."""
+    try:
+        cpu_max = Path("/sys/fs/cgroup/cpu.max").read_text().split()
+        if cpu_max[0] != "max":
+            quota, period = int(cpu_max[0]), int(cpu_max[1])
+            return max(1, quota // period)
+    except (FileNotFoundError, ValueError, IndexError):
+        pass
+    try:
+        quota = int(Path("/sys/fs/cgroup/cpu/cpu.cfs_quota_us").read_text())
+        period = int(Path("/sys/fs/cgroup/cpu/cpu.cfs_period_us").read_text())
+        if quota > 0:
+            return max(1, quota // period)
+    except (FileNotFoundError, ValueError):
+        pass
+    return os.cpu_count() or 1
+
+
+# Sin WORKER_THREADS explicito, usar los CPUs que este worker realmente
+# tiene disponibles (ver available_cpu_count() arriba) -- no un numero
+# fijo. Bug real corregido aqui (2026-09-13): el default anterior era
+# "1" a secas, asi que cualquier voluntario que instalara sin pasar
+# -WorkerThreads corria Geant4 en un solo nucleo sin importar cuantos
+# tuviera la maquina -- confirmado en vivo con una PC de 16 nucleos al
+# 100% en solo uno.
+WORKER_THREADS = int(os.environ.get("WORKER_THREADS") or available_cpu_count())
+
+# Numero de operaciones que hace CADA proceso del benchmark -- fijo, no
+# depende del reloj, para que el trabajo realizado sea identico entre
+# maquinas (lo unico que varia es cuanto tardan en hacerlo). Elegido
+# para que el benchmark completo tome ~1-2s en una maquina tipica --
+# ni tan corto que el ruido de arranque de multiprocessing.Pool domine
+# la medicion, ni tan largo que retrase el registro del worker de forma
+# notoria.
+_BENCHMARK_ITERATIONS_PER_PROC = 3_000_000
+# Score de una maquina de referencia (1 core, medido en esta sesion de
+# Throughput de UN SOLO proceso (medido, no supuesto: ~4,77M ops/s con
+# exactamente esta operacion, en la maquina donde se escribio este
+# benchmark) -- normaliza el score reportado a un numero relativo, en
+# vez de iteraciones/segundo crudas sin contexto. El score AGREGADO
+# (todos los procesos, ver cpu_score()) de esa misma maquina de
+# referencia dio ~5,7 con 8 cores, no ~8,0 -- procesos compitiendo por
+# cache/scheduler no escalan 1:1 con el conteo de nucleos, ni deberian:
+# esa perdida real de eficiencia bajo carga es precisamente lo que el
+# benchmark multi-proceso existe para capturar (ver cpu_score()). No es
+# una unidad fisica real ("N core-equivalentes"), solo una escala
+# relativa pensada para comparar el score agregado de un worker contra
+# el de otro, no para leerse como cores efectivos.
+_BENCHMARK_REFERENCE_OPS_PER_SEC = 4_770_000.0
+
+
+def _benchmark_worker_proc(n_iterations: int) -> int:
+    """Trabajo de un solo proceso del benchmark -- aritmetica de punto
+    flotante pura (sqrt/sin encadenados), sin numpy ni dependencias
+    nuevas. Corre en un proceso hijo real (ver cpu_score() mas abajo,
+    multiprocessing.Pool, NO threading) porque el GIL de Python
+    serializaria cualquier intento de paralelismo con hilos en codigo
+    Python puro -- el mismo tipo de bug que WORKER_THREADS tenia con
+    Geant4, ahora evitado a proposito en el propio script de medicion."""
+    x = 0.5
+    for _ in range(n_iterations):
+        x = math.sqrt(math.sin(x) ** 2 + 1.0)
+    return n_iterations
+
+
+def cpu_score() -> float | None:
+    """Mide capacidad de computo real bajo carga MULTI-PROCESO (no solo
+    un core aislado) -- corre WORKER_THREADS procesos simultaneos
+    (multiprocessing.Pool, procesos reales sin GIL compartido) haciendo
+    el mismo trabajo aritmetico fijo cada uno, y mide el throughput
+    agregado real. Deliberadamente NO es single-thread: bajo carga
+    sostenida con todos los nucleos ocupados a la vez (el escenario real
+    de una corrida de Geant4 MT) entran en juego contencion de cache/
+    memoria compartida y throttling termico que un benchmark de 1 solo
+    core no capturaria -- justo lo que se necesita para comparar
+    maquinas de forma representativa del uso real, no solo su pico
+    teorico de un nucleo.
+
+    Se corre UNA VEZ al arrancar el worker (no en cada heartbeat -- el
+    hardware no cambia en caliente, repetirlo seria costo sin
+    beneficio). Normalizado contra _BENCHMARK_REFERENCE_OPS_PER_SEC para
+    dar un numero legible (~1.0 por core tipico), no iteraciones/segundo
+    crudas sin contexto. None si el benchmark falla por cualquier razon
+    (nunca debe impedir que el worker se registre y empiece a trabajar)."""
+    try:
+        n_procs = max(1, WORKER_THREADS)
+        started = time.perf_counter()
+        with multiprocessing.Pool(processes=n_procs) as pool:
+            pool.map(_benchmark_worker_proc, [_BENCHMARK_ITERATIONS_PER_PROC] * n_procs)
+        elapsed_s = time.perf_counter() - started
+        if elapsed_s <= 0:
+            return None
+        total_ops = n_procs * _BENCHMARK_ITERATIONS_PER_PROC
+        ops_per_sec = total_ops / elapsed_s
+        return round(ops_per_sec / _BENCHMARK_REFERENCE_OPS_PER_SEC, 3)
+    except Exception as exc:  # nunca bloquear el registro del worker por esto
+        print(f"[worker] cpu_score() fallo, se registra sin score ({exc})")
+        return None
 POLL_INTERVAL_S = float(os.environ.get("POLL_INTERVAL_S", "30"))
 
 # Sesion compartida: si el coordinator exige WORKER_TOKEN (ver app.py),
@@ -124,21 +229,34 @@ def cpu_load_pct() -> float | None:
 
 
 def register(worker_id: str) -> None:
+    # cpu_count reportado usa available_cpu_count() (respeta --cpus/
+    # -Cpus, ver esa funcion) -- bug real corregido junto con
+    # WORKER_THREADS (2026-09-13): antes usaba os.cpu_count() a secas,
+    # asi que un voluntario que limitara su worker con -Cpus 2 seguia
+    # apareciendo en /workers con el total de nucleos de su maquina, no
+    # los 2 que realmente le cedio al contenedor -- enganoso para
+    # cualquiera decidiendo a quien asignar un job caro segun
+    # min_cpu_count.
+    cpus = available_cpu_count()
+    print(f"[worker] midiendo capacidad de computo real ({cpus} procesos, ~1-2s)...")
+    score = cpu_score()
     resp = SESSION.post(
         f"{COORDINATOR_URL}/api/v1/workers/register",
         json={
             "worker_id": worker_id,
             "hostname": platform.node(),
-            "cpu_count": os.cpu_count() or 0,
+            "cpu_count": cpus,
             "ram_gb": ram_gb(),
             "label": WORKER_LABEL,
             "ram_free_gb": ram_free_gb(),
             "cpu_load_pct": cpu_load_pct(),
+            "cpu_score": score,
         },
         timeout=15,
     )
     resp.raise_for_status()
-    print(f"[worker] registrado como {worker_id} ({platform.node()}, {os.cpu_count()} cpu, {ram_gb()} GB RAM)")
+    score_str = f"{score} score" if score is not None else "score no disponible"
+    print(f"[worker] registrado como {worker_id} ({platform.node()}, {cpus} cpu, {ram_gb()} GB RAM, {score_str})")
 
 
 def heartbeat(worker_id: str) -> None:

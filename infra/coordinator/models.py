@@ -10,6 +10,7 @@ class WorkerRegister(BaseModel):
     label: str = ""
     ram_free_gb: float | None = None
     cpu_load_pct: float | None = None
+    cpu_score: float | None = None
 
 
 class WorkerRef(BaseModel):
@@ -30,6 +31,7 @@ class JobOut(BaseModel):
     n_events: int
     min_ram_gb: float = 0
     min_cpu_count: int = 0
+    min_cpu_score: float = 0
 
 
 class FailIn(BaseModel):

@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS workers (
     ram_gb          REAL,
     ram_free_gb     REAL,
     cpu_load_pct    REAL,
+    cpu_score       REAL,
     label           TEXT,
     registered_at   TEXT NOT NULL,
     last_heartbeat  TEXT,
@@ -43,6 +44,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     priority        INTEGER NOT NULL DEFAULT 0,
     min_ram_gb      REAL NOT NULL DEFAULT 0,
     min_cpu_count   INTEGER NOT NULL DEFAULT 0,
+    min_cpu_score   REAL NOT NULL DEFAULT 0,
     status          TEXT NOT NULL DEFAULT 'pending',
     claimed_by      TEXT REFERENCES workers(worker_id),
     claimed_at      TEXT,
@@ -78,12 +80,32 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# Columnas agregadas DESPUES de que la base de datos de produccion ya
+# tenia filas reales -- "CREATE TABLE IF NOT EXISTS" en SCHEMA no las
+# agrega a una tabla que ya existia antes de este cambio (esa clausula
+# solo evita recrear la tabla, no la altera). _MIGRATIONS corre un
+# "ALTER TABLE ... ADD COLUMN" idempotente (con manejo de "duplicate
+# column" para poder llamarse en cada init_db() sin fallar) por cada
+# columna nueva -- alternativa a borrar y recrear la DB, que en la VM
+# real habria perdido 97 jobs done y sus resultados.
+_MIGRATIONS = [
+    "ALTER TABLE workers ADD COLUMN cpu_score REAL",
+    "ALTER TABLE jobs ADD COLUMN min_cpu_score REAL NOT NULL DEFAULT 0",
+]
+
+
 def init_db() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     (DB_PATH.parent / "results").mkdir(parents=True, exist_ok=True)
     with get_conn() as conn:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.executescript(SCHEMA)
+        for migration in _MIGRATIONS:
+            try:
+                conn.execute(migration)
+            except sqlite3.OperationalError as exc:
+                if "duplicate column" not in str(exc):
+                    raise
 
 
 @contextmanager
@@ -99,19 +121,21 @@ def get_conn():
 
 
 def upsert_worker(worker_id: str, hostname: str, cpu_count: int, ram_gb: float, label: str,
-                   ram_free_gb: float = None, cpu_load_pct: float = None) -> None:
+                   ram_free_gb: float = None, cpu_load_pct: float = None, cpu_score: float = None) -> None:
     with get_conn() as conn:
         conn.execute(
             """
             INSERT INTO workers (worker_id, hostname, cpu_count, ram_gb, ram_free_gb, cpu_load_pct,
-                                  label, registered_at, last_heartbeat, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'online')
+                                  cpu_score, label, registered_at, last_heartbeat, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'online')
             ON CONFLICT(worker_id) DO UPDATE SET
                 hostname=excluded.hostname, cpu_count=excluded.cpu_count, ram_gb=excluded.ram_gb,
                 ram_free_gb=excluded.ram_free_gb, cpu_load_pct=excluded.cpu_load_pct,
+                cpu_score=excluded.cpu_score,
                 label=excluded.label, last_heartbeat=excluded.last_heartbeat, status='online'
             """,
-            (worker_id, hostname, cpu_count, ram_gb, ram_free_gb, cpu_load_pct, label, now_iso(), now_iso()),
+            (worker_id, hostname, cpu_count, ram_gb, ram_free_gb, cpu_load_pct, cpu_score, label,
+             now_iso(), now_iso()),
         )
 
 
@@ -130,25 +154,30 @@ def touch_heartbeat(worker_id: str, ram_free_gb: float = None, cpu_load_pct: flo
 
 def claim_next_job(worker_id: str) -> sqlite3.Row | None:
     """Reclama atomicamente el job pendiente de mayor prioridad que el worker
-    pueda satisfacer (cpu_count total y ram_free_gb EN VIVO, no ram_gb total --
+    pueda satisfacer (cpu_count total, ram_free_gb EN VIVO -- no ram_gb total,
     un worker con poca RAM libre en este momento no debe recibir un job caro
-    aunque su RAM instalada alcance en teoria). None si no hay ninguno elegible
-    o el worker no esta registrado."""
+    aunque su RAM instalada alcance en teoria -- y cpu_score, capacidad de
+    computo real medida por benchmark en el worker, ver cpu_score() en
+    worker.py). None si no hay ninguno elegible o el worker no esta
+    registrado."""
     with get_conn() as conn:
         conn.execute("BEGIN IMMEDIATE")
         worker = conn.execute("SELECT * FROM workers WHERE worker_id=?", (worker_id,)).fetchone()
         if worker is None:
             return None
-        # ram_free_gb puede ser NULL si el worker nunca mando telemetria (ej.
-        # version vieja) -- en ese caso caer a ram_gb total, no bloquear jobs.
+        # ram_free_gb/cpu_score pueden ser NULL si el worker nunca mando esa
+        # telemetria (ej. version vieja, o el benchmark del propio worker
+        # fallo) -- en ese caso no bloquear el job: ram_free_gb cae a ram_gb
+        # total, cpu_score cae a "infinito" (cualquier min_cpu_score pasa).
         available_ram = worker["ram_free_gb"] if worker["ram_free_gb"] is not None else worker["ram_gb"]
+        worker_cpu_score = worker["cpu_score"] if worker["cpu_score"] is not None else float("inf")
         row = conn.execute(
             """
             SELECT job_id FROM jobs
-            WHERE status='pending' AND min_cpu_count <= ? AND min_ram_gb <= ?
+            WHERE status='pending' AND min_cpu_count <= ? AND min_ram_gb <= ? AND min_cpu_score <= ?
             ORDER BY priority DESC, job_id ASC LIMIT 1
             """,
-            (worker["cpu_count"] or 0, available_ram or 0),
+            (worker["cpu_count"] or 0, available_ram or 0, worker_cpu_score),
         ).fetchone()
         if row is None:
             return None
@@ -326,16 +355,17 @@ def list_workers() -> list[sqlite3.Row]:
 
 
 def insert_job(species: str, bin_index: int, offset_x_m: float, repeticion: int,
-               n_events: int, priority: int = 0, min_ram_gb: float = 0, min_cpu_count: int = 0) -> int:
+               n_events: int, priority: int = 0, min_ram_gb: float = 0, min_cpu_count: int = 0,
+               min_cpu_score: float = 0) -> int:
     with get_conn() as conn:
         cur = conn.execute(
             """
             INSERT INTO jobs (species, bin_index, offset_x_m, repeticion, n_events, priority,
-                               min_ram_gb, min_cpu_count, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                               min_ram_gb, min_cpu_count, min_cpu_score, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(species, bin_index, offset_x_m, repeticion) DO NOTHING
             """,
             (species, bin_index, offset_x_m, repeticion, n_events, priority, min_ram_gb, min_cpu_count,
-             now_iso(), now_iso()),
+             min_cpu_score, now_iso(), now_iso()),
         )
         return cur.lastrowid

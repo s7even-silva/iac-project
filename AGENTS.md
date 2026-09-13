@@ -1764,11 +1764,168 @@ worker remoto a actualizarse — el worker solo hace polling saliente, sin
 canal de entrada — así que esto requiere coordinación humana directa
 con cada persona, no algo que se automatice desde el servidor.
 
-**Pendiente, no bloqueante:** publicar la imagen vía un workflow de
-GitHub Actions (hoy es push manual), reintentar Azure cuando soporte
-resuelva el bloqueo de región (opcional, GCP ya cubre la necesidad
-inmediata), y confirmar el estado real de las posiciones 0,1 del
-manifiesto de Eddy para poblar cualquier combinación que aún falte ahí.
+**Segundo problema real detectado al revisar el fix anterior: `os.cpu_count()`
+tampoco es la fuente correcta, no respeta `--cpus`.** El usuario lo señaló
+directamente — verificado en vivo: `docker run --cpus=2` sobre un host de 8
+núcleos, `os.cpu_count()` seguía reportando 8 dentro del contenedor. Razón:
+`--cpus` es una cuota de **tiempo** de CPU vía cgroups (throttling), no una
+reducción del número de CPUs que el kernel expone al proceso — Linux no
+oculta núcleos por eso. Afecta dos cosas a la vez: el nuevo default de
+`WORKER_THREADS` (le pediría a Geant4 más hilos de los que el contenedor
+puede sostener bajo cuota) y el propio `cpu_count` que se reporta a
+`/workers` (un voluntario usando `-Cpus 2` para ceder menos aparecería con
+el total de su máquina, no los 2 reales — engañoso para cualquiera
+decidiendo a quién ofrecer un job según `min_cpu_count`). Corregido con
+`available_cpu_count()` (nuevo en `worker.py`): lee el límite real del
+cgroup (`/sys/fs/cgroup/cpu.max`, cgroups v2; `cfs_quota_us`/
+`cfs_period_us`, v1) y solo cae a `os.cpu_count()` si no hay límite
+(`"max"`) o no hay cgroup que leer (ej. corriendo sin Docker, ver
+`GUIA_WORKER_LOCAL.md`). Usado tanto para `WORKER_THREADS` como para
+`cpu_count` en `register()` — `cpu_load_pct()` NO se tocó a propósito
+(sigue con `os.cpu_count()`): el load average de Linux siempre refleja
+carga sobre todos los núcleos físicos del host sin importar la cuota del
+cgroup, así que normalizarlo por el límite del contenedor distorsionaría
+esa métrica, no la corregiría. Verificado en vivo con la imagen reconstruida:
+sin límite ve 8 (el host completo), con `--cpus=2` ve 2, con `--cpus=3.5`
+(fraccional) redondea hacia abajo a 3 — no le pide a Geant4 más hilos de
+los que puede sostener. 3 tests siguen pasando.
+
+**Imagen Docker reconstruida con ambos fixes, verificada, aún NO
+publicada en GHCR — decisión explícita del usuario, coordinación
+pendiente.** `docker build --build-arg BASE_IMAGE=geant4-worker:latest`
+(reusa la capa ya compilada de Geant4, no recompila desde cero — segundos,
+no minutos) produjo `geant4-worker:threads-fix` local. `install-worker.ps1`
+sigue fijado al digest viejo (`db57b43f...`) a propósito: publicar ahora
+significaría que la próxima persona en (re)instalar recibe automáticamente
+el fix, pero el objetivo es que cada voluntario actualice cuando SU
+corrida actual termine, no todos a la vez sin coordinar. Publicar en GHCR
+y actualizar el digest en `install-worker.ps1` queda como paso explícito
+posterior, no automático.
+
+**Aclaración de identidad, no un error de archivo: Eddy y Joel son la
+misma persona (nombre completo Eddy Joel).** El archivo subido a `main`
+como `organ_sweep_manifest_eddy.csv`/`resultados_organo_sweep_eddy.csv`
+tiene rutas internas (`macro_path`, `log_path`) que dicen
+`/home/joel/proyecto_IAC/...` — ambos nombres son correctos, ninguno es
+un error de quien lo subió. El `worker_id` usado al importar
+(`local-joel`) quedó así por cómo se refirió el usuario a esta persona
+en el momento de importar, antes de que se aclarara la equivalencia de
+nombres — no se corrigió a `local-eddy` después (decisión explícita del
+usuario: no vale la pena re-tocar la VM solo por el nombre interno,
+ninguna combinación cambia de estado por esto). Contenido real: 26
+combinaciones (`GCR_H` bins 0-6, `GCR_He` bins 0-5, offsets 0,1) —
+**ningún SEP_p**, y falta `GCR_He bin6`. Importado con
+`import_local_results.py --worker-label joel` en la VM real: 22 marcadas
+`done` (las 4 restantes las tomó un worker real del coordinator en el
+intervalo entre sembrar e importar, mismo patrón no problemático que con
+el trabajo de Bryam — se recorren de nuevo, sin pérdida de nada).
+**Estado de la cola tras importar ambos aportes (Bryam + Eddy/Joel): 97 done,
+7 running, 16 pending** — lo que queda pendiente es exactamente lo
+genuinamente sin cubrir: 11 combinaciones de `SEP_p` (bins 0-5, offsets
+0,1 — nadie las ha corrido todavía, ni localmente ni en el coordinator) y
+las 5 de `bin7` que motivaron esta infraestructura desde el principio
+(`GCR_H` offsets 0,1 + `GCR_He` offsets 2,3,4).
+
+**Investigación adicional antes de dar el fix por cerrado, a pedido del
+usuario: ¿el paralelismo real de Geant4 MT es genuino, o `WORKER_THREADS`
+correcto sin más termina "solo usando 1 núcleo" igual?** Verificado en
+vivo con `top -H` dentro del contenedor durante un `beamOn` real (GCR_He
+bin5, 10000 eventos, `--threads 8`): a los 15s (fase de inicialización de
+geometría/scoring por hilo) solo el hilo maestro mostraba CPU real, los 7
+workers en `sleeping` — parecía confirmar la sospecha. Pero a los 35-40s
+(dentro del `beamOn` real), los 8 hilos aparecieron en estado `R`
+(running) con CPU repartida entre todos (17,6%-76,5% cada uno, sumando
+cerca de los 8 cores completos) — la medición anterior solo había
+capturado el arranque, no el trabajo real. **Conclusión: no hay un
+segundo bug de serialización oculto — Geant4 MT reparte eventos
+correctamente entre hilos una vez que `/run/numberOfThreads` recibe el
+valor correcto.** El único problema real seguía siendo el `WORKER_THREADS`
+hardcodeado a 1 ya corregido arriba.
+
+**`cpu_score`: benchmark de capacidad de cómputo real, para priorizar A
+QUIÉN se asigna el trabajo más caro, no solo si "tiene suficientes
+núcleos".** Motivación del usuario: `cpu_count`/`min_cpu_count` (ya
+existentes) cuentan núcleos, pero dos máquinas con el mismo conteo pueden
+rendir muy distinto (VM compartida vs. laptop dedicada, generación de CPU
+distinta) — hace falta medir velocidad real, no solo cantidad. Diseño,
+con dos decisiones explícitas del usuario:
+- **Multi-proceso, no single-thread:** simula la carga real de una
+  corrida de Geant4 (todos los núcleos ocupados a la vez, con la
+  contención de caché/memoria y el throttling térmico que eso implica)
+  en vez de medir el pico teórico aislado de un solo core — más
+  representativo del caso real que se quiere priorizar.
+- **`multiprocessing`, no `threading`:** el GIL de Python serializaría
+  cualquier intento de paralelismo con hilos en código Python puro — el
+  mismo tipo de bug recién corregido en Geant4/`WORKER_THREADS`, ahora
+  evitado a propósito en el propio script de medición.
+
+`cpu_score()` (nuevo en `worker.py`): `multiprocessing.Pool` con
+`WORKER_THREADS` procesos, cada uno hace 3M iteraciones fijas de
+`sqrt(sin(x)²+1)` (elegido por ser aritmética de punto flotante pura,
+sin numpy ni dependencias nuevas; fijo en cantidad de trabajo, no en
+tiempo, para que el trabajo realizado sea idéntico entre máquinas), mide
+el throughput agregado real (`ops_totales / tiempo_wall_clock`) y lo
+normaliza contra `_BENCHMARK_REFERENCE_OPS_PER_SEC` (4,77M ops/s — el
+throughput de UN proceso, medido, no supuesto, en la máquina donde se
+escribió este benchmark) para dar un número relativo comparable entre
+workers. **El score agregado NO escala 1:1 con el conteo de núcleos, y
+no debería** — la máquina de referencia (8 cores reales) dio un score
+agregado de ~5,7, no ~8,0: esa pérdida de eficiencia bajo procesos
+compitiendo por caché/scheduler es precisamente lo que este benchmark
+existe para capturar, no un error de calibración. Se corre **una sola
+vez al arrancar** el worker (no en cada heartbeat — el hardware no
+cambia en caliente), antes de `register()`; tarda ~0.9s, medido, no
+retrasa el arranque de forma notoria. Nunca bloquea el registro del
+worker si falla (`try/except` amplio, cae a `None` con log explícito).
+
+**Verificado con el contenedor real reconstruido, no solo en Python
+suelto:** sin límite, 8 threads → score 4,855; con `--cpus=2` (mismo
+mecanismo de `available_cpu_count()` ya verificado arriba), 2 threads →
+score 2,26 — proporcional y coherente, confirma que el benchmark
+respeta la misma cuota de cgroup que ya respeta `WORKER_THREADS`.
+
+**Esquema y asignación, con migración explícita porque la VM real ya
+tenía datos.** `cpu_score` (worker) y `min_cpu_score` (job) agregados al
+`SCHEMA` de `db.py` — pero `CREATE TABLE IF NOT EXISTS` no altera una
+tabla que ya existía antes de este cambio, y la VM real ya tenía 97 jobs
+`done` reales que no se podían perder recreando la base. Corregido con
+`_MIGRATIONS` (nuevo en `init_db()`): `ALTER TABLE ... ADD COLUMN`
+idempotente (maneja `"duplicate column"` para poder llamarse en cada
+arranque sin fallar) — verificado con una prueba que simula el esquema
+viejo con datos reales, confirma que sobreviven intactos y que correr la
+migración dos veces no falla. `claim_next_job()` filtra también por
+`min_cpu_score <= cpu_score` del worker, con el mismo criterio ya usado
+para RAM/CPU: un worker sin `cpu_score` (versión vieja, o el benchmark
+falló) no queda bloqueado — cae a "infinito" (cualquier `min_cpu_score`
+pasa), igual que `ram_free_gb` ausente cae a `ram_gb` total.
+`seed_jobs.py` gana `--min-cpu-score`; `seed_full_sweep.py` usa
+`MIN_CPU_SCORE = 0.5` en los mismos bins ya marcados como caros (bin7
+para GCR_H/He, bin0-1 para SEP_p) — deliberadamente bajo/prudente
+frente al ~5,7 de la máquina de referencia, sin mediciones reales
+todavía de qué score reportan las máquinas del equipo; ajustar una vez
+que se observen valores reales vía `GET /api/v1/workers`.
+`replicate_repeats.py` copia `min_cpu_score` del job base, igual que ya
+hace con `min_ram_gb`/`min_cpu_count`. 3 tests nuevos (26 en total):
+worker lento con muchos núcleos no recibe el job, worker rápido sí lo
+recibe, worker sin `cpu_score` no queda bloqueado.
+
+**No publicado todavía — mismo criterio que el fix de `WORKER_THREADS`:
+imagen reconstruida y verificada localmente
+(`geant4-worker:threads-fix`), ambas mejoras juntas en una sola
+publicación futura, no dos por separado.**
+
+**Pendiente, no bloqueante:** publicar la imagen con ambos fixes
+(`WORKER_THREADS`/`available_cpu_count()` + `cpu_score`) en GHCR y
+actualizar el digest en `install-worker.ps1` (coordinado con que cada
+voluntario actualice al terminar su corrida actual, ver arriba);
+publicar el resto de imágenes vía un workflow de GitHub Actions en
+general (hoy es push manual); reintentar Azure cuando soporte resuelva
+el bloqueo de región (opcional, GCP ya cubre la necesidad inmediata); y
+confirmar con Eddy/Joel si las 11 combinaciones faltantes de SEP_p y el
+`GCR_He bin6` de offsets 0,1 los tiene pendientes de correr/subir, o si
+nunca los corrió (para saber si esas 11 de SEP_p deben quedar en la cola
+distribuida a propósito, cosa que ya parece ser el caso dado que nadie
+las ha corrido en ningún lado).
 
 **Bug real, encontrado 2026-09-13, corregido en la quinta ronda de
 revisión (ver más abajo):** `GET /api/v1/workers` mostraba
