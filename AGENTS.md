@@ -1711,6 +1711,59 @@ existente prueba `db.py` directamente y valida los endpoints por HTTP
 real en vivo, patrón ya establecido — agregar `httpx` solo para esto no
 se justificó).
 
+**Bug real de producción, encontrado por un voluntario (2026-09-13):
+`WORKER_THREADS` caía silenciosamente a 1 sin importar la máquina.**
+Una captura de pantalla de Docker Desktop de `laptop-fabiola` (16
+núcleos) mostró el contenedor al 100% de UN SOLO núcleo — no era una
+config que ella hubiera tocado. Causa real: `worker.py` tenía
+`WORKER_THREADS = int(os.environ.get("WORKER_THREADS", "1"))` — default
+hardcodeado de 1 hilo — e `install-worker.ps1` solo mandaba la variable
+`WORKER_THREADS` al `docker run` si el voluntario pasaba
+`-WorkerThreads` explícitamente (`if ($WorkerThreads -gt 0)`); sin eso,
+la variable nunca llegaba al contenedor y `worker.py` caía a su default
+de 1. El docstring del parámetro decía "Default: todos los detectados
+por Docker" — nunca fue cierto. Cualquier voluntario que instalara sin
+conocer ese flag (la mayoría, ya que ninguna guía lo menciona como
+obligatorio) corría Geant4 en 1 solo núcleo sin saberlo, multiplicando
+por N el tiempo real de cada corrida.
+
+**Corregido en `worker.py`, no en el instalador de Windows.** Primera
+idea descartada: detectar `$env:NUMBER_OF_PROCESSORS` en PowerShell y
+pasarlo siempre — rechazada porque eso lee los núcleos del **host**
+Windows, no necesariamente los que Docker Desktop le asigna al
+contenedor (depende de la configuración de recursos de Docker Desktop,
+o de `--cpus` si el voluntario lo usó) — podría pedirle a Geant4 más
+hilos de los que el contenedor realmente tiene disponibles. Corregido
+en la fuente correcta: `WORKER_THREADS = int(os.environ.get
+("WORKER_THREADS") or (os.cpu_count() or 1))` — sin la variable
+explícita, usa `os.cpu_count()` leído DESDE DENTRO del contenedor, la
+única fuente que ve los CPUs reales asignados ahí. `install-worker.ps1`
+solo cambió su docstring (ya no promete algo falso) y un comentario
+explicando por qué el fix no vive ahí — el código de paso de la
+variable no cambió, sigue mandándola solo cuando el voluntario pide un
+límite explícito.
+
+**No aplicado en caliente a los workers ya corriendo — decisión
+explícita, con análisis de costo real.** Aplicar el fix a un worker
+existente exige recrear su contenedor (nueva imagen con el `worker.py`
+corregido), lo que mata cualquier corrida en curso dentro de él — se
+reencola sola tras el timeout de heartbeat (6h), pero se pierde el
+avance ya hecho. Verificado el estado real antes de decidir: `job 3`
+(`bryam-local`, GCR_He bin7) llevaba **330 minutos (5,5h)** corriendo,
+`job 2` (`laptop-juan`, GCR_He bin6) **200 min**, `job 37`/`38`
+(`fabiola`/`bryam-parrot`, GCR_H bin5) **96 min** — recrear cualquiera
+de esos ahora tiraría horas de cómputo real por un fix de rendimiento
+que no es urgente. **Decisión: cada voluntario actualiza (vuelve a
+correr `install-worker.ps1`, que descarga la imagen nueva) recién
+cuando su corrida actual termine sola**, no de inmediato — verificable
+sin preguntar mirando `GET /api/v1/jobs` (el job de esa persona pasa de
+`running` a `done`) o el propio log del contenedor
+(`docker logs -f geant4-worker` deja de mostrar la simulación y pide el
+siguiente job). El coordinator no tiene ningún canal para instruir a un
+worker remoto a actualizarse — el worker solo hace polling saliente, sin
+canal de entrada — así que esto requiere coordinación humana directa
+con cada persona, no algo que se automatice desde el servidor.
+
 **Pendiente, no bloqueante:** publicar la imagen vía un workflow de
 GitHub Actions (hoy es push manual), reintentar Azure cuando soporte
 resuelva el bloqueo de región (opcional, GCP ya cubre la necesidad

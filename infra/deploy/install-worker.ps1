@@ -55,8 +55,10 @@
     GET /api/v1/workers). Default: nombre de la maquina.
 
 .PARAMETER WorkerThreads
-    Nucleos logicos que el worker le pide a Geant4 por run. Default:
-    todos los detectados por Docker.
+    Nucleos logicos que el worker le pide a Geant4 por run. Default (sin
+    pasar este parametro): todos los nucleos que Docker le asigna al
+    contenedor, detectados por el propio worker desde adentro
+    (os.cpu_count() en worker.py) -- no un numero fijado por este script.
 
 .PARAMETER WorkerToken
     Token compartido del Coordinator (X-Worker-Token), si esta
@@ -677,6 +679,22 @@ function Install-WorkerContainer {
         "-e", "COORDINATOR_URL=$CoordinatorUrl",
         "-e", "WORKER_LABEL=$WorkerLabel"
     )
+    # Bug real encontrado en produccion (2026-09-13): si no se pasaba
+    # -WorkerThreads, esta variable nunca se mandaba al contenedor --
+    # worker.py caia a SU propio default hardcodeado (1 solo hilo), sin
+    # importar cuantos nucleos tenga la maquina. Confirmado en vivo con
+    # una PC de 16 nucleos corriendo al 100% en solo 1. NO se corrige
+    # aqui detectando nucleos del lado de Windows ($env:
+    # NUMBER_OF_PROCESSORS) -- esos son los del HOST, no
+    # necesariamente los que Docker Desktop le asigna al contenedor
+    # (depende de su configuracion de recursos, o de -Cpus si el
+    # voluntario lo uso). El fix real esta en worker.py: cuando no se
+    # pasa WORKER_THREADS, usa os.cpu_count() leido DESDE DENTRO del
+    # contenedor -- la unica fuente que ve exactamente los CPUs
+    # realmente disponibles ahi. Este bloque solo sigue pasando la
+    # variable explicitamente cuando el voluntario SI pidio un limite
+    # (-WorkerThreads > 0), para no perder esa opcion de "ceder menos
+    # nucleos" que ya ofrece la guia.
     if ($WorkerThreads -gt 0) {
         $envArgs += @("-e", "WORKER_THREADS=$WorkerThreads")
     }
