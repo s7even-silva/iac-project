@@ -118,7 +118,7 @@ $PauseFile = Join-Path $UserStateDir "worker.paused"
 # arranco la instalacion, no una version distinta si alguien pusheo
 # cambios entre medio. Actualizar este hash cuando el script cambie de
 # verdad y se quiera que los voluntarios reciban la version nueva.
-$InstallScriptCommit = "423779710474e176c6b17de962f6ebc7472f6033"
+$InstallScriptCommit = "38e5ee60bdbf26c89c01b96adf712f04ffae066e"
 $InstallScriptUrl = "https://raw.githubusercontent.com/s7even-silva/iac-project/$InstallScriptCommit/infra/deploy/install-worker.ps1"
 $MaxResumeAttempts = 3
 
