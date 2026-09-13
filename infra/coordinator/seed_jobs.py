@@ -10,6 +10,14 @@ Uso:
     # Un job barato de prueba (valor por defecto de n-events bajo a proposito
     # para el primer corte end-to-end, ver AGENTS.md):
     python3 seed_jobs.py --species SEP_p --bin-index 0 --offset-x-m 0.0 --n-events 100
+
+    # Con requisitos minimos de recursos (el coordinator solo se lo ofrece a
+    # un worker cuya telemetria en vivo -- cpu_count, ram_free_gb -- alcance;
+    # ver claim_next_job() en db.py). Util para bins caros de mucha RAM
+    # (Shielding con muchos secundarios) que no deberian ir a un voluntario
+    # con una VM chica:
+    python3 seed_jobs.py --species GCR_He --bin-index 7 --offset-x-m 2,3,4 \
+        --n-events 10000 --min-ram-gb 8 --min-cpu-count 4
 """
 import argparse
 import sys
@@ -31,6 +39,11 @@ def main():
     parser.add_argument("--repeticion", type=int, default=0)
     parser.add_argument("--priority", type=int, default=0,
                          help="Mayor = se sirve antes. Usar valor alto para jobs urgentes (ej. bin7 diferido).")
+    parser.add_argument("--min-ram-gb", type=float, default=0,
+                         help="RAM libre minima (GB, en vivo) que debe reportar un worker para recibir este "
+                              "job. Default 0 (cualquier worker). Ver claim_next_job() en db.py.")
+    parser.add_argument("--min-cpu-count", type=int, default=0,
+                         help="Nucleos minimos que debe reportar un worker para recibir este job. Default 0.")
     args = parser.parse_args()
 
     db.init_db()
@@ -40,6 +53,7 @@ def main():
         job_id = db.insert_job(
             species=args.species, bin_index=args.bin_index, offset_x_m=offset_x_m,
             repeticion=args.repeticion, n_events=args.n_events, priority=args.priority,
+            min_ram_gb=args.min_ram_gb, min_cpu_count=args.min_cpu_count,
         )
         created.append((job_id, offset_x_m))
 

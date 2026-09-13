@@ -87,5 +87,32 @@ de ejecución exactamente una vez.
 python -m pytest infra/coordinator/test_coordinator.py infra/worker/test_worker.py
 ```
 
-Pendiente después del primer corte: despliegue protegido, publicación en GHCR,
-versionado de imágenes por digest en jobs, requisitos CPU/RAM y jobs Elmer.
+## Qué ve el coordinator de cada worker (y qué no)
+
+El coordinator solo sabe lo que el worker le reporta explícitamente al
+registrarse (`POST /workers/register`) y en cada heartbeat (`POST
+/workers/{id}/heartbeat`, por defecto cada 30s aunque no haya job) — no
+hay acceso remoto al host más allá de eso, ni SSH, ni inspección de
+procesos ajenos al propio worker:
+
+- `hostname`, `cpu_count` (`os.cpu_count()`), `ram_gb` (total, de
+  `/proc/meminfo` `MemTotal`) — enviados una vez al registrar.
+- `ram_free_gb` (`MemAvailable`, no `MemFree` — la estimación del kernel
+  de RAM realmente disponible sin entrar a swap) y `cpu_load_pct` (load
+  average de 1 minuto normalizado por núcleos, no un muestreo instantáneo
+  de `/proc/stat`) — se reenvían en **cada** heartbeat, así que sí se
+  actualizan en vivo mientras el worker está ocioso o corriendo un job.
+  Consultables en `GET /api/v1/workers`.
+- **No se mide ancho de banda de red** en absoluto.
+
+Un job puede declarar `min_ram_gb`/`min_cpu_count` (`seed_jobs.py
+--min-ram-gb --min-cpu-count`, default 0 = cualquier worker) —
+`claim_next_job()` en `db.py` solo ofrece el job a un worker cuya
+telemetría en vivo (`ram_free_gb`, no `ram_gb` total) alcance, para no
+mandar un bin caro a una VM voluntaria con poca RAM libre en ese momento.
+Un worker que nunca mandó telemetría (versión vieja) no queda bloqueado:
+cae a comparar contra `ram_gb` total.
+
+Pendiente después del primer corte: despliegue protegido, publicación en
+GHCR, versionado de imágenes por digest en jobs, medición de ancho de
+banda si se necesita filtrar por eso, y jobs Elmer.

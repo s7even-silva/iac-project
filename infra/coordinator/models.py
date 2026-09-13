@@ -8,10 +8,17 @@ class WorkerRegister(BaseModel):
     cpu_count: int = 0
     ram_gb: float = 0.0
     label: str = ""
+    ram_free_gb: float | None = None
+    cpu_load_pct: float | None = None
 
 
 class WorkerRef(BaseModel):
     worker_id: str
+
+
+class HeartbeatIn(BaseModel):
+    ram_free_gb: float | None = None
+    cpu_load_pct: float | None = None
 
 
 class JobOut(BaseModel):
@@ -21,6 +28,8 @@ class JobOut(BaseModel):
     offset_x_m: float
     repeticion: int
     n_events: int
+    min_ram_gb: float = 0
+    min_cpu_count: int = 0
 
 
 class FailIn(BaseModel):

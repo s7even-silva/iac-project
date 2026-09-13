@@ -162,3 +162,51 @@ def test_start_requires_assigned_worker():
     db.claim_next_job('owner')
     assert not db.mark_running(job, 'someone-else')
     assert db.mark_running(job, 'owner')
+
+
+def test_worker_below_min_ram_does_not_get_job():
+    db.upsert_worker('small', 'host', 8, 4.0, '', ram_free_gb=1.0, cpu_load_pct=5.0)
+    job_id = db.insert_job('GCR_He', 7, 3.0, 0, 10000, min_ram_gb=8.0)
+    assert db.claim_next_job('small') is None
+    assert db.get_job(job_id)['status'] == 'pending'
+
+
+def test_worker_below_min_cpu_does_not_get_job():
+    db.upsert_worker('weak', 'host', 2, 16.0, '', ram_free_gb=16.0)
+    db.insert_job('GCR_He', 7, 3.0, 0, 10000, min_cpu_count=4)
+    assert db.claim_next_job('weak') is None
+
+
+def test_worker_meeting_requirements_gets_job():
+    db.upsert_worker('strong', 'host', 16, 32.0, '', ram_free_gb=20.0, cpu_load_pct=10.0)
+    job_id = db.insert_job('GCR_He', 7, 3.0, 0, 10000, min_ram_gb=8.0, min_cpu_count=4)
+    claimed = db.claim_next_job('strong')
+    assert claimed is not None
+    assert claimed['job_id'] == job_id
+
+
+def test_worker_without_telemetry_falls_back_to_total_ram():
+    # Registrado sin ram_free_gb (worker viejo o metrica no disponible) --
+    # no debe bloquear jobs sin requisitos, cae a ram_gb total.
+    db.upsert_worker('legacy', 'host', 8, 16.0, '')
+    job_id = db.insert_job('SEP_p', 1, 1.0, 0, 100, min_ram_gb=8.0)
+    claimed = db.claim_next_job('legacy')
+    assert claimed is not None
+    assert claimed['job_id'] == job_id
+
+
+def test_heartbeat_updates_live_telemetry():
+    db.upsert_worker('w', 'host', 8, 16.0, '', ram_free_gb=10.0, cpu_load_pct=20.0)
+    db.touch_heartbeat('w', ram_free_gb=2.0, cpu_load_pct=90.0)
+    workers = db.list_workers()
+    assert len(workers) == 1
+    assert workers[0]['ram_free_gb'] == 2.0
+    assert workers[0]['cpu_load_pct'] == 90.0
+
+
+def test_heartbeat_without_telemetry_keeps_previous_values():
+    db.upsert_worker('w', 'host', 8, 16.0, '', ram_free_gb=10.0, cpu_load_pct=20.0)
+    db.touch_heartbeat('w')  # sin telemetria nueva -- no debe borrar la anterior
+    workers = db.list_workers()
+    assert workers[0]['ram_free_gb'] == 10.0
+    assert workers[0]['cpu_load_pct'] == 20.0
