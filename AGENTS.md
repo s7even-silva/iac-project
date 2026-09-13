@@ -1909,23 +1909,48 @@ hace con `min_ram_gb`/`min_cpu_count`. 3 tests nuevos (26 en total):
 worker lento con muchos núcleos no recibe el job, worker rápido sí lo
 recibe, worker sin `cpu_score` no queda bloqueado.
 
-**No publicado todavía — mismo criterio que el fix de `WORKER_THREADS`:
-imagen reconstruida y verificada localmente
-(`geant4-worker:threads-fix`), ambas mejoras juntas en una sola
-publicación futura, no dos por separado.**
+**Publicado en GHCR (2026-09-13), digest actualizado en
+`install-worker.ps1`.** El usuario reconstruyó la imagen desde su propia
+terminal (mismo `Dockerfile.geant4-worker`, `--build-arg
+BASE_IMAGE=ghcr.io/.../geant4-worker:latest` para reusar la capa ya
+compilada de Geant4) y la publicó con `docker push` — un primer intento
+falló con `unauthenticated` (el login de `ghcr.io` guardado en su
+terminal había expirado o dejó de ser válido, no relacionado con el
+código), resuelto generando un Personal Access Token nuevo (scope
+`write:packages`) y volviendo a autenticar. Digest resultante,
+verificado accesible públicamente sin autenticación (`docker manifest
+inspect`, `linux/amd64`) antes de actualizar el pin:
+`sha256:78cce5255237fe3296bcd985fc04c8675ed98d46d07dd20cef7f0ea70f1ac461`
+— reemplaza al digest anterior (`db57b43f...`) en `$WorkerImage` de
+`install-worker.ps1`. Contiene ambos fixes de esta sesión juntos
+(`WORKER_THREADS`/`available_cpu_count()` + `cpu_score`), como se
+decidió (una sola publicación coordinada, no dos separadas).
 
-**Pendiente, no bloqueante:** publicar la imagen con ambos fixes
-(`WORKER_THREADS`/`available_cpu_count()` + `cpu_score`) en GHCR y
-actualizar el digest en `install-worker.ps1` (coordinado con que cada
-voluntario actualice al terminar su corrida actual, ver arriba);
-publicar el resto de imágenes vía un workflow de GitHub Actions en
-general (hoy es push manual); reintentar Azure cuando soporte resuelva
-el bloqueo de región (opcional, GCP ya cubre la necesidad inmediata); y
-confirmar con Eddy/Joel si las 11 combinaciones faltantes de SEP_p y el
-`GCR_He bin6` de offsets 0,1 los tiene pendientes de correr/subir, o si
-nunca los corrió (para saber si esas 11 de SEP_p deben quedar en la cola
-distribuida a propósito, cosa que ya parece ser el caso dado que nadie
-las ha corrido en ningún lado).
+**Aún no aplicado a ningún worker en producción — sigue pendiente la
+coordinación ya descrita arriba**: cada voluntario (Fabiola, laptop-juan,
+bryam-local, y el propio `bryam-parrot`/worker local del usuario) debe
+volver a instalar/actualizar recién cuando su corrida actual termine
+sola, no de inmediato — el nuevo digest en el repo no fuerza ninguna
+actualización por sí solo, cada quien sigue corriendo la imagen que ya
+tenía descargada hasta que vuelva a correr `install-worker.ps1` (o,
+para quien corre sin Docker como el propio usuario, hasta que reinicie
+`worker.py` manualmente con el código actualizado del repo).
+
+**Pendiente, no bloqueante:** aplicar la migración de esquema
+(`cpu_score`/`min_cpu_score`) en la VM de producción real — ya
+verificada segura contra datos existentes, solo falta que ocurra (pasa
+sola la próxima vez que el servicio `geant4-coordinator` se reinicie y
+corra `init_db()`, o se puede forzar antes con un reinicio deliberado
+del servicio); coordinar con cada voluntario que actualice cuando
+termine su corrida actual (ver arriba); publicar el resto de imágenes
+vía un workflow de GitHub Actions en general (hoy es push manual);
+reintentar Azure cuando soporte resuelva el bloqueo de región (opcional,
+GCP ya cubre la necesidad inmediata); y confirmar con Eddy/Joel si las
+11 combinaciones faltantes de SEP_p y el `GCR_He bin6` de offsets 0,1
+los tiene pendientes de correr/subir, o si nunca los corrió (para saber
+si esas 11 de SEP_p deben quedar en la cola distribuida a propósito,
+cosa que ya parece ser el caso dado que nadie las ha corrido en ningún
+lado).
 
 **Bug real, encontrado 2026-09-13, corregido en la quinta ronda de
 revisión (ver más abajo):** `GET /api/v1/workers` mostraba
