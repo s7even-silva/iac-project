@@ -1480,6 +1480,23 @@ resuelva el bloqueo de región (opcional, GCP ya cubre la necesidad
 inmediata), y confirmar el estado real de las posiciones 0,1 del
 manifiesto de Eddy para poblar cualquier combinación que aún falte ahí.
 
+**Bug real conocido, sin arreglar a propósito (2026-09-13):**
+`GET /api/v1/workers` muestra `status: "online"` de forma indefinida
+para cualquier worker que alguna vez mandó un heartbeat exitoso —
+`touch_heartbeat()`/`upsert_worker()` solo escriben `status='online'`,
+nada pone `'offline'` cuando el heartbeat deja de llegar. Encontrado en
+vivo: el worker de prueba (`test-prod-verificacion`, detenido hace más
+de una hora) seguía apareciendo `"online"` en `/workers` mientras
+`/health`'s `workers_online` (que sí filtra por `last_heartbeat` reciente,
+ver `count_workers_online()`) correctamente mostraba 0 — inconsistencia
+entre los dos endpoints, no un fallo del conteo en sí. Se eliminó ese
+registro a mano (`DELETE FROM workers WHERE worker_id=...`) en vez de
+arreglar el bug de raíz — decisión explícita del usuario, no urgente
+mientras se recuerde leer `last_heartbeat` al revisar `/workers`
+manualmente. Fix pendiente si se retoma: que `/workers` compute el
+mismo criterio de "online" que ya usa `count_workers_online()`, en vez
+de confiar en la columna `status` guardada.
+
 ## Pendientes conocidos
 
 - ~~Reemplazar los 6 CSV placeholder de `data/sources/` con espectros reales por fase solar.~~ **Hecho (2026-09-10), los 6 son reales.** Modelos: **Badhwar-O'Neill 2020** para GCR (mínimo 31/12/2019-01/01/2020, máximo 14-15/01/2023 — limitado por BON2020 en OLTARIS, ver nota arriba), **evento histórico** para SEP (Oct 1989 = máximo, Feb 1956 ajuste LaRC = mínimo — no el modelo probabilístico ESP-PSYCHIC). Detalle completo: [`docs/checklist_espectros_reales.md`](geant4/GCR_SEP_Sim/docs/checklist_espectros_reales.md).
