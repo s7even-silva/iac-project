@@ -190,21 +190,20 @@ function Test-Wsl2Ready {
         return $false
     }
 
+    # 'wsl --update' es idempotente (no hace nada si ya esta al dia) y
+    # se corre siempre, SIN parsear la salida de 'wsl --version' -- esa
+    # salida es texto localizado (ej. "WSL version:" no aparece igual en
+    # un Windows en espanol), asi que buscar esa cadena literal fallaba
+    # silenciosamente sin avisar en cualquier idioma distinto al que se
+    # probo. El exit code SI se revisa ahora (antes se ignoraba).
     try {
-        $versionOutput = wsl --version 2>&1
-        $versionLine = $versionOutput | Where-Object { $_ -match "WSL version:\s*([\d.]+)" }
-        if ($versionLine -and $Matches[1]) {
-            $current = [version]$Matches[1]
-            $minimum = [version]"2.1.5"
-            if ($current -lt $minimum) {
-                Write-InstallLog "WSL $current esta desactualizado (Docker recomienda >= $minimum) -- actualizando con 'wsl --update'..."
-                wsl --update 2>&1 | ForEach-Object { Write-InstallLog "  $_" }
-            }
-        } else {
-            Write-InstallLog "No se pudo leer la version de WSL desde 'wsl --version' -- se continua igual." "WARN"
+        Write-InstallLog "Verificando actualizaciones de WSL ('wsl --update')..."
+        wsl --update 2>&1 | ForEach-Object { Write-InstallLog "  $_" }
+        if ($LASTEXITCODE -ne 0) {
+            Write-InstallLog "'wsl --update' termino con codigo $LASTEXITCODE -- se continua igual, pero si Docker Desktop falla al abrir mas adelante, correr ese comando a mano (en una consola de administrador) puede ser la causa." "WARN"
         }
     } catch {
-        Write-InstallLog "No se pudo verificar/actualizar la version de WSL ($_) -- se continua igual." "WARN"
+        Write-InstallLog "No se pudo correr 'wsl --update' ($_) -- se continua igual." "WARN"
     }
     return $true
 }
@@ -238,6 +237,14 @@ function Register-ResumeTask {
     $answer = Read-Host "Escribe 'si' para reiniciar ahora, o cualquier otra cosa para cancelar (la tarea queda programada, reinicia tu mismo cuando quieras)"
     Save-SelfCopy
 
+    # RIESGO CONOCIDO, sin resolver a proposito: WorkerToken (si se usa)
+    # queda visible en los argumentos de esta Scheduled Task -- cualquiera
+    # con acceso a 'schtasks /query /tv' o al Task Scheduler en esta PC
+    # puede leerlo en texto plano. Aceptable mientras WORKER_TOKEN no
+    # este activado en produccion (ver AGENTS.md, "Computo distribuido");
+    # si se activa, cifrar esto (DPAPI/Credential Manager) antes de
+    # depender de el como control de acceso real, no solo un secreto
+    # compartido entre companeros de confianza.
     $argList = "-NoProfile -ExecutionPolicy Bypass -File `"$SelfCopyPath`" " +
                "-CoordinatorUrl `"$CoordinatorUrl`" -WorkerLabel `"$WorkerLabel`" " +
                "-WorkerThreads $WorkerThreads -WorkerToken `"$WorkerToken`" " +
@@ -378,6 +385,14 @@ function Set-DockerAutoStart {
 function Start-DockerAndWait {
     param([int]$TimeoutSeconds = 180)
 
+    # Se llama siempre aqui, no solo dentro de Install-DockerDesktop
+    # (tras una instalacion nueva) -- si Docker Desktop ya existia desde
+    # antes (el caso normal de companeros que ya tenian todo), este
+    # proceso de PowerShell puede seguir sin 'docker' en su PATH igual,
+    # por ejemplo si se abrio antes de que Docker se instalara en esa PC.
+    # Es barata y segura de llamar de mas.
+    Sync-PathWithDockerCli
+
     $dockerExe = "$env:ProgramFiles\Docker\Docker\Docker Desktop.exe"
     docker info 2>&1 | Out-Null
     $engineUp = ($LASTEXITCODE -eq 0)
@@ -428,8 +443,31 @@ function Test-CoordinatorReachable {
     }
 }
 
+function Test-EnoughDiskSpace {
+    # La imagen pesa ~5GB comprimida, algo mas descomprimida en el
+    # storage de Docker -- verificar ANTES de gastar minutos descargando
+    # para fallar recien casi al final si el disco no alcanza.
+    param([double]$RequiredGb = 10.0)
+    $systemDrive = $env:SystemDrive
+    $drive = Get-PSDrive -Name $systemDrive.TrimEnd(':') -ErrorAction SilentlyContinue
+    if (-not $drive) {
+        Write-InstallLog "No se pudo verificar espacio libre en disco -- se continua igual." "WARN"
+        return $true
+    }
+    $freeGb = [math]::Round($drive.Free / 1GB, 1)
+    if ($freeGb -lt $RequiredGb) {
+        Write-InstallLog "Solo hay $freeGb GB libres en $systemDrive (se recomiendan al menos $RequiredGb GB para la imagen del worker, ~5GB, mas margen de Docker)." "ERROR"
+        return $false
+    }
+    Write-InstallLog "Espacio en disco OK ($freeGb GB libres en $systemDrive)."
+    return $true
+}
+
 function Invoke-DockerPullWithRetry {
     param([int]$MaxAttempts = 3)
+    if (-not (Test-EnoughDiskSpace)) {
+        throw "Espacio en disco insuficiente para descargar la imagen del worker. Libera espacio e intenta de nuevo."
+    }
     for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
         Write-InstallLog "Descargando la imagen del worker ($WorkerImage), intento $attempt de $MaxAttempts..."
         $output = docker pull $WorkerImage 2>&1
@@ -502,9 +540,18 @@ function Install-WorkerContainer {
     if ($Cpus) { $limitArgs += @("--cpus", $Cpus) }
     if ($MemoryLimit) { $limitArgs += @("--memory", $MemoryLimit) }
 
+    # Volumen NOMBRADO (no bind mount a una ruta del host) -- sobrevive
+    # a docker rm -f del contenedor, asi que worker_id persiste entre
+    # recreaciones (ej. al actualizar config/imagen). Bug real: sin
+    # esto, cada docker rm -f borraba /var/lib/geant4-worker DENTRO del
+    # contenedor y la misma PC volvia a aparecer como worker nuevo en
+    # el Coordinator, perdiendo su identidad.
+    docker volume create geant4-worker-data *> $null
+
     Write-InstallLog "Creando el contenedor del worker..."
     docker run -d --name geant4-worker --restart unless-stopped `
         --label "geant4-worker-config-hash=$desiredHash" `
+        -v geant4-worker-data:/var/lib/geant4-worker `
         @envArgs @limitArgs $WorkerImage 2>&1 | ForEach-Object { Write-InstallLog "  $_" }
     if ($LASTEXITCODE -ne 0) { throw "docker run fallo." }
 
@@ -590,11 +637,24 @@ function Register-WatchdogTask {
     Write-InstallLog "Registrando el watchdog que revisa el worker en cada inicio de sesion..."
     Save-SelfCopy
 
+    $pauseFile = Join-Path $LogDir "worker.paused"
     $watchdogScript = Join-Path $LogDir "watchdog.ps1"
     @"
 `$ErrorActionPreference = 'SilentlyContinue'
 `$LogFile = '$LogFile'
+`$PauseFile = '$pauseFile'
 function Log(`$m) { Add-Content -Path `$LogFile -Value ("[{0}] [WATCHDOG] {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), `$m) }
+
+# Bug real corregido aqui: antes el watchdog volvia a arrancar el
+# contenedor con 'docker start' sin importar POR QUE estaba detenido --
+# un 'docker stop geant4-worker' voluntario (la forma documentada de
+# pausar en la guia) quedaba deshecho en <=30 min por este mismo
+# watchdog, sin que el usuario lo pidiera. Ahora respeta un archivo de
+# pausa explicito: si existe, no toca el contenedor aunque este parado.
+if (Test-Path `$PauseFile) {
+    Log "Worker pausado a proposito (existe `$PauseFile) -- no se toca."
+    exit 0
+}
 
 Start-Sleep -Seconds 30  # dar tiempo a que la sesion termine de cargar
 docker info *> `$null
