@@ -47,6 +47,20 @@ El contenedor:
   disponible, pero todo lo ya terminado y subido queda guardado para
   siempre).
 
+## Cómo se reparte el trabajo según tu PC
+
+No todas las corridas pesan igual. Hay dos tipos en la cola ahora mismo:
+
+- **bin6**: más liviano (~2h estimadas por corrida). Cualquier PC puede
+  tomarlo.
+- **bin7**: el más pesado (~5-6h estimadas por corrida). El servidor
+  **solo se lo ofrece a una PC con al menos 8GB de RAM libre y 4
+  núcleos disponibles en ese momento** — tu worker reporta esos datos
+  automáticamente en cada heartbeat (cada 30s), sin que tengas que
+  configurar nada. Si tu PC no alcanza ese mínimo, simplemente nunca te
+  tocará un bin7 — te asignará otra cosa o esperará, sin error ni
+  problema de tu lado.
+
 ## Preguntas frecuentes
 
 **¿Si apago mi PC a mitad de una corrida se pierde algo del proyecto?**
@@ -101,6 +115,22 @@ Sí, dos formas:
 No especialmente — el contenedor sube solo un archivo CSV pequeño al
 terminar cada corrida (unos KB), no tráfico constante. Sí necesita estar
 conectado, simplemente no importa la velocidad.
+
+**Uso una VM y le voy a bajar la RAM/CPU después — ¿hay problema?**
+Depende de cuándo pase:
+- **Antes de que tome la siguiente corrida:** ningún problema. El
+  servidor revisa tus recursos disponibles *en ese momento* cada vez
+  que pides trabajo nuevo — si ya no cumples el mínimo para un bin7, no
+  te lo va a ofrecer, te dará algo más liviano o esperará.
+- **A mitad de una corrida que ya empezó:** ahí sí hay un caso a tener
+  en cuenta — el servidor no vuelve a comprobar tus recursos mientras
+  la simulación ya está corriendo. Si la memoria baja tanto que el
+  proceso se cae, no pasa nada grave: se reporta como fallo y el
+  servidor la vuelve a asignar a otra PC automáticamente (nada se
+  pierde). Si la VM sigue funcionando pero mucho más lenta, la
+  simulación simplemente tardará más de lo esperado. En cualquier caso,
+  mejor evitarlo si puedes — bájale recursos a la VM entre corridas, no
+  mientras `docker logs -f geant4-worker` muestre una corrida en curso.
 
 **¿Cómo sé si mi PC está aportando de verdad?**
 Ver el log en vivo:
