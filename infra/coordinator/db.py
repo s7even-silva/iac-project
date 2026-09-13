@@ -171,6 +171,22 @@ def touch_heartbeat_in_conn(conn, worker_id: str) -> None:
     )
 
 
+def force_claim_job(job_id: int, worker_id: str) -> bool:
+    """Asigna un job_id ESPECIFICO a un worker, saltandose la seleccion por
+    prioridad de claim_next_job(). Solo para uso administrativo (ver
+    import_local_results.py) -- registrar trabajo ya hecho localmente,
+    donde se conoce exactamente que job corresponde, no "el siguiente
+    pendiente". Solo funciona si el job sigue 'pending'; no le quita un
+    job a un worker real que ya lo tenga en 'claimed'/'running'."""
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE jobs SET status='claimed', claimed_by=?, claimed_at=?, attempt=attempt+1, updated_at=? "
+            "WHERE job_id=? AND status='pending'",
+            (worker_id, now_iso(), now_iso(), job_id),
+        )
+        return cur.rowcount > 0
+
+
 def mark_running(job_id: int, worker_id: str | None = None) -> bool:
     with get_conn() as conn:
         cur = conn.execute(
@@ -184,6 +200,18 @@ def mark_running(job_id: int, worker_id: str | None = None) -> bool:
 def get_job(job_id: int) -> sqlite3.Row | None:
     with get_conn() as conn:
         return conn.execute("SELECT * FROM jobs WHERE job_id=?", (job_id,)).fetchone()
+
+
+def get_job_by_combo(species: str, bin_index: int, offset_x_m: float, repeticion: int) -> sqlite3.Row | None:
+    """Busca un job por su clave natural (mismo UNIQUE que insert_job()) en
+    vez de por job_id -- util para scripts administrativos (ej.
+    import_local_results.py) que solo conocen la combinacion, no el id
+    interno asignado al sembrarla."""
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT * FROM jobs WHERE species=? AND bin_index=? AND ABS(offset_x_m - ?) < 1e-6 AND repeticion=?",
+            (species, bin_index, offset_x_m, repeticion),
+        ).fetchone()
 
 
 def record_result(job_id: int, worker_id: str, duration_s: float, exit_code: int, n_rows: int,
