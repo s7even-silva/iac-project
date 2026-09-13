@@ -2491,3 +2491,17 @@ alcanzan `failed` cuando agotan los intentos. Las pruebas aisladas usan
 reduce el timeout de seis horas por defecto. Flujo y límites en
 [infra/README.md](infra/README.md). Elmer, nube y publicación GHCR quedan fuera
 del primer corte local acordado.
+
+### Revisión del ciclo de vida del worker (2026-09-13)
+
+`infra/deploy/install-worker.ps1 -Action Uninstall` integra la retirada, con
+`-WhatIf` y confirmación; el script separado delega en él. Por defecto conserva
+el volumen y resultados pendientes. `-RemoveWorkerData`, `-RemoveDocker`,
+`-RemoveWSL` y `-RemoveDockerAutostart` son opciones explícitas; Docker exige
+aceptar borrar datos y WSL no desregistra distribuciones. La migración antigua
+ahora respalda/restaura TODO `/var/lib/geant4-worker`, no solo `worker_id`.
+Corregidos errores de primera instalación, preservación de configuración,
+autocopia, pausa/reanudación y provisionadores Bash. Instrucciones, recuperación,
+fuentes y límites de validación en [infra/deploy/README.md](infra/deploy/README.md).
+No se cambió la lógica de resultados pendientes de `worker.py`. Las pruebas de
+retirada son con mocks, sin validación real en Windows ni despliegue de nube.

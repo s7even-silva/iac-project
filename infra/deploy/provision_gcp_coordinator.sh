@@ -31,7 +31,7 @@ export PATH="$HOME/google-cloud-sdk/bin:$PATH"
 command -v gcloud >/dev/null 2>&1 || { echo "ERROR: gcloud no encontrado. Instalalo primero." >&2; exit 1; }
 
 PROJECT="$(gcloud config get-value project 2>/dev/null)"
-[ -n "$PROJECT" ] || { echo "ERROR: no hay proyecto default. Corre 'gcloud config set project <id>' primero." >&2; exit 1; }
+[[ -n "$PROJECT" && "$PROJECT" != "(unset)" ]] || { echo "ERROR: no hay proyecto default. Corre 'gcloud config set project <id>' primero." >&2; exit 1; }
 
 echo "==> Proyecto activo: $PROJECT"
 echo "==> Verificando facturacion habilitada"
@@ -41,11 +41,12 @@ gcloud billing projects describe "$PROJECT" --format="value(billingEnabled)" | g
 }
 
 echo "==> Creando regla de firewall para el puerto 8000 (API del coordinator)"
-gcloud compute firewall-rules create geant4-coordinator-allow-8000 \
+if ! gcloud compute firewall-rules describe geant4-coordinator-allow-8000 >/dev/null 2>&1; then
+  gcloud compute firewall-rules create geant4-coordinator-allow-8000 \
   --allow=tcp:8000 \
   --target-tags=geant4-coordinator \
-  --description="ActiveShield_Sim compute coordinator API" \
-  2>&1 | grep -v "already exists" || true
+  --description="ActiveShield_Sim compute coordinator API"
+fi
 
 echo "==> Creando VM '$VM_NAME' ($MACHINE_TYPE) en $ZONE con cloud-init"
 gcloud compute instances create "$VM_NAME" \

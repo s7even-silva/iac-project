@@ -47,6 +47,19 @@
     pueda pedir trabajo de nuevo -- ver infra/README.md, "Heartbeat y
     recuperacion".
 
+.PARAMETER Action
+    Install (default) instala/actualiza; Uninstall retira worker y tareas,
+    conservando el volumen. Admite -WhatIf y solicita confirmacion al retirar.
+.PARAMETER RemoveWorkerData
+    Con Uninstall: borra el volumen del worker y resultados pendientes.
+.PARAMETER RemoveDocker
+    Con Uninstall y RemoveWorkerData: desinstala Docker Desktop y TODOS sus datos.
+.PARAMETER RemoveWSL
+    Con Uninstall: retira WSL del usuario y desactiva sus caracteristicas Windows.
+    No borra distribuciones ni reinicia automaticamente.
+.PARAMETER RemoveDockerAutostart
+    Con Uninstall: quita el autoinicio Docker del usuario actual.
+
 .PARAMETER CoordinatorUrl
     URL del coordinator. Default: el desplegado en produccion.
 
@@ -95,8 +108,14 @@
     # Desktop (ya funcionan), y solo descarga la imagen nueva si cambio.
     .\install-worker.ps1
 #>
-[CmdletBinding()]
+[CmdletBinding(SupportsShouldProcess, ConfirmImpact = "High")]
 param(
+    [ValidateSet("Install", "Uninstall")]
+    [string]$Action = "Install",
+    [switch]$RemoveDockerAutostart,
+    [switch]$RemoveWorkerData,
+    [switch]$RemoveDocker,
+    [switch]$RemoveWSL,
     [string]$CoordinatorUrl = "https://coordinator.vlaboratory.org",
     [string]$WorkerLabel,
     [int]$WorkerThreads = 0,
@@ -111,6 +130,10 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$SourceScriptPath = $PSCommandPath
+if ($Action -eq "Install" -and ($RemoveDockerAutostart -or $RemoveWorkerData -or $RemoveDocker -or $RemoveWSL -or $WhatIfPreference)) {
+    throw "Las opciones de retirada y -WhatIf requieren -Action Uninstall."
+}
 $LogDir = Join-Path $env:ProgramData "Geant4Worker"
 $LogFile = Join-Path $LogDir "install-worker.log"
 $ResumeTaskName = "Geant4WorkerInstallResume"
@@ -138,13 +161,13 @@ $InstallScriptCommit = "38e5ee60bdbf26c89c01b96adf712f04ffae066e"
 $InstallScriptUrl = "https://raw.githubusercontent.com/s7even-silva/iac-project/$InstallScriptCommit/infra/deploy/install-worker.ps1"
 $MaxResumeAttempts = 3
 
-New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
+if ($Action -eq "Install") { New-Item -ItemType Directory -Force -Path $LogDir | Out-Null }
 # $env:LOCALAPPDATA bajo una sesion elevada (RunLevel Highest, no un
 # token de SYSTEM distinto -- ver Register-ResumeTask/Register-
 # WatchdogTask, ambas usan -UserId $env:USERNAME) sigue resolviendo al
 # perfil del usuario actual, asi que esto crea la carpeta en el lugar
 # correcto sin tener que calcular la ruta del perfil aparte.
-New-Item -ItemType Directory -Force -Path $UserStateDir | Out-Null
+if ($Action -eq "Install") { New-Item -ItemType Directory -Force -Path $UserStateDir | Out-Null }
 
 # $MyInvocation.MyCommand.Path es $null cuando el script corre via
 # "irm ... | iex" (sin archivo en disco, el metodo de instalacion de un
@@ -153,9 +176,11 @@ New-Item -ItemType Directory -Force -Path $UserStateDir | Out-Null
 # poder registrarlo en las Scheduled Tasks (que si necesitan un .ps1 real
 # en disco, no pueden apuntar a un bloque de codigo en memoria).
 function Save-SelfCopy {
-    $invokedPath = $MyInvocation.PSCommandPath
+    $invokedPath = $SourceScriptPath
     if ($invokedPath -and (Test-Path $invokedPath)) {
-        Copy-Item -Path $invokedPath -Destination $SelfCopyPath -Force
+        if ([IO.Path]::GetFullPath($invokedPath) -ne [IO.Path]::GetFullPath($SelfCopyPath)) {
+            Copy-Item -Path $invokedPath -Destination $SelfCopyPath -Force
+        }
     } else {
         Invoke-WebRequest -Uri $InstallScriptUrl -OutFile $SelfCopyPath -UseBasicParsing
     }
@@ -173,8 +198,17 @@ function Save-PauseResumeScripts {
     # $InstallScriptCommit), no de la rama mutable.
     $baseUrl = "https://raw.githubusercontent.com/s7even-silva/iac-project/$InstallScriptCommit/infra/deploy"
     try {
-        Invoke-WebRequest -Uri "$baseUrl/pause-worker.ps1" -OutFile $PauseScriptPath -UseBasicParsing
-        Invoke-WebRequest -Uri "$baseUrl/resume-worker.ps1" -OutFile $ResumeScriptPath -UseBasicParsing
+        foreach ($name in @('pause-worker.ps1', 'resume-worker.ps1')) {
+            $destination = Join-Path $LogDir $name
+            $source = if ($SourceScriptPath) { Join-Path (Split-Path $SourceScriptPath) $name } else { $null }
+            if ($source -and (Test-Path $source)) {
+                if ([IO.Path]::GetFullPath($source) -ne [IO.Path]::GetFullPath($destination)) {
+                    Copy-Item $source $destination -Force
+                }
+            } else {
+                Invoke-WebRequest -Uri "$baseUrl/$name" -OutFile $destination -UseBasicParsing
+            }
+        }
         Write-InstallLog "pause-worker.ps1 / resume-worker.ps1 disponibles en $LogDir"
     } catch {
         Write-InstallLog "No se pudieron descargar pause-worker.ps1/resume-worker.ps1 ($_) -- se puede pausar/reanudar igual descargandolos a mano del repo (infra/deploy/)." "WARN"
@@ -185,7 +219,7 @@ function Write-InstallLog {
     param([string]$Message, [string]$Level = "INFO")
     $line = "[{0}] [{1}] {2}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Level, $Message
     Write-Host $line
-    Add-Content -Path $LogFile -Value $line
+    if (Test-Path $LogDir) { Add-Content -Path $LogFile -Value $line }
 }
 
 function Test-VirtualizationEnabled {
@@ -195,6 +229,7 @@ function Test-VirtualizationEnabled {
     Write-InstallLog "Verificando que la virtualizacion este habilitada en firmware (VT-x/AMD-V)..."
     try {
         $info = Get-ComputerInfo -Property "HyperV*"
+        if ($info.HyperVisorPresent) { return $true }
         if (-not $info.HyperVRequirementVirtualizationFirmwareEnabled) {
             Write-InstallLog "Virtualizacion NO habilitada en el BIOS/UEFI de esta PC." "ERROR"
             Write-InstallLog "Hay que entrar al BIOS y activar Intel VT-x / AMD-V (Virtualization Technology) manualmente -- esto no se puede hacer desde Windows. El nombre exacto de la opcion varia por fabricante." "ERROR"
@@ -598,6 +633,7 @@ function Get-ExistingWorkerEnvValue {
     # el contenedor mismo. $null si el contenedor no existe o esa
     # variable no esta definida en el.
     param([string]$VarName)
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { return $null }
     $envList = docker inspect geant4-worker --format '{{json .Config.Env}}' 2>$null
     if ($LASTEXITCODE -ne 0 -or -not $envList) { return $null }
     try {
@@ -665,38 +701,23 @@ function Test-WorkerVolumeMounted {
     # seguiria perdiendo en cada recreacion futura. Se comprueba aparte,
     # explicitamente.
     param([string]$ContainerName = "geant4-worker")
-    $mounts = docker inspect $ContainerName --format '{{range .Mounts}}{{.Name}}{{"\n"}}{{end}}' 2>$null
-    return ($mounts -split "`n") -contains "geant4-worker-data"
+    $mounts = docker inspect $ContainerName --format '{{json .Mounts}}' 2>$null
+    if ($LASTEXITCODE -ne 0) { throw "No se pudieron inspeccionar los montajes." }
+    return [bool](($mounts | ConvertFrom-Json) | Where-Object {
+        $_.Name -eq "geant4-worker-data" -and $_.Destination -eq "/var/lib/geant4-worker"
+    })
 }
 
-function Save-LegacyWorkerId {
-    # Si el contenedor viejo (sin volumen) ya tiene un worker_id real
-    # dentro de su filesystem efimero, rescatarlo ANTES de docker rm -f
-    # -- de lo contrario esa PC reaparece en el Coordinator como una
-    # maquina nueva, perdiendo su historial de heartbeat/identidad.
-    #
-    # docker cp, no docker exec -- bug real encontrado en revision: exec
-    # necesita un proceso corriendo DENTRO del contenedor, asi que fallaba
-    # silenciosamente (exit code distinto de 0, $existingId vacio) para
-    # cualquier worker viejo que estuviera detenido en ese momento --
-    # exactamente el caso que esta migracion existe para cubrir (un
-    # contenedor de una instalacion anterior no tiene por que estar
-    # corriendo cuando el voluntario vuelve a correr el instalador). "docker
-    # cp" lee directo del filesystem del contenedor sin necesitar que este
-    # en ejecucion.
-    param([string]$ContainerName = "geant4-worker")
-    $tmpFile = Join-Path $env:TEMP "geant4-worker-legacy-id-$(Get-Random).txt"
-    try {
-        docker cp "${ContainerName}:/var/lib/geant4-worker/worker_id" $tmpFile 2>$null | Out-Null
-        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $tmpFile)) { return $null }
-        $existingId = (Get-Content -Path $tmpFile -Raw -ErrorAction SilentlyContinue)
-        if (-not $existingId) { return $null }
-        $existingId = $existingId.Trim()
-        Write-InstallLog "Worker anterior sin volumen persistente -- rescatando su worker_id ($existingId) antes de recrearlo, para no perder su identidad en el Coordinator."
-        return $existingId
-    } finally {
-        Remove-Item -Path $tmpFile -ErrorAction SilentlyContinue
-    }
+function Save-LegacyWorkerData {
+    # Detener antes de copiar para no capturar un outbox a medio escribir.
+    docker stop geant4-worker | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "No se pudo detener el worker; se conserva el contenedor." }
+    $backup = Join-Path $LogDir ("legacy-data-" + [guid]::NewGuid().ToString())
+    New-Item -ItemType Directory -Force -Path $backup | Out-Null
+    docker cp 'geant4-worker:/var/lib/geant4-worker/.' $backup
+    if ($LASTEXITCODE -ne 0) { throw "No se pudo respaldar el estado completo; NO se elimina el contenedor." }
+    Write-InstallLog "Estado completo (incluidos resultados pendientes) respaldado en $backup. Conservar para recuperacion."
+    return $backup
 }
 
 function Test-WorkerPaused {
@@ -719,7 +740,7 @@ function Install-WorkerContainer {
     $desiredHash = Get-DesiredWorkerConfigHash
 
     $existing = docker ps -a --filter "name=^geant4-worker$" --format "{{.Names}}" 2>&1
-    $legacyWorkerId = $null
+    $legacyData = $null
     if ($existing -eq "geant4-worker") {
         # No matar un worker que puede llevar horas de simulacion solo
         # por volver a correr el instalador -- comparar la config
@@ -740,13 +761,14 @@ function Install-WorkerContainer {
         }
         if (-not $hasVolume) {
             Write-InstallLog "El contenedor 'geant4-worker' existente no tiene el volumen persistente (instalado por una version anterior de este script) -- se migra." "WARN"
-            $legacyWorkerId = Save-LegacyWorkerId
+            $legacyData = Save-LegacyWorkerData
         } elseif ($isRunning -eq "geant4-worker") {
-            Write-InstallLog "La configuracion cambio (imagen/label/threads/token/limites) -- se recrea el contenedor. Si tenia una run asignada, el Coordinator la reencola sola tras el timeout de heartbeat (ver infra/README.md), no se pierde el resultado ya calculado hasta ahora." "WARN"
+            Write-InstallLog "La configuracion cambio (imagen/label/threads/token/limites) -- se recrea el contenedor. Si tenia una run asignada, el Coordinator la reencola sola tras el timeout de heartbeat (ver infra/README.md), los resultados ya persistidos se conservan, pero el calculo en curso se reiniciara." "WARN"
         } else {
             Write-InstallLog "Existe un contenedor 'geant4-worker' detenido -- se elimina para recrearlo."
         }
         docker rm -f geant4-worker *> $null
+        if ($LASTEXITCODE -ne 0) { throw "No se pudo eliminar el contenedor anterior." }
     }
 
     $envArgs = @(
@@ -787,23 +809,15 @@ function Install-WorkerContainer {
     # el Coordinator, perdiendo su identidad.
     docker volume create geant4-worker-data *> $null
 
-    if ($legacyWorkerId) {
-        # Restaurar el worker_id rescatado DENTRO del volumen nuevo, antes
-        # de que el worker arranque y genere uno propio -- un contenedor
-        # descartable con el volumen ya montado es la forma mas simple de
-        # escribir ahi sin necesitar herramientas del host para tocar
-        # volumenes de Docker directamente. Se usa $WorkerImage (la misma
-        # imagen del worker, ya fijada por digest sha256 mas arriba) en vez
-        # de traer una imagen adicional (ej. busybox) sin fijar -- no
-        # agrega ninguna descarga nueva (ya se hizo docker pull de esta
-        # imagen unas lineas arriba) ni una segunda cadena de suministro
-        # que verificar.
-        docker run --rm -v geant4-worker-data:/data --entrypoint sh $WorkerImage -c "printf '%s' '$legacyWorkerId' > /data/worker_id" 2>&1 | ForEach-Object { Write-InstallLog "  $_" }
-        if ($LASTEXITCODE -eq 0) {
-            Write-InstallLog "worker_id anterior ($legacyWorkerId) restaurado en el volumen nuevo -- esta PC conserva su identidad en el Coordinator."
-        } else {
-            Write-InstallLog "No se pudo restaurar el worker_id anterior ($legacyWorkerId) en el volumen nuevo -- esta PC aparecera como worker nuevo en el Coordinator, sin perder ninguna run ya subida." "WARN"
-        }
+    if ($LASTEXITCODE -ne 0) { throw "No se pudo crear el volumen persistente." }
+    if ($legacyData) {
+        $helper = "geant4-restore-" + [guid]::NewGuid().ToString('N')
+        docker create --name $helper -v geant4-worker-data:/data --entrypoint sh $WorkerImage -c true | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "No se pudo crear el restaurador; respaldo: $legacyData" }
+        try {
+            docker cp "$legacyData/." "${helper}:/data"
+            if ($LASTEXITCODE -ne 0) { throw "Restauracion fallida; respaldo conservado en $legacyData" }
+        } finally { docker rm $helper | Out-Null }
     }
 
     Write-InstallLog "Creando el contenedor del worker..."
@@ -952,7 +966,81 @@ if (-not `$running) {
     Write-InstallLog "Watchdog registrado (tarea '$WatchdogTaskName', corre al iniciar sesion y cada 30 min mientras siga activa)."
 }
 
+function Uninstall-Worker {
+    if ($RemoveDocker -and -not $RemoveWorkerData) {
+        throw "-RemoveDocker requiere -RemoveWorkerData: Docker elimina TODOS sus contenedores, imagenes y volumenes, incluidos resultados pendientes."
+    }
+    $installers = @(
+        (Join-Path $env:ProgramFiles 'Docker\Docker\Docker Desktop Installer.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Programs\DockerDesktop\Docker Desktop Installer.exe')
+    ) | Where-Object { Test-Path $_ }
+    if ($RemoveWSL -and $installers -and -not $RemoveDocker) {
+        throw "Retira Docker primero (-RemoveDocker -RemoveWorkerData) antes de desactivar su backend WSL."
+    }
+    $description = "Eliminar worker, tareas y marca de pausa; conservar volumen y resultados pendientes"
+    if ($RemoveWorkerData) { $description += "; BORRAR volumen del worker y sus resultados pendientes" }
+    if ($RemoveDocker) { $description += "; DESINSTALAR Docker Desktop y TODOS sus datos, incluso de otros proyectos" }
+    if ($RemoveWSL) { $description += "; retirar WSL del usuario y desactivar WSL/VirtualMachinePlatform (afecta otras aplicaciones; reinicio manual)" }
+    if ($RemoveDockerAutostart) { $description += "; quitar autoinicio Docker del usuario" }
+    if (-not $PSCmdlet.ShouldProcess($env:COMPUTERNAME, $description)) { return }
+    # No afirmar exito si Docker existe pero el daemon no responde.
+    $hasDocker = [bool](Get-Command docker -ErrorAction SilentlyContinue)
+    if ($hasDocker) {
+        docker info *> $null
+        if ($LASTEXITCODE -ne 0) { throw "Docker no responde. Inicialo y reintenta; no se ha eliminado nada." }
+    } elseif ($installers -or $RemoveWorkerData) {
+        throw "No se puede verificar/eliminar el worker sin el CLI de Docker. Repara el PATH e inicia Docker."
+    }
+    foreach ($taskName in @($WatchdogTaskName, $ResumeTaskName)) {
+        if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
+            Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+        }
+    }
+    if ($hasDocker) {
+        $existing = docker ps -a --filter 'name=^geant4-worker$' --format '{{.Names}}'
+        if ($LASTEXITCODE -ne 0) { throw "No se pudo consultar el contenedor." }
+        if ($existing -eq 'geant4-worker') {
+            if (-not $RemoveWorkerData -and -not (Test-WorkerVolumeMounted)) { $null = Save-LegacyWorkerData }
+            docker stop geant4-worker | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "No se pudo detener el worker." }
+            docker rm geant4-worker | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "No se pudo eliminar el worker." }
+        }
+        if ($RemoveWorkerData) {
+            $volumes = docker volume ls --format '{{.Name}}'
+            if ($LASTEXITCODE -ne 0) { throw "No se pudieron consultar volumenes." }
+            if ($volumes -contains 'geant4-worker-data') {
+                docker volume rm geant4-worker-data | Out-Null
+                if ($LASTEXITCODE -ne 0) { throw "No se pudo eliminar el volumen del worker." }
+            }
+        }
+    }
+    if (Test-Path $PauseFile) { Remove-Item $PauseFile }
+    if ($RemoveDockerAutostart -or $RemoveDocker) {
+        $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+        if (Get-ItemProperty -Path $key -Name 'Docker Desktop' -ErrorAction SilentlyContinue) {
+            Remove-ItemProperty -Path $key -Name 'Docker Desktop'
+        }
+    }
+    if ($RemoveDocker) {
+        foreach ($installer in $installers) {
+            $process = Start-Process -FilePath $installer -ArgumentList 'uninstall' -Wait -PassThru
+            if ($process.ExitCode -notin @(0, 3010)) { throw "Desinstalador Docker fallo: $($process.ExitCode)" }
+        }
+    }
+    if ($RemoveWSL) {
+        Get-AppxPackage -Name MicrosoftCorporationII.WindowsSubsystemForLinux | Remove-AppxPackage
+        foreach ($feature in @('Microsoft-Windows-Subsystem-Linux', 'VirtualMachinePlatform')) {
+            Disable-WindowsOptionalFeature -Online -FeatureName $feature -NoRestart -Confirm:$false | Out-Null
+        }
+        Write-Host 'Reinicia Windows manualmente. No se han desregistrado ni borrado distribuciones Linux.'
+    }
+    Write-Host 'Retirada completada. Los logs y respaldos locales se conservan. Los resultados conservados necesitan un worker activo para reintentarse y pueden vencer en el coordinator.'
+}
+
 # --- Flujo principal ---
+
+if ($Action -eq "Uninstall") { Uninstall-Worker; return }
 
 $isResume = [bool](Get-ScheduledTask -TaskName $ResumeTaskName -ErrorAction SilentlyContinue)
 
@@ -972,6 +1060,22 @@ $isUpdate = $false
 if ($dockerCmdAvailable) {
     docker inspect geant4-worker *> $null
     $isUpdate = ($LASTEXITCODE -eq 0)
+}
+
+if ($isUpdate) {
+    foreach ($entry in @{CoordinatorUrl='COORDINATOR_URL'; WorkerToken='WORKER_TOKEN'; WorkerThreads='WORKER_THREADS'}.GetEnumerator()) {
+        if (-not $PSBoundParameters.ContainsKey($entry.Key)) {
+            $value = Get-ExistingWorkerEnvValue $entry.Value
+            if ($null -ne $value) { Set-Variable -Name $entry.Key -Value $value }
+        }
+    }
+    $hostConfig = docker inspect geant4-worker --format '{{json .HostConfig}}'
+    if ($LASTEXITCODE -ne 0) { throw "No se pudieron leer los limites actuales." }
+    $hostConfig = $hostConfig | ConvertFrom-Json
+    if (-not $PSBoundParameters.ContainsKey('Cpus') -and $hostConfig.NanoCpus) {
+        $Cpus = ([double]$hostConfig.NanoCpus / 1e9).ToString([Globalization.CultureInfo]::InvariantCulture)
+    }
+    if (-not $PSBoundParameters.ContainsKey('MemoryLimit') -and $hostConfig.Memory) { $MemoryLimit = [string]$hostConfig.Memory }
 }
 
 $WorkerLabel = Resolve-WorkerLabel -WasSpecified $PSBoundParameters.ContainsKey('WorkerLabel') -CurrentValue $WorkerLabel
