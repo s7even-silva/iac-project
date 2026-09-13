@@ -1310,6 +1310,46 @@ incompatible por un tiempo — aquí el objetivo es que cualquiera, en
   El piloto conserva su barrido anterior; no usar sus corridas como si fueran
   respuestas monoenergéticas. Ver el documento de decisiones enlazado arriba.
 
+### Resultados de `ActiveShield_Sim` versionados en `resultados/` (2026-09-12)
+
+Hasta ahora, los resultados reales del barrido (`organ_sweep_manifest.csv`,
+`resultados_organo_sweep.csv`, los agregados) vivían solo dentro de
+`build/`, excluido de git — **horas de cómputo real solo en el disco de
+esta VM, sin respaldo**. `.gitignore` ya tenía la excepción para esto
+desde antes (`!geant4/**/resultados/*.csv`, pensada originalmente para
+`GCR_SEP_Sim`, nunca usada todavía por ningún proyecto) — se aplicó por
+primera vez aquí, no es una convención nueva. `geant4/ActiveShield_Sim/
+resultados/` ya tiene el primer corte real: `organ_sweep_manifest_bryam.csv`,
+`resultados_organo_sweep_bryam.csv` (crudo), `resultados_organo_agregados_bryam.csv`,
+`resultados_riesgo_estocastico_bryam.csv`/`_repeticiones_bryam.csv`
+(agregados, corridos con `aggregate_organ_doses.py`) — sufijo `_bryam`
+porque es el aporte de una sola persona, mismo criterio que
+`resultados_dosis_sweep_GCR.csv`/`_SEP.csv` de `GCR_SEP_Sim`. **Es un
+corte parcial** (falta el bin7 de GCR_He, diferido para cómputo
+distribuido, y falta el aporte de Eddy) — se vuelve a subir cuando haya
+más. Los archivos `.out` crudos por corrida y los logs se quedan solo en
+`build/` (no versionados) — no aportan nada que las CSV ya no tengan
+(son la fuente de la que se parsean), y `.out`/`.log` ya están
+ignorados globalmente por otro motivo (LaTeX/generales) sin excepción
+para `resultados/`.
+
+**Cómo esto se acopla con Docker (en desarrollo, ver `install_compute_node.sh`
+más abajo para la instalación mínima que el contenedor usaría):** el
+contenedor no necesita saber nada de git — monta un volumen local
+(`docker run -v ./salida:/build_output ...`, `run_organ_sweep.py
+--build-dir /build_output`) y escribe el mismo formato de CSV de
+siempre. Quien recibe esos archivos los copia a
+`geant4/ActiveShield_Sim/resultados/resultados_organo_sweep_<nombre>.csv`
+y hace commit/push (o PR, si no se le da acceso de escritura directo) —
+ningún cambio de esquema, es el mismo archivo que ya produce
+`run_organ_sweep.py` hoy. `aggregate_organ_doses.py --results
+"resultados/*.csv"` (glob, ya soportado) junta el trabajo de cualquier
+número de personas/contenedores en una sola pasada. **Deliberadamente
+no se diseñó ningún mecanismo de auto-push con credenciales dentro de
+la imagen** — un token de escritura horneado en un contenedor Docker
+compartido es un secreto compartido; más seguro que cada quien suba su
+propio archivo con su propia cuenta.
+
 
 ## Reglas de trabajo en este repositorio
 

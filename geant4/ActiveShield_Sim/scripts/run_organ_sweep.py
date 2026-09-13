@@ -274,6 +274,15 @@ def main():
                               "para correrlo aparte despues (otra maquina, distribuido, etc.). Se puede combinar "
                               "con --only-positions. No cambia los indices globales de los demas bins -- el "
                               "resume sigue funcionando igual si mas tarde se corre sin este flag.")
+    parser.add_argument("--only-bins", type=str, default=None,
+                         help="Lista separada por comas de bin_index a INCLUIR (0-7), el complemento de "
+                              "--skip-bins -- ej. '--only-bins 7' corre SOLO ese bin (util para retomar uno "
+                              "que se habia saltado antes, para una sola especie combinando con "
+                              "--only-species).")
+    parser.add_argument("--only-species", type=str, default=None,
+                         help="Lista separada por comas de especies a INCLUIR (GCR_H,GCR_He,SEP_p) -- para "
+                              "correr solo una especie, ej. al retomar un bin saltado que resulto barato para "
+                              "una especie pero no para otra.")
     parser.add_argument("--limit", type=int, default=None,
                          help="Solo correr las primeras N combinaciones ya filtradas (piloto)")
     parser.add_argument("--repeats", type=int, default=1,
@@ -317,6 +326,12 @@ def main():
     if args.skip_bins is not None:
         skip = {int(x) for x in args.skip_bins.split(",")}
         combos = [c for c in combos if c["bin_index"] not in skip]
+    if args.only_bins is not None:
+        wanted_bins = {int(x) for x in args.only_bins.split(",")}
+        combos = [c for c in combos if c["bin_index"] in wanted_bins]
+    if args.only_species is not None:
+        wanted_species = set(args.only_species.split(","))
+        combos = [c for c in combos if c["species"] in wanted_species]
     if args.limit is not None:
         combos = combos[:args.limit]
 
