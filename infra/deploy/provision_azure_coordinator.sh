@@ -19,12 +19,18 @@ VM_NAME="${VM_NAME:-geant4-coordinator}"
 VM_SIZE="${VM_SIZE:-Standard_B1s}"
 ADMIN_USER="${ADMIN_USER:-azureuser}"
 
-for arg in "$@"; do
+while (($#)); do
+  arg="$1"
   case "$arg" in
+    --location|--vm-size)
+      [[ $# -ge 2 && -n "$2" && "$2" != --* ]] || { echo "Falta valor para $arg" >&2; exit 1; }
+      if [[ "$arg" == --location ]]; then LOCATION="$2"; else VM_SIZE="$2"; fi
+      shift ;;
     --location=*) LOCATION="${arg#*=}" ;;
     --vm-size=*) VM_SIZE="${arg#*=}" ;;
     *) echo "Argumento desconocido: $arg" >&2; exit 1 ;;
   esac
+  shift
 done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -70,9 +76,9 @@ Apuntar los workers a:
 
 IMPORTANTE (ver AGENTS.md, riesgos aceptados): sin autenticacion de
 workers todavia. El puerto 8000 quedo abierto a cualquier IP -- para
-un uso mas que de prueba, restringir con:
-  az vm open-port --resource-group $RESOURCE_GROUP --name $VM_NAME \\
-    --port 8000 --priority 900 --source-address-prefixes <tu-ip>/32
+un uso mas que de prueba, restringe el origen de la regla del puerto
+8000 en el Network Security Group de la VM desde Azure Portal.
+("az vm open-port" no admite --source-address-prefixes.)
 
 Para destruir todo cuando termines (borra la VM y TODOS sus recursos,
 incluida cualquier corrida en curso en el coordinator -- la base SQLite

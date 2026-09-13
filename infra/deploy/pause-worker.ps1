@@ -15,10 +15,12 @@
     .\pause-worker.ps1 resume
 #>
 param(
-    [Parameter(Mandatory, Position = 0)]
+    [Parameter(Position = 0)]
     [ValidateSet("pause", "resume")]
-    [string]$Action
+    [string]$Action = "pause"
 )
+
+$ErrorActionPreference = "Stop"
 
 # %LOCALAPPDATA% (perfil del usuario actual), no %ProgramData% -- este
 # script corre SIN elevacion (el voluntario no deberia necesitar "Run as
@@ -33,10 +35,12 @@ New-Item -ItemType Directory -Force -Path $UserStateDir | Out-Null
 if ($Action -eq "pause") {
     New-Item -ItemType File -Force -Path $PauseFile | Out-Null
     docker stop geant4-worker 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "No se pudo detener Docker; la marca de pausa queda activa. Verifica el contenedor." }
     Write-Host "Worker pausado. El watchdog automatico ya NO lo va a volver a arrancar."
     Write-Host "Para retomar: .\pause-worker.ps1 resume"
 } else {
-    Remove-Item -Path $PauseFile -ErrorAction SilentlyContinue
     docker start geant4-worker 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "No se pudo iniciar el worker; se conserva la pausa." }
+    if (Test-Path $PauseFile) { Remove-Item $PauseFile }
     Write-Host "Worker retomado. El watchdog automatico volvio a quedar activo."
 }

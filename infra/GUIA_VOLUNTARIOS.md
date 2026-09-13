@@ -268,3 +268,12 @@ O consultar el estado general del servidor desde cualquier navegador
 - https://coordinator.vlaboratory.org/api/v1/health — resumen general
 - https://coordinator.vlaboratory.org/api/v1/workers — lista de quién está
   conectado ahora mismo (verás tu `WORKER_LABEL` ahí)
+
+### Retirada desde el instalador
+
+Desde el checkout actualizado, PowerShell como administrador y la misma cuenta:
+`infra\deploy\install-worker.ps1 -Action Uninstall` retira el worker y conserva
+sus datos pendientes. Añadir `-WhatIf` permite revisar sin ejecutar. También
+puede quitar Docker o WSL mediante opciones explícitas: ver
+[opciones y recuperación de datos](deploy/README.md) antes de seleccionarlas.
+`uninstall-worker.ps1` sigue disponible y delega en el instalador local.
