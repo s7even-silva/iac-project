@@ -1474,6 +1474,29 @@ real — ya no solo local sin contenedor:**
   (`WORKER_THREADS` para límite lógico de Geant4, `--cpus`/`--memory`
   de Docker para límite duro del contenedor).
 
+**Worker local sin Docker, para compañeros de equipo (2026-09-13):**
+`GUIA_VOLUNTARIOS.md` asume que quien presta CPU no tiene el proyecto
+instalado (por eso pide instalar Docker). Para quien sí lo tiene —
+cualquiera del equipo con `geant4_env` + `ActiveShield_Sim/build` ya
+compilados desde antes — eso es trabajo de más: el mismo `worker.py`
+corre directo contra el build existente, sin imagen que descargar ni
+motor de contenedores que instalar. Documentado en
+[`infra/GUIA_WORKER_LOCAL.md`](infra/GUIA_WORKER_LOCAL.md) (nuevo):
+`git checkout` de esta misma rama (el worker no vive en `main` todavía),
+`conda activate geant4_env`, y `nohup ... & disown` con
+`WORKER_THREADS=$(nproc)` para no perder el paralelismo de la tabla de
+tiempos ya medida (14 hilos) — sin esto, correr con el default de
+`worker.py` (`WORKER_THREADS=1`) haría que una run de varias horas tardara
+mucho más de lo esperado. `WORKER_ID_FILE` apunta a `$HOME` en vez del
+default pensado para el contenedor Docker (`/var/lib/geant4-worker/`, que
+requiere root). Verificado en vivo, no solo escrito: corrido así en la
+máquina del usuario contra el coordinator real de GCP, reclamó
+automáticamente `GCR_He bin7 offset_x_m=0.0` (la run de mayor prioridad
+de la cola) y quedó `running` confirmado por `GET /api/v1/jobs`.
+`infra/README.md` distingue ahora las dos vías (Docker para reclutar
+gente sin el proyecto instalado, esta guía para el equipo) en vez de
+tener un único ejemplo de prueba local contra `127.0.0.1`.
+
 **Pendiente, no bloqueante:** publicar la imagen vía un workflow de
 GitHub Actions (hoy es push manual), reintentar Azure cuando soporte
 resuelva el bloqueo de región (opcional, GCP ya cubre la necesidad
