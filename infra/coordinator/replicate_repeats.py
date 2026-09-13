@@ -4,9 +4,10 @@ para poder calcular media/std/IC95% entre repeticiones (ver
 aggregate_organ_doses.py --repeats en ActiveShield_Sim, y
 resultados_riesgo_estocastico_repeticiones.csv). No recalcula nada --
 copia species/bin_index/offset_x_m/n_events/priority/min_ram_gb/
-min_cpu_count de cada job de la repeticion base tal cual, cambiando solo
-`repeticion`. Idempotente via el mismo UNIQUE constraint que ya usa
-insert_job() -- correrlo dos veces con el mismo --repeats no duplica nada.
+min_cpu_count/min_cpu_score de cada job de la repeticion base tal cual,
+cambiando solo `repeticion`. Idempotente via el mismo UNIQUE constraint
+que ya usa insert_job() -- correrlo dos veces con el mismo --repeats no
+duplica nada.
 
 Las semillas NO se guardan aqui ni se copian de la repeticion base --
 la tabla `jobs` solo tiene species/bin_index/offset_x_m/repeticion/
@@ -68,6 +69,7 @@ def main():
                 species=job["species"], bin_index=job["bin_index"], offset_x_m=job["offset_x_m"],
                 repeticion=rep, n_events=job["n_events"], priority=job["priority"],
                 min_ram_gb=job["min_ram_gb"], min_cpu_count=job["min_cpu_count"],
+                min_cpu_score=job["min_cpu_score"],
             )
             if job_id:
                 created += 1

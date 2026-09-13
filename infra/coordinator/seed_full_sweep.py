@@ -74,6 +74,15 @@ MIN_RAM_BIN_THRESHOLD_HIGH_ENERGY = 6   # GCR_H/GCR_He: caro a bin_index alto
 MIN_RAM_BIN_THRESHOLD_LOW_ENERGY_SEP = 1  # SEP_p: caro a bin_index bajo
 MIN_RAM_GB = 8.0
 MIN_CPU_COUNT = 4
+# cpu_score() (worker.py) dio ~5,7 en una maquina de 8 cores usada como
+# referencia al calibrar el benchmark -- 0.5 aqui es deliberadamente
+# BAJO/prudente frente a eso, no la mitad exacta de nada. Sin mediciones
+# reales todavia de que score reportan las maquinas del equipo (el
+# benchmark es nuevo, ver AGENTS.md), un umbral mas alto podria excluir
+# de mas a workers legitimos por una calibracion sin datos reales de
+# respaldo. Ajustar una vez que se observen cpu_score reales via
+# GET /api/v1/workers.
+MIN_CPU_SCORE = 0.5
 
 
 def job_priority_and_requirements(species: str, bin_index: int):
@@ -85,7 +94,8 @@ def job_priority_and_requirements(species: str, bin_index: int):
         needs_resources = bin_index >= MIN_RAM_BIN_THRESHOLD_HIGH_ENERGY
     min_ram = MIN_RAM_GB if needs_resources else 0.0
     min_cpu = MIN_CPU_COUNT if needs_resources else 0
-    return priority, min_ram, min_cpu
+    min_score = MIN_CPU_SCORE if needs_resources else 0.0
+    return priority, min_ram, min_cpu, min_score
 
 
 def main():
@@ -109,12 +119,12 @@ def main():
     created, skipped = 0, 0
     for species in SPECIES:
         for bin_index in bin_indices:
-            priority, min_ram, min_cpu = job_priority_and_requirements(species, bin_index)
+            priority, min_ram, min_cpu, min_score = job_priority_and_requirements(species, bin_index)
             for offset_x_m in OFFSET_X_VALUES_M:
                 job_id = db.insert_job(
                     species=species, bin_index=bin_index, offset_x_m=offset_x_m,
                     repeticion=args.repeticion, n_events=args.n_events, priority=priority,
-                    min_ram_gb=min_ram, min_cpu_count=min_cpu,
+                    min_ram_gb=min_ram, min_cpu_count=min_cpu, min_cpu_score=min_score,
                 )
                 if job_id:
                     created += 1

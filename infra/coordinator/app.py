@@ -82,7 +82,7 @@ def row_to_dict(row: sqlite3.Row) -> dict:
 @app.post("/api/v1/workers/register")
 def register_worker(body: WorkerRegister):
     db.upsert_worker(body.worker_id, body.hostname, body.cpu_count, body.ram_gb, body.label,
-                      body.ram_free_gb, body.cpu_load_pct)
+                      body.ram_free_gb, body.cpu_load_pct, body.cpu_score)
     return {"worker_id": body.worker_id, "status": "registered"}
 
 

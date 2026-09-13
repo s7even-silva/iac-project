@@ -44,6 +44,11 @@ def main():
                               "job. Default 0 (cualquier worker). Ver claim_next_job() en db.py.")
     parser.add_argument("--min-cpu-count", type=int, default=0,
                          help="Nucleos minimos que debe reportar un worker para recibir este job. Default 0.")
+    parser.add_argument("--min-cpu-score", type=float, default=0,
+                         help="Score minimo de capacidad de computo real (benchmark, ver cpu_score() en "
+                              "worker.py) que debe reportar un worker para recibir este job. ~1.0 es una "
+                              "maquina de referencia tipica; util para bins caros donde importa la velocidad "
+                              "real del CPU, no solo cuantos nucleos tiene. Default 0 (cualquier worker).")
     args = parser.parse_args()
 
     db.init_db()
@@ -53,7 +58,7 @@ def main():
         job_id = db.insert_job(
             species=args.species, bin_index=args.bin_index, offset_x_m=offset_x_m,
             repeticion=args.repeticion, n_events=args.n_events, priority=args.priority,
-            min_ram_gb=args.min_ram_gb, min_cpu_count=args.min_cpu_count,
+            min_ram_gb=args.min_ram_gb, min_cpu_count=args.min_cpu_count, min_cpu_score=args.min_cpu_score,
         )
         created.append((job_id, offset_x_m))
 

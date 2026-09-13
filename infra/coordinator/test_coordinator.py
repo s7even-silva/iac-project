@@ -195,6 +195,35 @@ def test_worker_without_telemetry_falls_back_to_total_ram():
     assert claimed['job_id'] == job_id
 
 
+def test_worker_below_min_cpu_score_does_not_get_job():
+    # cpu_score mide capacidad de computo REAL (benchmark, ver cpu_score()
+    # en worker.py) -- una maquina puede tener muchos nucleos (cpu_count
+    # alto) pero ser lenta por core (VM compartida, CPU vieja); esto
+    # existe justamente para no confundir "muchos nucleos" con "rapido".
+    db.upsert_worker('many_cores_slow', 'host', 16, 16.0, '', ram_free_gb=16.0, cpu_score=0.3)
+    db.insert_job('GCR_He', 7, 3.0, 0, 10000, min_cpu_score=1.0)
+    assert db.claim_next_job('many_cores_slow') is None
+
+
+def test_worker_meeting_cpu_score_gets_job():
+    db.upsert_worker('fast', 'host', 8, 16.0, '', ram_free_gb=16.0, cpu_score=1.5)
+    job_id = db.insert_job('GCR_He', 7, 3.0, 0, 10000, min_cpu_score=1.0)
+    claimed = db.claim_next_job('fast')
+    assert claimed is not None
+    assert claimed['job_id'] == job_id
+
+
+def test_worker_without_cpu_score_is_not_blocked():
+    # Sin cpu_score (worker de antes de este cambio, o el benchmark del
+    # propio worker fallo) -- no debe bloquear un job con min_cpu_score,
+    # mismo criterio que ram_free_gb ausente cae a ram_gb total.
+    db.upsert_worker('no_score', 'host', 8, 16.0, '', ram_free_gb=16.0)
+    job_id = db.insert_job('GCR_He', 7, 3.0, 0, 10000, min_cpu_score=1.0)
+    claimed = db.claim_next_job('no_score')
+    assert claimed is not None
+    assert claimed['job_id'] == job_id
+
+
 def test_heartbeat_updates_live_telemetry():
     db.upsert_worker('w', 'host', 8, 16.0, '', ram_free_gb=10.0, cpu_load_pct=20.0)
     db.touch_heartbeat('w', ram_free_gb=2.0, cpu_load_pct=90.0)
