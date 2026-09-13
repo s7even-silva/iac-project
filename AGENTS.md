@@ -1457,47 +1457,73 @@ real — ya no solo local sin contenedor:**
     cambio (confirmado por el mismo manifiesto); offsets 0,1 de GCR_H y
     cualquier otra combinación dependen del manifiesto de Eddy, no
     versionado — quedan sin poblar hasta confirmar su estado real.
-  - **Sembrado acotado a bin6/7, herramienta genérica lista
-    (2026-09-13) — corrige una primera versión que habría duplicado
-    trabajo real.** Primer intento: `seed_full_sweep.py` sembraba las
-    120 combinaciones completas asumiendo que solo 11 ya existían en la
-    cola. Eso era incorrecto — **69 de esas 120 ya están corridas por
-    Bryam localmente** (offsets 2,3,4, todos los bins salvo GCR_He
-    bin7, versionadas en `resultados/organ_sweep_manifest_bryam.csv`) y
-    **el resto de bins 0-5 (offsets 0,1) los corrió Joel localmente**,
-    a quien se le pidió explícitamente NO tocar bin6/7 — su trabajo
-    **no está subido a git todavía**, así que ningún CSV del repo lo
-    refleja, pero sí cuenta como hecho. Entre Bryam y Joel, bins 0-5 ya
-    están o van a estar cubiertos en las 5 posiciones **sin pasar por
-    el coordinator** — sembrarlos ahí habría hecho que algún voluntario
-    recorriera ese trabajo desde cero. Corregido: `seed_full_sweep.py`
-    ahora soporta `--bins` (lista de `bin_index`, default: los 8
-    completos) para acotar qué se siembra — el sembrado real de este
-    momento es `python3 seed_full_sweep.py --n-events 10000 --bins
-    6,7` (30 combinaciones: 3 especies × 2 bins × 5 posiciones, de las
-    cuales 11 ya estaban en la cola), dejando bins 0-5 completamente
-    fuera. El script sigue sirviendo para el barrido completo (sin
-    `--bins`) si algún día hace falta sembrar todo desde cero, sin
-    trabajo local previo de por medio. Reusa el mismo
-    `insert_job()`/`ON CONFLICT DO NOTHING` que `seed_jobs.py` — no
-    pisa ningún job ya en curso (`done`/`running` se preservan intactos,
-    verificado con una prueba que simula exactamente ese estado).
-    Prioridad y requisitos mínimos por especie, no un criterio único
-    para las tres:
-    - GCR_H/GCR_He: `priority = bin_index` (bin7 primero) y
-      `min_ram_gb=8`/`min_cpu_count=4` desde `bin_index>=6` — el mismo
-      criterio ya usado a mano, justificado por la curva de costo real
-      medida (energía real = MeV/amu × número másico, ver "GCR_He...
-      resultando MÁS caro que GCR_H a la misma energía nominal").
-    - **SEP_p, prioridad invertida** — el usuario confirmó en producción
-      que sus corridas de energía **baja** (`bin_index` chico) tardan
-      notablemente más que las de energía alta, el patrón opuesto al de
-      GCR_H/GCR_He. `priority = 7 - bin_index` (bin0 primero) y el
-      requisito de RAM/CPU se exige en `bin_index<=1`, no en los altos.
-      Sin una tabla de tiempos fina por bin para SEP_p todavía (a
-      diferencia de la medida para GCR_H) — esto solo captura la
-      **dirección** del efecto, no la magnitud exacta; ajustar el umbral
-      si se mide con más precisión más adelante.
+  - **Sembrado del barrido completo + importación de trabajo local ya
+    hecho, herramientas listas (2026-09-13) — dos rondas de corrección
+    antes de llegar al diseño final.** Decisión final del equipo: la
+    repetición 0 se completa con una mezcla de trabajo local (Bryam,
+    Joel) y coordinator (bin6/7), pero **las 4 repeticiones adicionales
+    van COMPLETAS a la cola distribuida — las 120 combinaciones en cada
+    una, no solo bin6/7**. Para que `replicate_repeats.py` (ver más
+    abajo) pueda clonar una plantilla de 120 hacia esas repeticiones, la
+    repetición 0 en la base de datos del coordinator necesita las 120
+    filas — no solo sembradas, sino con el estado real de cada una
+    (`done` para lo ya corrido, `pending` solo para lo que de verdad
+    falta).
+    - **Primer intento, incorrecto:** `seed_full_sweep.py` sembraba las
+      120 combinaciones completas como `pending`, sin contar que **69
+      de esas 120 ya están corridas por Bryam localmente** (offsets
+      2,3,4, todos los bins salvo GCR_He bin7, versionadas en
+      `resultados/organ_sweep_manifest_bryam.csv`) y **el resto de bins
+      0-5 (offsets 0,1) los corrió Joel localmente** — a quien se le
+      pidió explícitamente NO tocar bin6/7, por eso su trabajo no
+      aparece en ningún CSV del repo todavía (no lo ha subido) pero sí
+      cuenta como hecho. Sembrar eso como `pending` habría hecho que
+      algún voluntario recorriera ese trabajo desde cero.
+    - **Corregido con dos piezas, no una:** `seed_full_sweep.py` ganó
+      `--bins` (lista de `bin_index`, default: los 8) para poder acotar
+      el sembrado inicial si hiciera falta, y **`infra/coordinator/
+      import_local_results.py`** (nuevo) marca como `done` el trabajo
+      YA HECHO localmente, a partir de un `resultados_organo_sweep_*
+      .csv`/`organ_sweep_manifest_*.csv` real (mismo formato que ya sube
+      `worker.py`, no uno nuevo) — reusa exactamente el mismo camino que
+      seguiría un worker real: `force_claim_job()` (nuevo en `db.py`,
+      asigna un `job_id` específico sin pasar por la selección por
+      prioridad de `claim_next_job()`) + `mark_running()` +
+      `db.record_result()`, con un `worker_id` determinista
+      (`local-<label>`, ej. `local-bryam`) registrado como cualquier
+      otro worker. Mismas validaciones que `submit_result()` en
+      `app.py` (especie/bin/offset/repeticion/n_events deben coincidir
+      con el job) y mismo directorio de resultados
+      (`results/job_{id}/...`) — ningún esquema paralelo.
+      `get_job_by_combo()` (nuevo en `db.py`) busca por la clave natural
+      en vez de por `job_id`, ya que un CSV local solo conoce la
+      combinación, no el id interno que le tocó al sembrarla.
+    - **Flujo real, en orden:** `seed_full_sweep.py --n-events 10000`
+      (120 combinaciones completas, todas `pending` salvo las 11 que ya
+      estaban en curso) → `import_local_results.py --worker-label
+      bryam --results-csv .../resultados_organo_sweep_bryam.csv
+      --manifest-csv .../organ_sweep_manifest_bryam.csv` (marca 69 como
+      `done`, verificado con el CSV real del repo — segunda corrida
+      idempotente, 0 nuevas) → mismo comando con `--worker-label joel`
+      cuando suba sus CSV. Lo que queda `pending` tras eso son
+      exactamente las combinaciones que de verdad faltan: bin0-6 en
+      offsets 0,1 (trabajo de Joel, pendiente de subir) y bin7 en
+      offsets 0,1 más GCR_He bin7 en 2,3,4 (las 3 corridas urgentes que
+      motivaron esta infraestructura desde el principio) — confirmado
+      con una prueba end-to-end que siembra, importa el CSV real de
+      Bryam, y verifica el desglose exacto por bin.
+    - Prioridad y requisitos mínimos por especie en `seed_full_sweep.py`,
+      no un criterio único para las tres — GCR_H/GCR_He: `priority =
+      bin_index` (bin7 primero) y `min_ram_gb=8`/`min_cpu_count=4` desde
+      `bin_index>=6`, justificado por la curva de costo real medida
+      (energía real = MeV/amu × número másico, ver "GCR_He... resultando
+      MÁS caro que GCR_H a la misma energía nominal"). **SEP_p,
+      prioridad invertida** (`priority = 7 - bin_index`, requisito de
+      RAM/CPU en `bin_index<=1`) — el usuario confirmó en producción que
+      sus corridas de energía **baja** tardan notablemente más que las
+      de energía alta, el patrón opuesto al de GCR_H/GCR_He. Sin una
+      tabla de tiempos fina bin-a-bin para SEP_p todavía — esto solo
+      captura la dirección del efecto, no la magnitud exacta.
   - **5 repeticiones, herramienta lista (2026-09-13):**
     `infra/coordinator/replicate_repeats.py` (nuevo) lee todos los jobs
     ya sembrados en una repetición base (`repeticion=0` por defecto) y
