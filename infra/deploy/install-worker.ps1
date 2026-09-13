@@ -106,7 +106,7 @@ $ResumeScriptPath = Join-Path $LogDir "resume-worker.ps1"
 # arranco la instalacion, no una version distinta si alguien pusheo
 # cambios entre medio. Actualizar este hash cuando el script cambie de
 # verdad y se quiera que los voluntarios reciban la version nueva.
-$InstallScriptCommit = "5abd0fc"
+$InstallScriptCommit = "423779710474e176c6b17de962f6ebc7472f6033"
 $InstallScriptUrl = "https://raw.githubusercontent.com/s7even-silva/iac-project/$InstallScriptCommit/infra/deploy/install-worker.ps1"
 $MaxResumeAttempts = 3
 
