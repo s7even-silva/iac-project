@@ -48,6 +48,14 @@ HEARTBEAT_INTERVAL_S = float(os.environ.get("HEARTBEAT_INTERVAL_S", "30"))
 WORKER_THREADS = int(os.environ.get("WORKER_THREADS", "1"))
 POLL_INTERVAL_S = float(os.environ.get("POLL_INTERVAL_S", "30"))
 
+# Sesion compartida: si el coordinator exige WORKER_TOKEN (ver app.py),
+# el header se manda en TODAS las llamadas sin tener que acordarse de
+# agregarlo a cada una por separado -- vacio por defecto, coherente con
+# que el coordinator tampoco lo exige si no esta configurado.
+SESSION = requests.Session()
+if os.environ.get("WORKER_TOKEN"):
+    SESSION.headers["X-Worker-Token"] = os.environ["WORKER_TOKEN"]
+
 RESULTS_FIELDNAMES = ["especie", "fase", "bin_index", "energy_mev", "offset_x_m", "repeticion",
                        "organo_id", "edep_J", "dose_gy_run", "n_eventos"]
 
@@ -108,7 +116,7 @@ def cpu_load_pct() -> float | None:
 
 
 def register(worker_id: str) -> None:
-    resp = requests.post(
+    resp = SESSION.post(
         f"{COORDINATOR_URL}/api/v1/workers/register",
         json={
             "worker_id": worker_id,
@@ -127,7 +135,7 @@ def register(worker_id: str) -> None:
 
 def heartbeat(worker_id: str) -> None:
     try:
-        requests.post(
+        SESSION.post(
             f"{COORDINATOR_URL}/api/v1/workers/{worker_id}/heartbeat",
             json={"ram_free_gb": ram_free_gb(), "cpu_load_pct": cpu_load_pct()},
             timeout=15,
@@ -137,7 +145,7 @@ def heartbeat(worker_id: str) -> None:
 
 
 def poll_next_job(worker_id: str) -> dict | None:
-    resp = requests.post(f"{COORDINATOR_URL}/api/v1/jobs/next", json={"worker_id": worker_id}, timeout=15)
+    resp = SESSION.post(f"{COORDINATOR_URL}/api/v1/jobs/next", json={"worker_id": worker_id}, timeout=15)
     if resp.status_code == 204:
         return None
     resp.raise_for_status()
@@ -197,14 +205,14 @@ def report_result(worker_id: str, job_id: int, exit_code: int, duration_s: float
         "manifest_csv": ("manifest.csv", manifest_csv_text.encode("utf-8"), "text/csv"),
     }
     data = {"worker_id": worker_id, "exit_code": str(exit_code), "duration_s": str(duration_s)}
-    resp = requests.post(f"{COORDINATOR_URL}/api/v1/jobs/{job_id}/result", data=data, files=files, timeout=60)
+    resp = SESSION.post(f"{COORDINATOR_URL}/api/v1/jobs/{job_id}/result", data=data, files=files, timeout=60)
     resp.raise_for_status()
     print(f"[worker] job {job_id} reportado: {resp.json()}")
 
 
 def report_failure(worker_id: str, job_id: int, error: str, duration_s: float) -> None:
     try:
-        resp = requests.post(
+        resp = SESSION.post(
             f"{COORDINATOR_URL}/api/v1/jobs/{job_id}/fail",
             json={"worker_id": worker_id, "error": error[-2000:], "duration_s": duration_s},
             timeout=15,
@@ -221,7 +229,7 @@ def run_job(worker_id: str, job: dict) -> None:
     print(f"[worker] job {job_id} ({label}) -- iniciando")
 
     try:
-        resp = requests.post(f"{COORDINATOR_URL}/api/v1/jobs/{job_id}/start", json={"worker_id": worker_id}, timeout=15)
+        resp = SESSION.post(f"{COORDINATOR_URL}/api/v1/jobs/{job_id}/start", json={"worker_id": worker_id}, timeout=15)
         resp.raise_for_status()
     except requests.RequestException as exc:
         print(f"[worker] no se pudo marcar 'running' el job {job_id} (se abandona esta asignacion): {exc}")

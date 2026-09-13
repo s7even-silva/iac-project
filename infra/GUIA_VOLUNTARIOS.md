@@ -1,8 +1,11 @@
 # Cómo prestar tu PC para las runs del barrido de ActiveShield_Sim
 
 Esto le presta CPU a tu computadora para correr simulaciones de Geant4
-mientras la tengas encendida. No modifica ni borra nada tuyo — corre
-completamente aislado dentro de un contenedor Docker.
+mientras la tengas encendida. La simulación en sí corre completamente
+aislada dentro de un contenedor Docker, sin acceder ni modificar tus
+documentos personales. El instalador automático (ver más abajo) sí
+instala y configura software en tu PC (WSL2, Docker Desktop) para poder
+correr ese contenedor — no toca nada tuyo más allá de eso.
 
 Hoy la cola tiene runs de los bins 6 y 7 (los más pesados) de **GCR_He**
 y **SEP_p** en las posiciones que quedaron pendientes — no es solo
@@ -42,6 +45,12 @@ desde ese mismo link, ábrelo en una carpeta, y desde ahí corre en
 PowerShell (como administrador):
 ```powershell
 .\install-worker.ps1 -WorkerLabel "laptop-juan"
+```
+
+**Si no quieres ceder toda tu PC**, puedes limitar cuánta CPU/RAM usa el
+contenedor (límite duro, más estricto que `WORKER_THREADS`):
+```powershell
+.\install-worker.ps1 -WorkerLabel "laptop-juan" -Cpus 2 -MemoryLimit 4g
 ```
 
 **Para quitar todo después** (contenedor + las tareas automáticas que

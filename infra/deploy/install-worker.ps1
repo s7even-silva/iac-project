@@ -57,15 +57,35 @@
     Nucleos logicos que el worker le pide a Geant4 por run. Default:
     todos los detectados por Docker.
 
+.PARAMETER WorkerToken
+    Token compartido del Coordinator (X-Worker-Token), si esta
+    configurado con WORKER_TOKEN -- pidelo a quien administre el
+    Coordinator. Vacio por defecto (sin token, coordinator sin
+    autenticacion todavia).
+
+.PARAMETER Cpus
+    Limite duro de nucleos para el contenedor (docker run --cpus). Sin
+    limite por defecto -- usa todo lo que Docker tenga disponible. Pasa
+    un numero (puede ser fraccionario, ej. 2.5) si prefieres dejar
+    margen para seguir usando tu PC mientras corre una simulacion.
+
+.PARAMETER MemoryLimit
+    Limite duro de RAM para el contenedor (docker run --memory), ej.
+    "4g". Sin limite por defecto.
+
 .EXAMPLE
     .\install-worker.ps1
     .\install-worker.ps1 -WorkerLabel "laptop-dante" -WorkerThreads 4
+    .\install-worker.ps1 -Cpus 2 -MemoryLimit 4g
 #>
 [CmdletBinding()]
 param(
     [string]$CoordinatorUrl = "http://34.134.100.224:8000",
     [string]$WorkerLabel = $env:COMPUTERNAME,
     [int]$WorkerThreads = 0,
+    [string]$WorkerToken = "",
+    [string]$Cpus = "",
+    [string]$MemoryLimit = "",
     [string]$WorkerImage = "ghcr.io/s7even-silva/iac-project/geant4-worker:latest"
 )
 
@@ -75,7 +95,14 @@ $LogFile = Join-Path $LogDir "install-worker.log"
 $ResumeTaskName = "Geant4WorkerInstallResume"
 $WatchdogTaskName = "Geant4WorkerWatchdog"
 $SelfCopyPath = Join-Path $LogDir "install-worker.ps1"
-$InstallScriptUrl = "https://raw.githubusercontent.com/s7even-silva/iac-project/infra/distributed-sweep/infra/deploy/install-worker.ps1"
+# Fijado a un commit concreto (no a la rama, que es mutable) -- asi el
+# codigo que corre despues de un reinicio es exactamente el mismo que
+# arranco la instalacion, no una version distinta si alguien pusheo
+# cambios entre medio. Actualizar este hash cuando el script cambie de
+# verdad y se quiera que los voluntarios reciban la version nueva.
+$InstallScriptCommit = "5abd0fc"
+$InstallScriptUrl = "https://raw.githubusercontent.com/s7even-silva/iac-project/$InstallScriptCommit/infra/deploy/install-worker.ps1"
+$MaxResumeAttempts = 3
 
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
@@ -126,24 +153,56 @@ function Test-VirtualizationEnabled {
 }
 
 function Test-WindowsVersionSupported {
-    # WSL2 requiere Windows 10 build 19041+ o Windows 11 (cualquier build).
+    # Requisitos ACTUALES de Docker Desktop (no solo el minimo historico
+    # de WSL2, que es mas laxo): Windows 10 22H2 build 19045+, o Windows
+    # 11 23H2 build 22631+. Una PC puede tener WSL2 "compatible" segun el
+    # build viejo y aun asi Docker Desktop rechazarla o fallar al abrir.
     $build = [System.Environment]::OSVersion.Version.Build
-    Write-InstallLog "Build de Windows detectado: $build"
-    if ($build -lt 19041) {
-        Write-InstallLog "Windows demasiado antiguo para WSL2 (build $build, se requiere 19041+). Hay que actualizar Windows primero via Windows Update -- este script no puede hacerlo." "ERROR"
-        return $false
+    $isWin11 = $build -ge 22000
+    Write-InstallLog "Build de Windows detectado: $build ($(if ($isWin11) { 'Windows 11' } else { 'Windows 10' }))"
+    if ($isWin11) {
+        if ($build -lt 22631) {
+            Write-InstallLog "Windows 11 build $build es mas viejo que 23H2 (22631) -- Docker Desktop actual puede no ser compatible. Actualiza Windows primero via Windows Update." "ERROR"
+            return $false
+        }
+    } else {
+        if ($build -lt 19045) {
+            Write-InstallLog "Windows 10 build $build es mas viejo que 22H2 (19045) -- Docker Desktop actual puede no ser compatible. Actualiza Windows primero via Windows Update." "ERROR"
+            return $false
+        }
     }
     return $true
 }
 
 function Test-Wsl2Ready {
+    # Docker recomienda mantener WSL2 actualizado (>=2.1.5) -- una
+    # version vieja es causa conocida de problemas de arranque de Docker
+    # Desktop, aunque wsl --status ya reporte "listo". Se comprueba y
+    # actualiza aqui mismo, en vez de solo instalar si falta del todo.
     try {
         wsl --status 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) { return $false }
-        return $true
     } catch {
         return $false
     }
+
+    try {
+        $versionOutput = wsl --version 2>&1
+        $versionLine = $versionOutput | Where-Object { $_ -match "WSL version:\s*([\d.]+)" }
+        if ($versionLine -and $Matches[1]) {
+            $current = [version]$Matches[1]
+            $minimum = [version]"2.1.5"
+            if ($current -lt $minimum) {
+                Write-InstallLog "WSL $current esta desactualizado (Docker recomienda >= $minimum) -- actualizando con 'wsl --update'..."
+                wsl --update 2>&1 | ForEach-Object { Write-InstallLog "  $_" }
+            }
+        } else {
+            Write-InstallLog "No se pudo leer la version de WSL desde 'wsl --version' -- se continua igual." "WARN"
+        }
+    } catch {
+        Write-InstallLog "No se pudo verificar/actualizar la version de WSL ($_) -- se continua igual." "WARN"
+    }
+    return $true
 }
 
 function Register-ResumeTask {
@@ -160,24 +219,25 @@ function Register-ResumeTask {
     # no hacer nada), la tarea debe correr como su propio usuario.
     Write-InstallLog ""
     Write-InstallLog "=================================================================="
-    Write-InstallLog " Este script va a reiniciar tu PC ahora."
-    Write-InstallLog ""
-    Write-InstallLog " Por que: Windows necesita reiniciar para terminar de activar WSL2"
+    Write-InstallLog " Windows necesita reiniciar para terminar de activar WSL2"
     Write-InstallLog " (requisito de Docker Desktop), que se acaba de instalar."
     Write-InstallLog ""
-    Write-InstallLog " Que va a pasar: al volver a iniciar sesion, se abrira SOLA una"
-    Write-InstallLog " ventana negra (PowerShell) mostrando el resto de la instalacion"
-    Write-InstallLog " -- instalar Docker Desktop, activarlo, y conectar el worker."
-    Write-InstallLog " Puede tardar varios minutos. No cierres esa ventana hasta que"
-    Write-InstallLog " diga '=== Listo. ==='."
+    Write-InstallLog " Al volver a iniciar sesion, se abrira SOLA una ventana negra"
+    Write-InstallLog " (PowerShell) mostrando el resto de la instalacion -- instalar"
+    Write-InstallLog " Docker Desktop, activarlo, y conectar el worker. Puede tardar"
+    Write-InstallLog " varios minutos. No la cierres hasta que diga '=== Listo. ==='."
+    Write-InstallLog ""
+    Write-InstallLog " IMPORTANTE: guarda tu trabajo abierto (documentos, navegador,"
+    Write-InstallLog " etc.) antes de continuar -- el reinicio los cierra."
     Write-InstallLog "=================================================================="
     Write-InstallLog ""
-    Write-InstallLog "Reiniciando en 20 segundos (Ctrl+C para cancelar y reiniciar tu mismo despues -- la tarea ya queda programada)..."
+    $answer = Read-Host "Escribe 'si' para reiniciar ahora, o cualquier otra cosa para cancelar (la tarea queda programada, reinicia tu mismo cuando quieras)"
     Save-SelfCopy
 
     $argList = "-NoProfile -ExecutionPolicy Bypass -File `"$SelfCopyPath`" " +
                "-CoordinatorUrl `"$CoordinatorUrl`" -WorkerLabel `"$WorkerLabel`" " +
-               "-WorkerThreads $WorkerThreads -WorkerImage `"$WorkerImage`""
+               "-WorkerThreads $WorkerThreads -WorkerToken `"$WorkerToken`" " +
+               "-Cpus `"$Cpus`" -MemoryLimit `"$MemoryLimit`" -WorkerImage `"$WorkerImage`""
     $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $argList
     $trigger = New-ScheduledTaskTrigger -AtLogOn
     $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest
@@ -187,8 +247,12 @@ function Register-ResumeTask {
     Register-ScheduledTask -TaskName $ResumeTaskName -Action $action -Trigger $trigger `
         -Principal $principal -Settings $settings -Force | Out-Null
 
-    Start-Sleep -Seconds 20
-    Restart-Computer -Force
+    if ($answer -eq "si") {
+        Write-InstallLog "Reiniciando..."
+        Restart-Computer
+    } else {
+        Write-InstallLog "Reinicio pospuesto -- la tarea ya quedo programada, reinicia tu mismo cuando quieras y la instalacion continua sola."
+    }
 }
 
 function Install-Wsl2 {
@@ -196,15 +260,38 @@ function Install-Wsl2 {
         Write-InstallLog "WSL2 ya esta instalado y operativo."
         return
     }
+
+    # Limite de reintentos: sin esto, un fallo real (sin red, Windows
+    # Update bloqueado, permisos) se confundiria siempre con "pide
+    # reinicio" y reiniciaria la PC indefinidamente en cada login.
+    $attemptFile = Join-Path $LogDir "wsl-install-attempts.txt"
+    $attempts = 0
+    if (Test-Path $attemptFile) { $attempts = [int](Get-Content $attemptFile -ErrorAction SilentlyContinue) }
+    if ($attempts -ge $MaxResumeAttempts) {
+        throw "WSL2 no quedo operativo tras $MaxResumeAttempts intentos. Revisa manualmente ('wsl --install' en una consola de administrador) -- puede ser un problema de red, Windows Update, o permisos que este script no puede resolver solo."
+    }
+    Set-Content -Path $attemptFile -Value ($attempts + 1)
+
     Write-InstallLog "Instalando WSL2 (wsl --install)..."
     wsl --install --no-distribution 2>&1 | ForEach-Object { Write-InstallLog "  $_" }
+    $installExitCode = $LASTEXITCODE
     Start-Sleep -Seconds 3
+
     if (Test-Wsl2Ready) {
         Write-InstallLog "WSL2 quedo operativo sin necesitar reinicio."
+        Remove-Item $attemptFile -ErrorAction SilentlyContinue
         return
     }
-    # wsl --install pide reinicio la primera vez en la mayoria de las
-    # instalaciones -- es el camino esperado, no un fallo.
+
+    # Exit codes de wsl.exe documentados: 0 = ok, 3010 = reinicio
+    # requerido (ERROR_SUCCESS_REBOOT_REQUIRED). Cualquier otro codigo
+    # distinto de exito es un fallo real, no "falta reiniciar" -- antes
+    # esto no se distinguia y cualquier fallo se interpretaba como
+    # reinicio pendiente.
+    if ($installExitCode -ne 0 -and $installExitCode -ne 3010) {
+        throw "wsl --install fallo con codigo $installExitCode (no es el codigo de 'reinicio requerido'). Revisa tu conexion a internet o si Windows Update esta bloqueado por politica, y corre 'wsl --install' manualmente para ver el error completo."
+    }
+
     Register-ResumeTask
 }
 
@@ -219,6 +306,22 @@ function Install-DockerDesktop {
     Invoke-WebRequest -Uri "https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe" `
         -OutFile $installerPath -UseBasicParsing
 
+    # No confiar solo en HTTPS/DNS para saber que el .exe descargado es
+    # legitimo -- verificar que este firmado digitalmente y que la firma
+    # sea valida (cadena de confianza intacta) antes de ejecutarlo con
+    # privilegios de administrador.
+    $signature = Get-AuthenticodeSignature -FilePath $installerPath
+    if ($signature.Status -ne "Valid") {
+        Remove-Item $installerPath -ErrorAction SilentlyContinue
+        throw "El instalador de Docker Desktop descargado no tiene una firma digital valida (status: $($signature.Status)). No se ejecuta por seguridad -- puede ser una descarga corrupta o interceptada. Descargalo manualmente desde https://www.docker.com/products/docker-desktop/ y verifica tu antivirus/red."
+    }
+    $signerName = $signature.SignerCertificate.Subject
+    if ($signerName -notmatch "Docker") {
+        Remove-Item $installerPath -ErrorAction SilentlyContinue
+        throw "El instalador esta firmado, pero no por Docker (firmante: $signerName). No se ejecuta por seguridad."
+    }
+    Write-InstallLog "Firma digital verificada (firmante: $signerName)."
+
     Write-InstallLog "Instalando Docker Desktop (modo silencioso, puede tardar varios minutos)..."
     # --accept-license evita el dialogo interactivo de terminos; el
     # backend queda en WSL2 (default en instalaciones nuevas).
@@ -228,6 +331,26 @@ function Install-DockerDesktop {
     }
     Remove-Item $installerPath -ErrorAction SilentlyContinue
     Write-InstallLog "Docker Desktop instalado."
+    Sync-PathWithDockerCli
+}
+
+function Sync-PathWithDockerCli {
+    # El instalador de Docker Desktop agrega su carpeta de binarios al
+    # PATH de MAQUINA, pero un PowerShell ya abierto ANTES de esa
+    # instalacion no recarga esa variable solo -- 'docker' pareceria
+    # "no encontrado" aunque la instalacion haya sido exitosa. Refrescar
+    # el PATH de este proceso desde el registro, sin depender de que el
+    # usuario abra una consola nueva.
+    $cliDir = "$env:ProgramFiles\Docker\Docker\resources\bin"
+    $machinePath = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
+    $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+    $env:Path = "$machinePath;$userPath"
+    if ((Test-Path $cliDir) -and ($env:Path -notlike "*$cliDir*")) {
+        $env:Path = "$env:Path;$cliDir"
+    }
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+        Write-InstallLog "El comando 'docker' no aparece en el PATH todavia tras instalar -- puede necesitar cerrar y reabrir esta ventana manualmente si el resto del script falla por esto." "WARN"
+    }
 }
 
 function Set-DockerAutoStart {
@@ -293,10 +416,33 @@ function Test-CoordinatorReachable {
     }
 }
 
+function Invoke-DockerPullWithRetry {
+    param([int]$MaxAttempts = 3)
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        Write-InstallLog "Descargando la imagen del worker ($WorkerImage), intento $attempt de $MaxAttempts..."
+        $output = docker pull $WorkerImage 2>&1
+        $output | ForEach-Object { Write-InstallLog "  $_" }
+        if ($LASTEXITCODE -eq 0) { return }
+
+        $outputText = $output -join "`n"
+        # "failed to fetch oauth token" / timeout / "net/http" son fallos
+        # de red transitorios (ej. contra ghcr.io/token) -- vale la pena
+        # reintentar. "unauthorized"/"denied" es un problema real de
+        # permisos del paquete, no de red -- reintentar no lo arregla.
+        $isAuthError = $outputText -match "unauthorized|denied:"
+        if ($isAuthError) {
+            throw "docker pull fallo por permisos (no es un problema de red): $outputText`nEsto pasa si la imagen del worker esta marcada como privada en GHCR -- avisa a quien administra el proyecto, no es algo que puedas arreglar desde tu PC."
+        }
+        if ($attempt -eq $MaxAttempts) {
+            throw "docker pull fallo tras $MaxAttempts intentos, parece un problema de red/conexion:`n$outputText`nRevisa tu conexion a internet (o si un firewall/antivirus bloquea Docker) e intenta de nuevo mas tarde."
+        }
+        Write-InstallLog "Fallo transitorio, reintentando en 10s..." "WARN"
+        Start-Sleep -Seconds 10
+    }
+}
+
 function Install-WorkerContainer {
-    Write-InstallLog "Descargando la imagen del worker ($WorkerImage)..."
-    docker pull $WorkerImage 2>&1 | ForEach-Object { Write-InstallLog "  $_" }
-    if ($LASTEXITCODE -ne 0) { throw "docker pull fallo." }
+    Invoke-DockerPullWithRetry
 
     $existing = docker ps -a --filter "name=^geant4-worker$" --format "{{.Names}}" 2>&1
     if ($existing -eq "geant4-worker") {
@@ -311,9 +457,15 @@ function Install-WorkerContainer {
     if ($WorkerThreads -gt 0) {
         $envArgs += @("-e", "WORKER_THREADS=$WorkerThreads")
     }
+    if ($WorkerToken) {
+        $envArgs += @("-e", "WORKER_TOKEN=$WorkerToken")
+    }
+    $limitArgs = @()
+    if ($Cpus) { $limitArgs += @("--cpus", $Cpus) }
+    if ($MemoryLimit) { $limitArgs += @("--memory", $MemoryLimit) }
 
     Write-InstallLog "Creando el contenedor del worker..."
-    docker run -d --name geant4-worker --restart unless-stopped @envArgs $WorkerImage 2>&1 | ForEach-Object { Write-InstallLog "  $_" }
+    docker run -d --name geant4-worker --restart unless-stopped @envArgs @limitArgs $WorkerImage 2>&1 | ForEach-Object { Write-InstallLog "  $_" }
     if ($LASTEXITCODE -ne 0) { throw "docker run fallo." }
 
     Start-Sleep -Seconds 5
@@ -328,12 +480,35 @@ function Install-WorkerContainer {
 function Test-WorkerRegistered {
     param([int]$TimeoutSeconds = 60)
     Write-InstallLog "Confirmando que el worker se registro en el Coordinator..."
+
+    # Verificar por worker_id real (persistido dentro del contenedor por
+    # worker.py), no solo por label -- un registro VIEJO con el mismo
+    # label (de una instalacion anterior, ya muerto) haria que esta
+    # comprobacion pareciera exitosa aunque el worker nuevo nunca se
+    # haya conectado de verdad.
+    $workerId = $null
+    $idElapsed = 0
+    while ($idElapsed -lt 30) {
+        $workerId = docker exec geant4-worker cat /var/lib/geant4-worker/worker_id 2>$null
+        if ($LASTEXITCODE -eq 0 -and $workerId) { break }
+        Start-Sleep -Seconds 3
+        $idElapsed += 3
+    }
+    if (-not $workerId) {
+        Write-InstallLog "No se pudo leer el worker_id desde dentro del contenedor -- revisa 'docker logs geant4-worker'." "ERROR"
+        return $false
+    }
+
+    $headers = @{}
+    if ($WorkerToken) { $headers["X-Worker-Token"] = $WorkerToken }
+
     $elapsed = 0
     while ($elapsed -lt $TimeoutSeconds) {
         try {
-            $workers = Invoke-RestMethod -Uri "$CoordinatorUrl/api/v1/workers" -TimeoutSec 10
-            if ($workers | Where-Object { $_.label -eq $WorkerLabel }) {
-                Write-InstallLog "Worker '$WorkerLabel' confirmado en el Coordinator."
+            $workers = Invoke-RestMethod -Uri "$CoordinatorUrl/api/v1/workers" -Headers $headers -TimeoutSec 10
+            $match = $workers | Where-Object { $_.worker_id -eq $workerId }
+            if ($match -and $match.last_heartbeat) {
+                Write-InstallLog "Worker '$WorkerLabel' (id $workerId) confirmado en el Coordinator, con heartbeat reciente."
                 return $true
             }
         } catch {
@@ -345,17 +520,18 @@ function Test-WorkerRegistered {
         Start-Sleep -Seconds 5
         $elapsed += 5
     }
-    Write-InstallLog "El worker no aparecio en $CoordinatorUrl/api/v1/workers tras $TimeoutSeconds s -- revisa 'docker logs geant4-worker' para ver el error real." "WARN"
+    Write-InstallLog "El worker (id $workerId) no aparecio en $CoordinatorUrl/api/v1/workers tras $TimeoutSeconds s -- revisa 'docker logs geant4-worker' para ver el error real." "ERROR"
     return $false
 }
 
 function Register-WatchdogTask {
-    # Recurrente (a diferencia de Register-ResumeTask): corre en CADA
-    # inicio de sesion, no una sola vez. No reemplaza --restart
-    # unless-stopped (esa sigue siendo la primera linea de defensa) --
-    # es una red de seguridad para cuando Docker Desktop tarda en
-    # arrancar despues del login, o el ajuste de auto-inicio de Docker
-    # se pierde por alguna actualizacion.
+    # Recurrente (a diferencia de Register-ResumeTask): corre al inicio
+    # de sesion Y despues cada 30 minutos mientras la sesion siga activa
+    # -- solo AtLogOn dejaba un hueco real (si Docker Desktop se cae
+    # horas despues del login, nadie lo nota hasta el proximo inicio de
+    # sesion). No reemplaza --restart unless-stopped (esa sigue siendo
+    # la primera linea de defensa para el CONTENEDOR) -- esto cubre que
+    # el propio Docker Desktop (el motor) siga arriba.
     Write-InstallLog "Registrando el watchdog que revisa el worker en cada inicio de sesion..."
     Save-SelfCopy
 
@@ -394,14 +570,19 @@ if (-not `$running) {
 
     $action = New-ScheduledTaskAction -Execute "powershell.exe" `
         -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$watchdogScript`""
-    $trigger = New-ScheduledTaskTrigger -AtLogOn
+    $logonTrigger = New-ScheduledTaskTrigger -AtLogOn
+    # Repeticion cada 30 min durante 10 anios (limite arbitrario alto,
+    # equivalente a "indefinidamente") -- cubre el caso de Docker
+    # cayendose horas despues del login, no solo al iniciar sesion.
+    $recurringTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date) `
+        -RepetitionInterval (New-TimeSpan -Minutes 30) -RepetitionDuration (New-TimeSpan -Days 3650)
     $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
 
     Unregister-ScheduledTask -TaskName $WatchdogTaskName -Confirm:$false -ErrorAction SilentlyContinue
-    Register-ScheduledTask -TaskName $WatchdogTaskName -Action $action -Trigger $trigger `
+    Register-ScheduledTask -TaskName $WatchdogTaskName -Action $action -Trigger @($logonTrigger, $recurringTrigger) `
         -Principal $principal -Settings $settings -Force | Out-Null
-    Write-InstallLog "Watchdog registrado (tarea '$WatchdogTaskName', corre en cada inicio de sesion)."
+    Write-InstallLog "Watchdog registrado (tarea '$WatchdogTaskName', corre al iniciar sesion y cada 30 min mientras siga activa)."
 }
 
 # --- Flujo principal ---
@@ -422,8 +603,10 @@ if ($isResume) {
     Write-InstallLog "   - Descargar la imagen del worker (~5GB, solo la primera vez) y"
     Write-InstallLog "     dejarla corriendo, conectada a $CoordinatorUrl"
     Write-InstallLog ""
-    Write-InstallLog " Nada de esto borra ni modifica archivos tuyos -- el worker corre"
-    Write-InstallLog " aislado dentro de Docker. Log completo en: $LogFile"
+    Write-InstallLog " Esto SI instala/configura software en tu PC (WSL2, Docker Desktop,"
+    Write-InstallLog " tareas programadas) -- pero no accede ni modifica tus documentos"
+    Write-InstallLog " personales: el worker corre aislado dentro de un contenedor Docker,"
+    Write-InstallLog " sin ver el resto de tu sistema de archivos. Log completo en: $LogFile"
     Write-InstallLog " Para quitar todo despues: infra/deploy/uninstall-worker.ps1"
     Write-InstallLog "=================================================================="
     Write-InstallLog ""
@@ -451,7 +634,9 @@ if (-not (Test-LinuxContainersMode)) { exit 1 }
 if (-not (Test-CoordinatorReachable)) { exit 1 }
 
 Install-WorkerContainer
-Test-WorkerRegistered | Out-Null
+if (-not (Test-WorkerRegistered)) {
+    throw "El worker se creo pero no se confirmo conectado al Coordinator -- no se reporta exito. Revisa 'docker logs geant4-worker' y vuelve a correr este script."
+}
 
 Register-WatchdogTask
 
