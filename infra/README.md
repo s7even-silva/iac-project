@@ -13,9 +13,13 @@ posterior; este worker ejecuta únicamente el lanzador Geant4 existente.
   usuario, no algo resoluble desde este repo; el script de Azure sigue
   listo para cuando eso se resuelva).
 - **Imagen del worker:** `ghcr.io/s7even-silva/iac-project/geant4-worker:latest`.
-- **Para reclutar gente que preste CPU:** ver
-  [`infra/GUIA_VOLUNTARIOS.md`](GUIA_VOLUNTARIOS.md) — instalar Docker,
-  un solo `docker run`, sin configuración adicional.
+- **Para reclutar gente que preste CPU (sin el proyecto instalado):** ver
+  [`infra/GUIA_VOLUNTARIOS.md`](GUIA_VOLUNTARIOS.md) — Docker, un solo
+  `docker run`, sin configuración adicional.
+- **Para compañeros de equipo que ya tienen el proyecto compilado**
+  (conda `geant4_env` + `ActiveShield_Sim/build` ya hechos): ver
+  [`infra/GUIA_WORKER_LOCAL.md`](GUIA_WORKER_LOCAL.md) — mismo worker,
+  sin Docker, corre directo contra su build.
 - Detalle de qué jobs están poblados hoy en AGENTS.md, sección "Cómputo
   distribuido para el barrido de ActiveShield_Sim".
 
@@ -43,9 +47,14 @@ acordada (VPN/firewall); no hay autenticación implementada.
 
 ## Worker local y Docker
 
-Activar el entorno Geant4 de la máquina y ejecutar el worker con un Python
-que tenga `infra/worker/requirements.txt`. Debe heredar las variables G4 de
-los datasets, además de encontrar las bibliotecas del ejecutable compilado.
+Dos vías, mismo worker (`infra/worker/worker.py`), mismo protocolo:
+
+- **Sin Docker, contra producción, para compañeros con el proyecto ya
+  compilado:** ver [`GUIA_WORKER_LOCAL.md`](GUIA_WORKER_LOCAL.md) — receta
+  completa (activar `geant4_env`, lanzar en background con `nohup`,
+  monitorear, detener). Lo que sigue aquí es solo la prueba rápida local
+  contra un coordinator en `127.0.0.1` (para desarrollo del propio
+  coordinator/worker, no para sumar cómputo real al barrido).
 
 ```bash
 COORDINATOR_URL=http://127.0.0.1:8000 WORKER_THREADS=1 \
