@@ -1109,6 +1109,64 @@ al terminar el piloto:**
   cómputo distribuido en una sola tanda de 3 corridas caras, en vez de
   todo el barrido.
 
+**Bug real encontrado y corregido (2026-09-13): partícula atrapada en el
+campo, `ActiveShield_Sim` nunca había portado la protección que
+`GCR_SEP_Sim` ya tiene para esto.** Al monitorear la corrida de Eddy
+(`--only-positions 0,1`), el índice 80 (`SEP_p`, bin0, ~19 keV, posición
+0) llevaba **más de 10 horas** corriendo al 195% de CPU, cuando debía ser
+de las corridas más baratas de todo el barrido. Causa: igual que ya
+documentado más abajo para `GCR_SEP_Sim` ("Nota técnica: partículas
+atrapadas en el campo"), `MagnetEnvelope` es vacío (`G4_Galactic`) y el
+campo magnético se aplica de forma global
+(`ConstructSDandField`, independiente de fronteras de material) — un
+primario cargado de muy baja energía tiene un radio de giro
+correspondientemente diminuto y puede girar en espiral indefinidamente
+sin tocar nunca ningún material que le haga perder energía. Es
+exactamente el mismo modo de falla que `GCR_SEP_Sim` ya soluciona desde
+antes, pero ese fix **nunca se portó a `ActiveShield_Sim`** al
+construirlo sobre el ejemplo oficial ICRP110.
+
+Corregido con el mismo mecanismo de `GCR_SEP_Sim` (`G4UserLimits::
+SetUserMaxTrackLength()` + `G4StepLimiterPhysics` registrado en la
+physics list para que el límite realmente se respete), aplicado a
+`MagnetEnvelope` en vez de `ShipInterior` porque aquí el campo es global,
+no confinado al interior de la nave. **Primer valor probado (20× el
+semidiagonal del mundo/envelope, ~532 m) resultó insuficiente** —
+verificado directamente: la misma corrida de prueba (macro reconstruido
+con la config exacta del índice 80) seguía sin terminar tras 300s con
+ese límite ya compilado. Causa de por qué el mismo "×20" de
+`GCR_SEP_Sim` no se traduce directamente: cerca de las bobinas reales el
+campo llega a 6,25 T (ver `.map` de producción, arriba) y con un protón
+de 19 keV el radio de giro es de escala milimétrica — cualquier límite
+"generoso" en distancia absoluta sigue exigiendo un número enorme de
+espirales (y, por el limitador de paso del stepper de campo según
+curvatura local, un número aún mayor de pasos diminutos) para
+acumularse. El límite tiene que ser lo bastante ajustado para que ni el
+peor caso de radio de giro minúsculo pueda dar muchas vueltas — no basta
+con que sea "suficiente para que una partícula real cruce la geometría".
+
+**Corregido de verdad con un límite basado en la escala física real del
+problema, no en el tamaño del mundo/envelope**: `3 × 2 ×
+GetSourceSphereRadius()` (~41,7 m con `shipRadius=4,5m`/
+`shipHalfLength=5m`, frente a los ~532 m del primer intento — unas 13x
+más ajustado). Un primario real apuntado radialmente hacia el origen
+nunca necesita más de un diámetro de esfera fuente para llegar al casco;
+un múltiplo pequeño de esa escala ya acota bien el caso atrapado sin
+arriesgar cortar una trayectoria legítima. **Verificado con la misma
+corrida exacta que colgaba**: 10.000 eventos completan en 1m41s (antes:
++10h sin terminar) — dosis total 0 Gy, físicamente coherente (un protón
+de 19 keV es tan poco energético que el campo activo plausiblemente lo
+desvía por completo antes de llegar al fantoma, no un artefacto de
+matar la partícula antes de tiempo, ya que ahora no hace falta que dé
+miles de vueltas para alcanzar el límite). Afecta a `ICRP110phantoms.cc`
+(registro de `G4StepLimiterPhysics`) y
+`ICRP110PhantomConstruction.cc` (el `G4UserLimits` en
+`MagnetEnvelope`). Bloqueaba las corridas de `SEP_p` en bins de energía
+baja para cualquiera del equipo (Eddy, Bryam, o un futuro nodo de
+cómputo) — no verificado todavía si otros bins bajos de `SEP_p` (o de
+otras especies) también quedaban atrapados antes de este fix, pero el
+mecanismo de protección ahora es general, no específico del bin0.
+
 **Matriz pasiva/activa A-E: NO duplica el conteo, lo multiplica por hasta
 5x, y no es necesaria completa para el resultado central.** Si el único
 argumento del paper es "el blindaje magnético activo reduce la dosis",

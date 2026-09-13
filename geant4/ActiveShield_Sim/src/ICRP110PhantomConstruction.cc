@@ -44,6 +44,7 @@
 #include "G4RunManager.hh"
 #include "G4VisAttributes.hh"
 #include "G4NistManager.hh"
+#include "G4UserLimits.hh"
 #include "G4GenericMessenger.hh"
 #include "G4FieldBuilder.hh"
 #include "G4SubtractionSolid.hh"
@@ -342,6 +343,39 @@ G4VPhysicalVolume* ICRP110PhantomConstruction::Construct()
   auto* logicEnvelope = new G4LogicalVolume(envelope, matVacuum, "MagnetEnvelope");
   new G4PVPlacement(nullptr, {}, logicEnvelope, "MagnetEnvelope", logicWorld, false, 0, true);
   logicEnvelope->SetVisAttributes(G4VisAttributes::GetInvisible());
+
+  // Bug found 2026-09-13: a real SEP_p low-energy bin (~19 keV) ran for
+  // 10+ hours at ~195% CPU (genuinely looping, not hung) instead of the
+  // seconds expected for the cheapest bin in the sweep. Root cause: the
+  // field here is global (ConstructSDandField, independent of material
+  // boundaries -- see class comment), MagnetEnvelope is vacuum (G4_Galactic),
+  // and a low-momentum charged particle has a correspondingly tiny gyroradius
+  // -- it can spiral indefinitely without ever reaching ShipHull/ShipInterior
+  // (which has air, and would at least lose energy via ionization). Exactly
+  // the failure mode GCR_SEP_Sim's DetectorConstruction.cc already documents
+  // and fixes for its own vacuum ShipInterior. Same fix here, applied to the
+  // whole vacuum region the field actually reaches (MagnetEnvelope, not just
+  // ShipInterior, since this project's field isn't confined to the ship):
+  // cap track length instead of letting Geant4 track a trapped particle
+  // forever. Requires G4StepLimiterPhysics registered on the physics list
+  // (see ICRP110phantoms.cc/ICRP110standalone.cc) for this to be honored.
+  // First attempt used 20x the world diagonal (~532 m, mirroring GCR_SEP_Sim's
+  // "20x" multiplier applied to its OWN, much smaller ShipInterior radius) --
+  // still hung past 5 minutes on the same 19 keV primary. Root cause of why
+  // the multiplier doesn't transfer: near the real coil geometry (up to 6.25 T
+  // locally, see field manifest) a low-momentum charged particle's gyroradius
+  // can be millimeter-scale, so ANY generous cap still means an enormous
+  // number of tiny field-stepper substeps to accumulate that path length --
+  // the cap needs to be tight enough that even a worst-case tiny-gyroradius
+  // spiral cannot rack up many loops, not just "generous enough for a real
+  // particle to legitimately cross the geometry". A real primary aimed
+  // radially at the origin only ever needs on the order of one source-sphere
+  // diameter to reach the hull; capping at a small multiple of that (not of
+  // the whole world envelope) bounds the trapped case ~13x tighter.
+  const G4double envelopeMaxTrackLength = 3.0 * (2.0 * GetSourceSphereRadius());
+  auto* envelopeLimits = new G4UserLimits();
+  envelopeLimits->SetUserMaxTrackLength(envelopeMaxTrackLength);
+  logicEnvelope->SetUserLimits(envelopeLimits);
 
   // Closed shell (barrel + flat endcaps) and cabin are disjoint siblings.
   // Keeping outer dimensions fixed avoids moving future external coils when
