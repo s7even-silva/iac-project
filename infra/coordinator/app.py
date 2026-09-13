@@ -19,13 +19,23 @@ import sqlite3
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
 
 import db
 from models import FailIn, HeartbeatIn, JobOut, WorkerRegister, WorkerRef
 
 RESULTS_DIR = db.DB_PATH.parent / "results"
+
+# Token compartido simple: sin esto, cualquiera con la URL puede
+# registrarse como worker o leer/escribir jobs -- ver AGENTS.md, riesgo
+# aceptado explicitamente mientras el coordinator solo se comparte con
+# companeros conocidos. WORKER_TOKEN vacio (default) desactiva la
+# validacion por completo, para no romper el desarrollo/tests locales
+# que no lo configuran -- en produccion real se fija por variable de
+# entorno (ver infra/deploy/cloud-init-coordinator.yaml).
+WORKER_TOKEN = os.environ.get("WORKER_TOKEN", "")
+_PUBLIC_PATHS = {"/api/v1/health", "/docs", "/openapi.json", "/redoc"}
 
 # Cada cuanto corre el barrido de reencolado de jobs con heartbeat vencido.
 # No necesita ser frecuente: el timeout mismo (db.STALE_JOB_TIMEOUT_S) ya es
@@ -53,6 +63,15 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="ActiveShield_Sim compute coordinator", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def require_worker_token(request: Request, call_next):
+    if not WORKER_TOKEN or request.url.path in _PUBLIC_PATHS:
+        return await call_next(request)
+    if request.headers.get("X-Worker-Token") != WORKER_TOKEN:
+        return JSONResponse(status_code=401, content={"detail": "missing or invalid X-Worker-Token"})
+    return await call_next(request)
 
 
 def row_to_dict(row: sqlite3.Row) -> dict:

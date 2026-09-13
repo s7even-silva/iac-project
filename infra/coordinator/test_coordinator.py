@@ -210,3 +210,46 @@ def test_heartbeat_without_telemetry_keeps_previous_values():
     workers = db.list_workers()
     assert workers[0]['ram_free_gb'] == 10.0
     assert workers[0]['cpu_load_pct'] == 20.0
+
+
+class _FakeRequest:
+    def __init__(self, path, headers=None):
+        self.url = type('U', (), {'path': path})()
+        self.headers = headers or {}
+
+
+async def _ok(request):
+    return 'ok'
+
+
+def test_token_middleware_disabled_when_token_unset(monkeypatch):
+    import asyncio
+    import app
+    monkeypatch.setattr(app, 'WORKER_TOKEN', '')
+    resp = asyncio.run(app.require_worker_token(_FakeRequest('/api/v1/jobs'), _ok))
+    assert resp == 'ok'
+
+
+def test_token_middleware_rejects_missing_header(monkeypatch):
+    import asyncio
+    import app
+    monkeypatch.setattr(app, 'WORKER_TOKEN', 'secret123')
+    resp = asyncio.run(app.require_worker_token(_FakeRequest('/api/v1/jobs'), _ok))
+    assert resp.status_code == 401
+
+
+def test_token_middleware_accepts_correct_header(monkeypatch):
+    import asyncio
+    import app
+    monkeypatch.setattr(app, 'WORKER_TOKEN', 'secret123')
+    req = _FakeRequest('/api/v1/jobs', headers={'X-Worker-Token': 'secret123'})
+    resp = asyncio.run(app.require_worker_token(req, _ok))
+    assert resp == 'ok'
+
+
+def test_token_middleware_health_endpoint_always_public(monkeypatch):
+    import asyncio
+    import app
+    monkeypatch.setattr(app, 'WORKER_TOKEN', 'secret123')
+    resp = asyncio.run(app.require_worker_token(_FakeRequest('/api/v1/health'), _ok))
+    assert resp == 'ok'

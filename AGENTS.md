@@ -1520,6 +1520,131 @@ manualmente. Fix pendiente si se retoma: que `/workers` compute el
 mismo criterio de "online" que ya usa `count_workers_online()`, en vez
 de confiar en la columna `status` guardada.
 
+**Revisión externa de `install-worker.ps1`/`uninstall-worker.ps1`
+(2026-09-13), varios bugs reales corregidos.** El usuario pidió una
+revisión de robustez/seguridad antes de distribuir el instalador
+masivamente — no solo sintaxis (ya validada con `pwsh`+PSScriptAnalyzer
+al escribirlo). Hallazgos reales, todos corregidos:
+
+- **Windows 10/11 build mínimo desactualizado**: el script aceptaba
+  build 19041+ (mínimo histórico de WSL2), pero Docker Desktop actual
+  exige más (Windows 10 22H2/19045+, Windows 11 23H2/22631+) — una PC
+  podía pasar el chequeo del script y aun así fallar en Docker Desktop.
+  Corregido: `Test-WindowsVersionSupported` distingue Windows 10/11 y
+  usa los mínimos reales.
+- **`wsl --version` nunca se comprobaba**: si `wsl --status` ya
+  funcionaba, el script asumía "listo" sin revisar si esa instalación
+  estaba desactualizada (<2.1.5, causa conocida de fallos de arranque
+  de Docker Desktop según la propia documentación de Docker). Corregido:
+  `Test-Wsl2Ready` ahora también compara versión y corre `wsl --update`
+  si hace falta.
+- **`wsl --install` no distinguía fallo real de "pide reinicio"**:
+  cualquier código de salida no-éxito se interpretaba como "necesita
+  reiniciar", lo que podía reiniciar la PC en bucle ante un fallo real
+  (sin red, Windows Update bloqueado, permisos). Corregido: solo el
+  exit code `3010` (`ERROR_SUCCESS_REBOOT_REQUIRED`, documentado) se
+  trata como reinicio pendiente; cualquier otro lanza error explícito.
+  Además, un contador persistido en disco limita a 3 intentos de
+  auto-resume antes de rendirse con un mensaje claro.
+- **`Restart-Computer -Force` sin avisar**: podía cerrar trabajo no
+  guardado del voluntario (documentos, navegador) sin consentimiento.
+  Corregido: `Read-Host` pide confirmación explícita antes de reiniciar
+  (con opción de posponer — la tarea de resume ya queda programada
+  igual), y se advierte guardar el trabajo abierto primero.
+- **PATH no se refrescaba tras instalar Docker Desktop**: un PowerShell
+  ya abierto antes de la instalación no ve el PATH de máquina
+  actualizado, así que `docker info` podía fallar por "comando no
+  encontrado" aunque la instalación fuera exitosa. Corregido:
+  `Sync-PathWithDockerCli` relee el PATH del registro (máquina+usuario)
+  después de instalar.
+- **Éxito reportado aunque el worker nunca se conectara**: si
+  `Test-WorkerRegistered` devolvía `$false`, el resultado se descartaba
+  (`| Out-Null`) y el script igual imprimía "=== Listo. ===". Corregido:
+  ahora lanza error y detiene el script si el worker no se confirma
+  registrado.
+- **Verificación de registro solo por label, no por identidad real**:
+  un registro viejo muerto con el mismo `WorkerLabel` (de una
+  instalación anterior en la misma PC) podía hacer que la comprobación
+  pareciera exitosa sin que el worker nuevo se hubiera conectado de
+  verdad. Corregido: se lee el `worker_id` real desde dentro del
+  contenedor (`docker exec ... cat /var/lib/geant4-worker/worker_id`) y
+  se verifica ese ID específico, con heartbeat reciente.
+- **`docker pull` sin reintentos ni distinción de causa**: un timeout de
+  red real (`failed to fetch oauth token`, confirmado en vivo con un
+  voluntario) daba el mismo error genérico que un problema de permisos
+  del paquete (que sí ocurrió antes de hacerlo público, ver más abajo).
+  Corregido: `Invoke-DockerPullWithRetry` reintenta 3 veces ante fallos
+  de red, pero falla inmediato y con mensaje distinto si detecta
+  `unauthorized`/`denied` (problema de permisos, no de red — nada que
+  el voluntario pueda arreglar reintentando).
+- **Instalador de Docker Desktop sin verificar firma**: se descargaba y
+  ejecutaba como administrador confiando solo en HTTPS/DNS. Corregido:
+  `Get-AuthenticodeSignature` debe dar `Valid` y el firmante debe
+  mencionar "Docker" antes de ejecutar el instalador.
+- **Auto-resume apuntaba a la rama mutable**: el código que corre
+  después de un reinicio se volvía a descargar de
+  `infra/distributed-sweep` tal cual estuviera en ese momento, no
+  necesariamente la misma versión que arrancó la instalación. Corregido:
+  fijado a un commit concreto (`$InstallScriptCommit`, actualizar a mano
+  cuando el script cambie de verdad).
+- **Watchdog solo en `AtLogOn`**: si Docker Desktop se caía horas
+  después del login, nadie lo notaba hasta el siguiente inicio de
+  sesión. Corregido: se agregó un segundo trigger recurrente cada 30
+  minutos (además del de login), sin reemplazar `--restart
+  unless-stopped` del contenedor (que sigue siendo la primera línea de
+  defensa para el contenedor en sí; el watchdog cubre que Docker Desktop
+  — el motor — siga arriba).
+- **`docker rm -f` incondicional en cada re-ejecución**: volver a correr
+  el instalador podía tirar una simulación de horas en curso solo por
+  recrear el contenedor sin necesidad. **No resuelto todavía** — el
+  script sigue eliminando y recreando siempre; comparar configuración
+  antes de recrear queda pendiente (bajo impacto porque
+  `--restart unless-stopped` hace que la mayoría de re-ejecuciones sean
+  intencionales, no accidentales).
+- **Mensaje "no modifica ni borra nada tuyo" engañoso**: el script sí
+  instala/configura software (WSL2, Docker Desktop, entradas de
+  registro, Scheduled Tasks) — corregido el texto en el propio script y
+  en `GUIA_VOLUNTARIOS.md` para decir explícitamente qué se instala,
+  aclarando que no accede a documentos personales, en vez de implicar
+  que no toca nada del sistema.
+- **`-Cpus`/`-MemoryLimit` agregados** (parámetros opcionales, sin
+  límite por defecto — decisión del usuario: no sorprender a nadie con
+  un límite que no pidió) para pasar `--cpus`/`--memory` a `docker run`,
+  cubriendo el hallazgo de "un voluntario puede encontrarse su laptop al
+  100%" sin forzarlo por defecto.
+
+**Autenticación por token compartido, implementada en el código pero
+NO activada todavía en la VM de producción (decisión explícita, para no
+interrumpir la corrida en curso de Bryam sin coordinar antes):**
+`app.py` gana un middleware que exige el header `X-Worker-Token` en
+todos los endpoints salvo `/health` (y docs), activo solo si
+`WORKER_TOKEN` (variable de entorno) no está vacío — vacío por defecto,
+mismo comportamiento sin auth que antes, para no romper tests/desarrollo
+local. `worker.py` usa una `requests.Session()` compartida que agrega el
+header automáticamente si `WORKER_TOKEN` está en su entorno (evita tener
+que acordarse de agregarlo a cada una de las 7 llamadas HTTP por
+separado). `install-worker.ps1` gana `-WorkerToken` para pasarlo al
+`docker run`. **Para activarlo de verdad**: reconstruir y publicar la
+imagen en GHCR, coordinar con quien ya tenga workers corriendo para que
+agreguen `-e WORKER_TOKEN=...` antes de activar el requisito en el
+servidor (si no, sus workers dejan de poder reportar resultados a mitad
+de una corrida), y solo entonces configurar `WORKER_TOKEN` en el
+systemd de la VM (`cloud-init-coordinator.yaml` sigue sin esa variable
+hoy).
+
+**Aclarado (2026-09-13): el paquete GHCR privado y el error de WSL2 de
+un voluntario fueron dos problemas independientes, no la misma causa.**
+El código de diagnóstico opaco de Docker Desktop que vio un voluntario
+ocurría ANTES de llegar a `docker pull` (falla de arranque del motor,
+causa real: WSL2) — el paquete privado (confirmado con `curl` sin token:
+401; con el flujo real de auth de Docker Registry v2, `ghcr.io/token` +
+manifest: sí funcionaba, así que en realidad ya estaba público para
+cuando se verificó, el usuario lo había cambiado momentos antes) habría
+dado un síntoma distinto (`unauthorized`/`denied` en el pull), no el
+error de WSL2. Ambos se corrigieron por separado: visibilidad del
+paquete a público (acción del usuario en GitHub) y validación real de
+WSL2/version en el script.
+
 ## Pendientes conocidos
 
 - ~~Reemplazar los 6 CSV placeholder de `data/sources/` con espectros reales por fase solar.~~ **Hecho (2026-09-10), los 6 son reales.** Modelos: **Badhwar-O'Neill 2020** para GCR (mínimo 31/12/2019-01/01/2020, máximo 14-15/01/2023 — limitado por BON2020 en OLTARIS, ver nota arriba), **evento histórico** para SEP (Oct 1989 = máximo, Feb 1956 ajuste LaRC = mínimo — no el modelo probabilístico ESP-PSYCHIC). Detalle completo: [`docs/checklist_espectros_reales.md`](geant4/GCR_SEP_Sim/docs/checklist_espectros_reales.md).
