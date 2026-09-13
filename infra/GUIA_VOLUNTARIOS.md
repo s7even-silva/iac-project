@@ -11,6 +11,41 @@ combinación** (con semillas distintas) para poder calcular media,
 desviación estándar e intervalo de confianza — mismo mecanismo, solo
 más runs en la cola; no requiere que cambies nada de tu lado.
 
+## Windows: instalador automático (recomendado)
+
+Si estás en Windows, hay un script que hace todos los pasos de abajo
+por ti — verifica requisitos, instala WSL2 y Docker Desktop si faltan,
+los configura para arrancar solos, y deja el worker corriendo y
+conectado. Requiere permisos de administrador (te lo va a pedir Windows
+con el aviso normal de UAC).
+
+Abre **PowerShell como administrador** (clic derecho → "Ejecutar como
+administrador") y corre:
+```powershell
+irm https://raw.githubusercontent.com/s7even-silva/iac-project/infra/distributed-sweep/infra/deploy/install-worker.ps1 | iex
+```
+
+Si tu PC necesita instalar WSL2 por primera vez, Windows va a pedir
+**reiniciar una vez** — el script te avisa antes de hacerlo, y al
+volver a iniciar sesión continúa solo (se abre una ventana negra
+mostrando el progreso, no hace falta que corras nada de nuevo).
+
+Para identificarte con tu propio nombre en vez del nombre de tu PC:
+```powershell
+irm https://raw.githubusercontent.com/s7even-silva/iac-project/infra/distributed-sweep/infra/deploy/install-worker.ps1 | iex; .\install-worker.ps1 -WorkerLabel "laptop-juan"
+```
+(o descarga el script primero con `Guardar como` desde el link de
+arriba si prefieres revisarlo antes de correrlo, y ejecútalo con
+`.\install-worker.ps1 -WorkerLabel "laptop-juan"`).
+
+**Para quitar todo después** (contenedor + las tareas automáticas que
+el instalador programó — Docker Desktop en sí no se desinstala):
+```powershell
+irm https://raw.githubusercontent.com/s7even-silva/iac-project/infra/distributed-sweep/infra/deploy/uninstall-worker.ps1 | iex
+```
+
+Si prefieres los pasos manuales (o estás en Linux/Mac), sigue leyendo.
+
 ## 1. Instalar Docker (una sola vez)
 
 **Linux (Ubuntu/Debian/Parrot):**
