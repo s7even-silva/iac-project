@@ -21,6 +21,24 @@ sudo usermod -aG docker $USER
 Cierra sesión y vuelve a entrar (o reinicia) para que el permiso de grupo
 tome efecto.
 
+**Windows — verificar WSL2 antes de instalar (evita el error más común):**
+Docker Desktop en Windows necesita WSL2 para funcionar. En una PC con
+Windows actualizado normalmente ya lo tiene o el instalador de Docker lo
+agrega solo — pero si tu Windows lleva tiempo sin actualizarse, puede
+faltar y Docker Desktop falla al abrir con un diagnóstico genérico (un
+código largo tipo `FFFBB9CB-...`) que no dice "falta WSL2" directamente.
+Para no toparte con eso a medias, revisa primero, en CMD o PowerShell:
+```
+wsl --status
+```
+Si da error o dice que no está instalado:
+```
+wsl --install
+```
+y **reinicia la PC** — después de eso instala Docker Desktop normal. Si
+`wsl --status` ya muestra información (sin error), no hace falta hacer
+nada de esto, sigue directo a instalar Docker Desktop.
+
 **Windows/Mac:** instalar [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 normal, abrirlo una vez para que arranque el motor.
 
