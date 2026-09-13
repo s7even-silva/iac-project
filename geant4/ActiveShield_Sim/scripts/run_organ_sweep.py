@@ -292,7 +292,11 @@ def main():
                               "multiplica el total de corridas por N (ej. 120 combos x 5 = 600).")
     parser.add_argument("--no-resume", dest="resume", action="store_false", default=True,
                          help="Rehacer desde cero incluso las corridas ya exitosas (exit_code 0)")
+    parser.add_argument("--repetition-start", type=int, default=0,
+                        help="Indice inicial de repeticion (default 0); con --repeats 1 ejecuta solo ese indice.")
     args = parser.parse_args()
+    if args.repetition_start < 0 or args.repeats < 1:
+        parser.error("Require repetition-start >= 0 and repeats >= 1")
 
     project_root = Path(__file__).resolve().parent.parent
     build_dir = (args.build_dir or (project_root / "build")).resolve()
@@ -379,7 +383,7 @@ def main():
     # medio terminar durante la mayor parte de la corrida. El resume por
     # (index, repeticion) no depende del orden de iteracion, asi que esto
     # no cambia que combinaciones quedan pendientes si se corta a la mitad.
-    for rep in range(args.repeats):
+    for rep in range(args.repetition_start, args.repetition_start + args.repeats):
         for combo in combos:
             run_n += 1
             if (combo["index"], rep) in done_runs:

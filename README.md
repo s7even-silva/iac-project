@@ -99,6 +99,14 @@ idéntico), sin `field/.venv` ni Elmer, ~400MB menos de instalación.
 nada. Detalle en `AGENTS.md`, sección "Instalación mínima para nodos de
 cómputo".
 
+**Cómputo distribuido (rama `infra/distributed-sweep`, en curso):**
+coordinator FastAPI + workers en Docker para repartir el barrido de
+`ActiveShield_Sim` entre varias máquinas/VMs (incluida la nube, vía
+GitHub Education u otro crédito), sin reparto manual por `--only-positions`.
+Detalle completo — diseño, riesgos aceptados, cómo desplegarlo — en
+`AGENTS.md`, sección "Cómputo distribuido para el barrido de
+ActiveShield_Sim".
+
 ### Instalación manual
 
     conda env create -f environment.yml

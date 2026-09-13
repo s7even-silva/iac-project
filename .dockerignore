@@ -1,0 +1,9 @@
+.git/
+**/build/
+**/Build/
+field/.venv/
+field/generated/
+field/wheelhouse/
+infra/coordinator/data/
+__pycache__/
+*.pyc

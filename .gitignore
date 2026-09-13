@@ -65,6 +65,7 @@ __pycache__/
 .ipynb_checkpoints/
 .venv/
 venv/
+.pytest_cache/
 
 # ─── LaTeX ───
 *.aux
@@ -90,3 +91,11 @@ venv/
 # Pointer file written by scripts/install.sh --with-elmer (local machine path,
 # not portable/versionable -- Elmer itself installs outside the repo).
 /field/.elmer-prefix
+
+# ─── Coordinator de computo distribuido (infra/) ───
+# Base SQLite y resultados subidos por los workers -- estado de runtime de
+# ESTA maquina, no fuente de verdad versionable (ver infra/coordinator/,
+# AGENTS.md "Computo distribuido"). Los resultados finales del barrido que
+# SI van al articulo siguen viviendo en geant4/**/resultados/*.csv (ya
+# versionado mas arriba en este archivo).
+/infra/coordinator/data/
