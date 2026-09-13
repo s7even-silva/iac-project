@@ -1457,10 +1457,25 @@ real — ya no solo local sin contenedor:**
     cambio (confirmado por el mismo manifiesto); offsets 0,1 de GCR_H y
     cualquier otra combinación dependen del manifiesto de Eddy, no
     versionado — quedan sin poblar hasta confirmar su estado real.
-  - **Pendiente, ya anunciado a los voluntarios pero no implementado
-    todavía:** 5 repeticiones por combinación (semillas distintas) para
-    poder calcular media/std/IC95% — mismo mecanismo de `seed_jobs.py`
-    con `--repeticion`, solo falta poblarlas cuando se decida el orden.
+  - **5 repeticiones, herramienta lista (2026-09-13):**
+    `infra/coordinator/replicate_repeats.py` (nuevo) lee todos los jobs
+    ya sembrados en una repetición base (`repeticion=0` por defecto) y
+    crea las mismas combinaciones para `N` repeticiones adicionales,
+    preservando `species`/`bin_index`/`offset_x_m`/`n_events`/
+    `priority`/`min_ram_gb`/`min_cpu_count` de cada job original —
+    `python3 replicate_repeats.py --repeats 4` agrega repeticiones 1-4
+    sin tener que volver a escribir cada llamada a `seed_jobs.py` a
+    mano. Idempotente por el mismo `UNIQUE(species, bin_index,
+    offset_x_m, repeticion)` que ya usa `insert_job()` — correrlo dos
+    veces no duplica nada, verificado. No cambia el mecanismo de
+    ejecución en sí: el worker ya soportaba pedir una repetición
+    específica (`run_organ_sweep.py --repetition-start`, ver más
+    arriba) y el identificador de "en qué pasada está" cada job ya
+    existe como columna `repeticion`, visible en `GET /api/v1/jobs`. La
+    decisión de **cuándo** poblar (esperar a que termine la primera
+    pasada completa vs. sembrar ya las 4 adicionales) se deja al
+    criterio de quien administre la cola en cada momento — la
+    herramienta no fuerza un orden.
 - **Primer worker de producción real corriendo** (no una prueba
   descartable): `docker run -d --name geant4-worker-test ...` desde la
   máquina del usuario contra la VM de GCP, ya reclamó y está corriendo
