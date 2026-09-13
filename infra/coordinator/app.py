@@ -228,4 +228,15 @@ def health():
         "jobs_done": counts.get("done", 0),
         "jobs_failed": counts.get("failed", 0),
         "workers_online": db.count_workers_online(),
+        # Expuesto para que el worker sepa hasta cuando vale la pena
+        # seguir reintentando subir un resultado que quedo pendiente por
+        # un corte de red (ver retry_pending_results() en worker.py) --
+        # pasado este umbral desde el ultimo heartbeat exitoso, el
+        # coordinator ya reencolo el job a otro worker, asi que insistir
+        # en subirlo solo arriesgaria pisar un resultado ya aceptado.
+        # Consultado en vivo en vez de duplicar el valor como una env var
+        # separada en cada worker -- si alguien cambia
+        # STALE_JOB_TIMEOUT_S en el coordinator, todos los workers lo ven
+        # sin tener que reconfigurarse uno por uno.
+        "stale_job_timeout_s": db.STALE_JOB_TIMEOUT_S,
     }
