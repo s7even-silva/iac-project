@@ -1457,18 +1457,33 @@ real — ya no solo local sin contenedor:**
     cambio (confirmado por el mismo manifiesto); offsets 0,1 de GCR_H y
     cualquier otra combinación dependen del manifiesto de Eddy, no
     versionado — quedan sin poblar hasta confirmar su estado real.
-  - **Sembrado del barrido completo, herramienta lista (2026-09-13):**
-    hasta este punto la cola solo tenía 11 de las 120 combinaciones
-    reales (los bins 6-7 de GCR_He/SEP_p que faltaban) — antes de poder
-    replicar repeticiones (ver el punto siguiente) hacía falta sembrar
-    las 120 completas de la repetición 0. `infra/coordinator/
-    seed_full_sweep.py` (nuevo) las crea todas de una vez (`python3
-    seed_full_sweep.py --n-events 10000`), reusando el mismo
-    `insert_job()`/`ON CONFLICT DO NOTHING` que `seed_jobs.py` — no pisa
-    ninguno de los 11 jobs ya en curso (`done`/`running` se preservan
-    intactos, verificado con una prueba que simula exactamente ese
-    estado). Prioridad y requisitos mínimos por especie, no un criterio
-    único para las tres:
+  - **Sembrado acotado a bin6/7, herramienta genérica lista
+    (2026-09-13) — corrige una primera versión que habría duplicado
+    trabajo real.** Primer intento: `seed_full_sweep.py` sembraba las
+    120 combinaciones completas asumiendo que solo 11 ya existían en la
+    cola. Eso era incorrecto — **69 de esas 120 ya están corridas por
+    Bryam localmente** (offsets 2,3,4, todos los bins salvo GCR_He
+    bin7, versionadas en `resultados/organ_sweep_manifest_bryam.csv`) y
+    **el resto de bins 0-5 (offsets 0,1) los corrió Joel localmente**,
+    a quien se le pidió explícitamente NO tocar bin6/7 — su trabajo
+    **no está subido a git todavía**, así que ningún CSV del repo lo
+    refleja, pero sí cuenta como hecho. Entre Bryam y Joel, bins 0-5 ya
+    están o van a estar cubiertos en las 5 posiciones **sin pasar por
+    el coordinator** — sembrarlos ahí habría hecho que algún voluntario
+    recorriera ese trabajo desde cero. Corregido: `seed_full_sweep.py`
+    ahora soporta `--bins` (lista de `bin_index`, default: los 8
+    completos) para acotar qué se siembra — el sembrado real de este
+    momento es `python3 seed_full_sweep.py --n-events 10000 --bins
+    6,7` (30 combinaciones: 3 especies × 2 bins × 5 posiciones, de las
+    cuales 11 ya estaban en la cola), dejando bins 0-5 completamente
+    fuera. El script sigue sirviendo para el barrido completo (sin
+    `--bins`) si algún día hace falta sembrar todo desde cero, sin
+    trabajo local previo de por medio. Reusa el mismo
+    `insert_job()`/`ON CONFLICT DO NOTHING` que `seed_jobs.py` — no
+    pisa ningún job ya en curso (`done`/`running` se preservan intactos,
+    verificado con una prueba que simula exactamente ese estado).
+    Prioridad y requisitos mínimos por especie, no un criterio único
+    para las tres:
     - GCR_H/GCR_He: `priority = bin_index` (bin7 primero) y
       `min_ram_gb=8`/`min_cpu_count=4` desde `bin_index>=6` — el mismo
       criterio ya usado a mano, justificado por la curva de costo real

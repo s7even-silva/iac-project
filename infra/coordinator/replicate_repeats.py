@@ -8,6 +8,17 @@ min_cpu_count de cada job de la repeticion base tal cual, cambiando solo
 `repeticion`. Idempotente via el mismo UNIQUE constraint que ya usa
 insert_job() -- correrlo dos veces con el mismo --repeats no duplica nada.
 
+Las semillas NO se guardan aqui ni se copian de la repeticion base --
+la tabla `jobs` solo tiene species/bin_index/offset_x_m/repeticion/
+n_events, nunca seed1/seed2. `run_organ_sweep.py` calcula la semilla en
+el momento de ejecutar, a partir de `repeticion` (BASE_SEED + 1000*rep +
+2*indice, ver seed1/seed2 ahi) -- cada repeticion nueva creada por este
+script obtiene automaticamente una semilla distinta de la 0 (y de
+cualquier otra repeticion), sin que este script tenga que calcular ni
+propagar nada. Es lo mismo que ya hacia --repeats en ese script para una
+corrida local; este script solo hace lo equivalente contra la cola del
+coordinator en vez de un bucle local.
+
 Requiere sembrar la repeticion base PRIMERO -- para el barrido completo
 de ActiveShield_Sim (120 combinaciones, no solo los jobs sembrados a
 mano hasta ahora), usar seed_full_sweep.py antes de este script.
