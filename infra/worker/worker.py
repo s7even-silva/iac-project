@@ -76,6 +76,37 @@ def ram_gb() -> float:
     return 0.0
 
 
+def ram_free_gb() -> float | None:
+    # MemAvailable (no MemFree): es la estimacion del kernel de cuanta RAM
+    # se puede dar a un proceso nuevo sin entrar a swap, contando cache/
+    # buffers reclamables -- MemFree solo cuenta memoria totalmente sin
+    # usar y subestima mucho lo realmente disponible en una maquina que
+    # ya tiene cache de disco acumulado.
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    kb = int(line.split()[1])
+                    return round(kb / (1024 * 1024), 2)
+    except OSError:
+        pass
+    return None
+
+
+def cpu_load_pct() -> float | None:
+    # Load average de 1 minuto normalizado por nucleos, como % -- no es
+    # "uso de CPU instantaneo" (eso requeriria muestrear /proc/stat dos
+    # veces con una pausa), pero alcanza para decidir si la maquina esta
+    # genuinamente ocupada con otra cosa ahora mismo, sin dependencias
+    # nuevas (psutil) para un dato que no necesita tanta precision.
+    try:
+        load1, _, _ = os.getloadavg()
+        n_cpus = os.cpu_count() or 1
+        return round(100.0 * load1 / n_cpus, 1)
+    except OSError:
+        return None
+
+
 def register(worker_id: str) -> None:
     resp = requests.post(
         f"{COORDINATOR_URL}/api/v1/workers/register",
@@ -85,6 +116,8 @@ def register(worker_id: str) -> None:
             "cpu_count": os.cpu_count() or 0,
             "ram_gb": ram_gb(),
             "label": WORKER_LABEL,
+            "ram_free_gb": ram_free_gb(),
+            "cpu_load_pct": cpu_load_pct(),
         },
         timeout=15,
     )
@@ -94,7 +127,11 @@ def register(worker_id: str) -> None:
 
 def heartbeat(worker_id: str) -> None:
     try:
-        requests.post(f"{COORDINATOR_URL}/api/v1/workers/{worker_id}/heartbeat", timeout=15)
+        requests.post(
+            f"{COORDINATOR_URL}/api/v1/workers/{worker_id}/heartbeat",
+            json={"ram_free_gb": ram_free_gb(), "cpu_load_pct": cpu_load_pct()},
+            timeout=15,
+        )
     except requests.RequestException as exc:
         print(f"[worker] heartbeat fallo (no fatal): {exc}")
 

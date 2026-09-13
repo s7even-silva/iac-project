@@ -1327,6 +1327,38 @@ barrido normal en `main`.
   archivos originales quedan intactos). `DB_PATH`/`STALE_JOB_TIMEOUT_S`
   configurables por variable de entorno, útil para aislar la base de una
   corrida de pruebas de la de producción.
+- **Telemetría en vivo y matching de requisitos (2026-09-13), a pedido
+  del usuario tras preguntar qué puede ver el coordinator de cada
+  voluntario.** Antes, `register()` solo mandaba `cpu_count`/`ram_gb`
+  (total, una sola vez al arrancar) y el scheduler entregaba el job de
+  mayor prioridad a cualquiera sin comparar recursos. Ahora:
+  - Cada heartbeat (default cada 30s, ya en hilo separado — ver arriba)
+    reenvía `ram_free_gb` (`/proc/meminfo` `MemAvailable`, no `MemFree`
+    — la estimación del kernel de RAM realmente disponible sin swap) y
+    `cpu_load_pct` (load average de 1 min normalizado por núcleos, sin
+    agregar `psutil`) — visible en el nuevo `GET /api/v1/workers`.
+  - `jobs.min_ram_gb`/`min_cpu_count` (default 0, `seed_jobs.py
+    --min-ram-gb --min-cpu-count`): `claim_next_job()` en `db.py` solo
+    ofrece el job a un worker cuya telemetría **en vivo** (RAM libre
+    ahora mismo, no RAM instalada) alcance — evita mandar un bin caro
+    (ej. GCR_He bin7) a una VM voluntaria con poca RAM libre en ese
+    momento. Un worker sin telemetría (versión vieja) no queda
+    bloqueado: cae a comparar contra `ram_gb` total.
+  - **Explícitamente NO se agregó**: medición de ancho de banda de red
+    (no hay ningún test de velocidad), ni ningún acceso al host más allá
+    de lo que el propio proceso del worker decide leer y enviar por HTTP
+    — nada de SSH, inspección de otros procesos, o telemetría push desde
+    el coordinator hacia el worker. Detalle completo, con qué campos
+    exactos se ven y por qué, en `infra/README.md`, sección "Qué ve el
+    coordinator de cada worker (y qué no)".
+  - Verificado con 6 tests nuevos (19 en total, todos pasan): worker por
+    debajo de RAM/CPU mínima no recibe el job, worker que sí cumple lo
+    recibe, worker sin telemetría cae a RAM total, heartbeat actualiza
+    telemetría en vivo, heartbeat sin telemetría no borra la anterior.
+    Probado también por HTTP end-to-end (no solo a nivel de función):
+    `seed_jobs.py --min-ram-gb 8` seguido de dos workers con distinta
+    `ram_free_gb` — el de RAM insuficiente recibe `204`, el otro recibe
+    el job con sus columnas `min_ram_gb`/`min_cpu_count` visibles.
 
 **Dónde corre el coordinator y las imágenes del worker:** el coordinator es
 liviano (solo orquesta, no computa) y se recomienda correrlo en una VM
@@ -1339,13 +1371,16 @@ ghcr.io/<usuario>/geant4-worker:<tag>` sin necesitar el repo clonado aparte.
 
 **Verificado end-to-end de punta a punta (2026-09-12/13), incluyendo Docker
 real — ya no solo local sin contenedor:**
-- 10 tests de `infra/coordinator/test_coordinator.py` pasan: registro,
-  claim atómico bajo concurrencia simulada con hilos, ciclo completo
+- 16 tests de `infra/coordinator/test_coordinator.py` + 3 de
+  `infra/worker/test_worker.py` pasan (19 en total): registro, claim
+  atómico bajo concurrencia simulada con hilos, ciclo completo
   pending→done, rechazo de un worker que reporta un job que no es suyo
   (409), reencolado por heartbeat vencido, límite de reintentos agotados
   (`failed` tras 3 intentos), rechazo de una subida tardía que intenta
-  sobreescribir un resultado ya aceptado, y que `start` exige que el
-  worker que lo marca sea el mismo que lo reclamó.
+  sobreescribir un resultado ya aceptado, que `start` exige que el
+  worker que lo marca sea el mismo que lo reclamó, y (2026-09-13) el
+  matching de requisitos mínimos de RAM/CPU con telemetría en vivo (ver
+  entrada de arriba).
 - **Imagen Docker construida y corriendo el worker real de punta a
   punta**: `docker build -f docker/Dockerfile.geant4-worker .` completa
   (compila Geant4 headless + ambos binarios con `ctest` como gate) y el

@@ -23,7 +23,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
 import db
-from models import FailIn, JobOut, WorkerRegister, WorkerRef
+from models import FailIn, HeartbeatIn, JobOut, WorkerRegister, WorkerRef
 
 RESULTS_DIR = db.DB_PATH.parent / "results"
 
@@ -61,13 +61,14 @@ def row_to_dict(row: sqlite3.Row) -> dict:
 
 @app.post("/api/v1/workers/register")
 def register_worker(body: WorkerRegister):
-    db.upsert_worker(body.worker_id, body.hostname, body.cpu_count, body.ram_gb, body.label)
+    db.upsert_worker(body.worker_id, body.hostname, body.cpu_count, body.ram_gb, body.label,
+                      body.ram_free_gb, body.cpu_load_pct)
     return {"worker_id": body.worker_id, "status": "registered"}
 
 
 @app.post("/api/v1/workers/{worker_id}/heartbeat")
-def heartbeat(worker_id: str):
-    ok = db.touch_heartbeat(worker_id)
+def heartbeat(worker_id: str, body: HeartbeatIn = HeartbeatIn()):
+    ok = db.touch_heartbeat(worker_id, body.ram_free_gb, body.cpu_load_pct)
     if not ok:
         raise HTTPException(404, f"worker {worker_id} no registrado")
     return {"ok": True}
@@ -163,6 +164,11 @@ def fail_job(job_id: int, body: FailIn):
 def get_jobs(status: str | None = None):
     rows = db.list_jobs(status)
     return [row_to_dict(r) for r in rows]
+
+
+@app.get("/api/v1/workers")
+def get_workers():
+    return [row_to_dict(r) for r in db.list_workers()]
 
 
 @app.get("/api/v1/health")

@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS workers (
     hostname        TEXT,
     cpu_count       INTEGER,
     ram_gb          REAL,
+    ram_free_gb     REAL,
+    cpu_load_pct    REAL,
     label           TEXT,
     registered_at   TEXT NOT NULL,
     last_heartbeat  TEXT,
@@ -39,6 +41,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     repeticion      INTEGER NOT NULL DEFAULT 0,
     n_events        INTEGER NOT NULL,
     priority        INTEGER NOT NULL DEFAULT 0,
+    min_ram_gb      REAL NOT NULL DEFAULT 0,
+    min_cpu_count   INTEGER NOT NULL DEFAULT 0,
     status          TEXT NOT NULL DEFAULT 'pending',
     claimed_by      TEXT REFERENCES workers(worker_id),
     claimed_at      TEXT,
@@ -94,35 +98,57 @@ def get_conn():
         conn.close()
 
 
-def upsert_worker(worker_id: str, hostname: str, cpu_count: int, ram_gb: float, label: str) -> None:
+def upsert_worker(worker_id: str, hostname: str, cpu_count: int, ram_gb: float, label: str,
+                   ram_free_gb: float = None, cpu_load_pct: float = None) -> None:
     with get_conn() as conn:
         conn.execute(
             """
-            INSERT INTO workers (worker_id, hostname, cpu_count, ram_gb, label, registered_at, last_heartbeat, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'online')
+            INSERT INTO workers (worker_id, hostname, cpu_count, ram_gb, ram_free_gb, cpu_load_pct,
+                                  label, registered_at, last_heartbeat, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'online')
             ON CONFLICT(worker_id) DO UPDATE SET
                 hostname=excluded.hostname, cpu_count=excluded.cpu_count, ram_gb=excluded.ram_gb,
+                ram_free_gb=excluded.ram_free_gb, cpu_load_pct=excluded.cpu_load_pct,
                 label=excluded.label, last_heartbeat=excluded.last_heartbeat, status='online'
             """,
-            (worker_id, hostname, cpu_count, ram_gb, label, now_iso(), now_iso()),
+            (worker_id, hostname, cpu_count, ram_gb, ram_free_gb, cpu_load_pct, label, now_iso(), now_iso()),
         )
 
 
-def touch_heartbeat(worker_id: str) -> bool:
+def touch_heartbeat(worker_id: str, ram_free_gb: float = None, cpu_load_pct: float = None) -> bool:
     with get_conn() as conn:
         cur = conn.execute(
-            "UPDATE workers SET last_heartbeat=?, status='online' WHERE worker_id=?",
-            (now_iso(), worker_id),
+            """
+            UPDATE workers SET last_heartbeat=?, status='online',
+                   ram_free_gb=COALESCE(?, ram_free_gb), cpu_load_pct=COALESCE(?, cpu_load_pct)
+            WHERE worker_id=?
+            """,
+            (now_iso(), ram_free_gb, cpu_load_pct, worker_id),
         )
         return cur.rowcount > 0
 
 
 def claim_next_job(worker_id: str) -> sqlite3.Row | None:
-    """Reclama atomicamente el job pendiente de mayor prioridad. None si no hay."""
+    """Reclama atomicamente el job pendiente de mayor prioridad que el worker
+    pueda satisfacer (cpu_count total y ram_free_gb EN VIVO, no ram_gb total --
+    un worker con poca RAM libre en este momento no debe recibir un job caro
+    aunque su RAM instalada alcance en teoria). None si no hay ninguno elegible
+    o el worker no esta registrado."""
     with get_conn() as conn:
         conn.execute("BEGIN IMMEDIATE")
+        worker = conn.execute("SELECT * FROM workers WHERE worker_id=?", (worker_id,)).fetchone()
+        if worker is None:
+            return None
+        # ram_free_gb puede ser NULL si el worker nunca mando telemetria (ej.
+        # version vieja) -- en ese caso caer a ram_gb total, no bloquear jobs.
+        available_ram = worker["ram_free_gb"] if worker["ram_free_gb"] is not None else worker["ram_gb"]
         row = conn.execute(
-            "SELECT job_id FROM jobs WHERE status='pending' ORDER BY priority DESC, job_id ASC LIMIT 1"
+            """
+            SELECT job_id FROM jobs
+            WHERE status='pending' AND min_cpu_count <= ? AND min_ram_gb <= ?
+            ORDER BY priority DESC, job_id ASC LIMIT 1
+            """,
+            (worker["cpu_count"] or 0, available_ram or 0),
         ).fetchone()
         if row is None:
             return None
@@ -262,15 +288,26 @@ def count_workers_online(within_s: int = 300) -> int:
         return rows["n"]
 
 
+def list_workers() -> list[sqlite3.Row]:
+    """Telemetria de todos los workers alguna vez registrados (incluye
+    offline) -- lo unico que el coordinator sabe de cada maquina: lo que
+    el propio worker le reporto en register()/heartbeat(). Sin acceso
+    remoto al host mas alla de eso (ver AGENTS.md)."""
+    with get_conn() as conn:
+        return conn.execute("SELECT * FROM workers ORDER BY worker_id").fetchall()
+
+
 def insert_job(species: str, bin_index: int, offset_x_m: float, repeticion: int,
-               n_events: int, priority: int = 0) -> int:
+               n_events: int, priority: int = 0, min_ram_gb: float = 0, min_cpu_count: int = 0) -> int:
     with get_conn() as conn:
         cur = conn.execute(
             """
-            INSERT INTO jobs (species, bin_index, offset_x_m, repeticion, n_events, priority, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO jobs (species, bin_index, offset_x_m, repeticion, n_events, priority,
+                               min_ram_gb, min_cpu_count, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(species, bin_index, offset_x_m, repeticion) DO NOTHING
             """,
-            (species, bin_index, offset_x_m, repeticion, n_events, priority, now_iso(), now_iso()),
+            (species, bin_index, offset_x_m, repeticion, n_events, priority, min_ram_gb, min_cpu_count,
+             now_iso(), now_iso()),
         )
         return cur.lastrowid
