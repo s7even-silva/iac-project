@@ -1,10 +1,23 @@
-# Cómputo distribuido local (primer corte)
+# Cómputo distribuido
 
 Rama `infra/distributed-sweep`. Coordinator FastAPI + SQLite WAL y worker
 Geant4, reutilizando `scripts/install_compute_node.sh` sin modificarlo.
-No despliega nube, no publica imágenes, no ejecuta los jobs caros de GCR_He.
 La arquitectura genérica con imágenes separadas de Elmer/Geant4 es una fase
 posterior; este worker ejecuta únicamente el lanzador Geant4 existente.
+
+## Producción (en vivo)
+
+- **Coordinator:** `http://34.134.100.224:8000` (VM `e2-micro` en GCP,
+  Always Free Tier, `us-central1-a` — ver `infra/deploy/`. Azure quedó
+  bloqueado por una restricción de plataforma en la suscripción del
+  usuario, no algo resoluble desde este repo; el script de Azure sigue
+  listo para cuando eso se resuelva).
+- **Imagen del worker:** `ghcr.io/s7even-silva/iac-project/geant4-worker:latest`.
+- **Para reclutar gente que preste CPU:** ver
+  [`infra/GUIA_VOLUNTARIOS.md`](GUIA_VOLUNTARIOS.md) — instalar Docker,
+  un solo `docker run`, sin configuración adicional.
+- Detalle de qué jobs están poblados hoy en AGENTS.md, sección "Cómputo
+  distribuido para el barrido de ActiveShield_Sim".
 
 ## Coordinator
 
