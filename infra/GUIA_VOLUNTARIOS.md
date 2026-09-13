@@ -33,16 +33,11 @@ Si tu PC necesita instalar WSL2 por primera vez, Windows va a pedir
 volver a iniciar sesión continúa solo (se abre una ventana negra
 mostrando el progreso, no hace falta que corras nada de nuevo).
 
-Por defecto te identifica en el coordinator con el nombre de tu PC. Para
-usar tu propio nombre en cambio, hace falta una sintaxis un poco distinta
-(no puedes simplemente agregar `-WorkerLabel` después de `| iex`, porque
-el script ya se ejecutó dentro del pipe):
-```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/s7even-silva/iac-project/infra/distributed-sweep/infra/deploy/install-worker.ps1))) -WorkerLabel "laptop-juan"
-```
-Más simple si prefieres: descarga el script primero con `Guardar como`
-desde ese mismo link, ábrelo en una carpeta, y desde ahí corre en
-PowerShell (como administrador):
+El script te va a **preguntar** con qué nombre identificarte en el
+coordinator (Enter usa tu usuario de Windows). Si prefieres saltarte la
+pregunta, pásalo directo — para eso hace falta descargar el script
+primero (`Guardar como` desde ese mismo link) en vez de correrlo directo
+del `irm | iex`:
 ```powershell
 .\install-worker.ps1 -WorkerLabel "laptop-juan"
 ```
@@ -51,6 +46,18 @@ PowerShell (como administrador):
 contenedor (límite duro, más estricto que `WORKER_THREADS`):
 ```powershell
 .\install-worker.ps1 -WorkerLabel "laptop-juan" -Cpus 2 -MemoryLimit 4g
+```
+
+**Para actualizar** (hay una imagen nueva del worker, o simplemente
+quieres asegurarte de tener la última): corre exactamente el mismo
+comando de arriba de nuevo — el script detecta solo que ya tienes un
+worker instalado (con este mismo instalador **o** con el `docker run`
+manual de la sección de abajo, no importa cuál usaste la primera vez),
+conserva tu nombre actual sin volver a preguntarlo, y salta directo a
+descargar la imagen nueva sin repetir las verificaciones de WSL2/Docker
+Desktop (ya sabe que funcionan porque tu worker ya está corriendo):
+```powershell
+irm https://raw.githubusercontent.com/s7even-silva/iac-project/infra/distributed-sweep/infra/deploy/install-worker.ps1 | iex
 ```
 
 **Para quitar todo después** (contenedor + las tareas automáticas que
@@ -122,6 +129,16 @@ sabemos de quién es cada run si algo falla.
 
 **La primera vez tarda unos minutos** en descargar la imagen (~5GB,
 incluye Geant4 ya compilado). Después de eso, arranca en segundos.
+
+**Para actualizar más adelante (hay imagen nueva), en Windows con
+Docker Desktop:** no hace falta repetir el `docker run` de arriba a
+mano — el instalador de PowerShell de la sección anterior también sirve
+para esto, sin importar que hayas instalado por este camino manual.
+Corre el mismo comando de esa sección; detecta tu worker ya existente,
+conserva tu `WORKER_LABEL` actual, y solo descarga la imagen nueva. En
+Linux/Mac, sigue siendo el mismo `docker run` de arriba (con la misma
+`<tu-nombre>` que ya usabas) — Docker reemplaza el contenedor solo si
+das `docker rm -f geant4-worker` primero.
 
 ## 3. Ya está — no hay que hacer nada más
 

@@ -24,10 +24,12 @@ Uso local (sin Docker, contra un build ya compilado):
 """
 import csv
 import io
+import json
 import math
 import multiprocessing
 import os
 import platform
+import shutil
 import subprocess
 import threading
 import tempfile
@@ -46,6 +48,20 @@ COORDINATOR_URL = os.environ.get("COORDINATOR_URL", "http://localhost:8000").rst
 BUILD_DIR = Path(os.environ.get("BUILD_DIR", REPO_ROOT / "geant4" / "ActiveShield_Sim" / "build"))
 WORKER_LABEL = os.environ.get("WORKER_LABEL", "")
 WORKER_ID_FILE = Path(os.environ.get("WORKER_ID_FILE", "/var/lib/geant4-worker/worker_id"))
+# Mismo directorio persistente que WORKER_ID_FILE (montado como volumen
+# en Docker, ver GUIA_VOLUNTARIOS.md/GUIA_WORKER_LOCAL.md) -- resultados
+# ya generados por una simulacion real se guardan aqui ANTES de intentar
+# subirlos, y solo se borran despues de una subida confirmada. Bug real
+# encontrado en produccion (2026-09-13): una corrida de horas termino
+# exitosamente pero el resultado se perdio por completo porque vivia
+# solo en un directorio temporal que se autoborraba al salir del "with",
+# y una caida de red de varios minutos justo al momento de subir agoto
+# los reintentos en memoria sin dejar nada recuperable. Este directorio
+# sobrevive cualquier duracion de corte de red (y un reinicio del propio
+# worker) -- ver retry_pending_results() en main(), que reintenta al
+# arrancar cualquier resultado que quedo sin confirmar de una sesion
+# anterior.
+PENDING_RESULTS_DIR = WORKER_ID_FILE.parent / "pending_results"
 HEARTBEAT_INTERVAL_S = float(os.environ.get("HEARTBEAT_INTERVAL_S", "30"))
 
 
@@ -324,16 +340,170 @@ def read_manifest_csv(build_dir=None) -> str:
     return manifest_path.read_text() if manifest_path.is_file() else ""
 
 
+# Bug real encontrado en produccion (2026-09-13): una simulacion de
+# GCR_H bin5 de varias horas termino exitosamente (142 filas de organo
+# generadas, confirmadas en el log local) pero se PERDIO por completo --
+# una caida de red justo al momento de subir el resultado hacia
+# report_result() lanzaba requests.RequestException, que run_job()
+# capturaba como si la simulacion misma hubiera fallado, sin ningun
+# reintento de subida. El resultado real vivia SOLO en un directorio
+# temporal (tempfile.TemporaryDirectory) que se borraba solo al salir
+# del "with" -- para cuando se intentaba (sin exito, misma red caida)
+# report_failure(), el CSV real ya no existia en disco.
+#
+# Corregido en dos capas, no solo reintentos en memoria (esos alcanzan
+# para un corte de segundos, no para uno de varios minutos como el que
+# causo esto): (1) el resultado se escribe a PENDING_RESULTS_DIR --
+# directorio PERSISTENTE, mismo volumen que WORKER_ID_FILE -- ANTES de
+# intentar subir nada, y solo se borra tras una subida confirmada; (2)
+# reintentos con backoff cortos aqui mismo para el caso comun (corte
+# breve, se resuelve en segundos sin que el resultado pase de "job en
+# curso" a "pendiente en disco"). Si los reintentos cortos se agotan, el
+# archivo YA esta a salvo en disco -- retry_pending_results() (llamado
+# al arrancar el worker, y en cada iteracion del loop principal) lo
+# reintenta despues, sin importar cuanto dure el corte ni si el propio
+# worker se reinicia entre medio.
+_REPORT_RESULT_BACKOFF_S = 15
+
+# Umbral REAL de "ya es tarde para insistir" -- debe coincidir con
+# STALE_JOB_TIMEOUT_S del coordinator (db.py), que reencola un job
+# cuando pasan esas horas SIN HEARTBEAT del worker que lo tenia, no
+# desde que el resultado quedo pendiente de subir. Consultado en vivo
+# via GET /api/v1/health (nuevo campo stale_job_timeout_s) una sola vez
+# al arrancar, en vez de una variable de entorno separada que alguien
+# tendria que mantener sincronizada a mano con el coordinator -- si se
+# cambia el timeout ahi, todos los workers lo ven solos. Fallback local
+# (mismo default que db.py, 6h) solo si el coordinator no responde
+# siquiera para esta consulta -- no hay forma de saber el valor real en
+# ese caso, y no arrancar el worker por esto seria peor que asumir el
+# default razonable.
+_DEFAULT_STALE_JOB_TIMEOUT_S = 6 * 3600
+_stale_job_timeout_s = None  # cache; ver get_stale_job_timeout_s()
+
+
+def get_stale_job_timeout_s() -> float:
+    global _stale_job_timeout_s
+    if _stale_job_timeout_s is None:
+        try:
+            resp = SESSION.get(f"{COORDINATOR_URL}/api/v1/health", timeout=15)
+            resp.raise_for_status()
+            _stale_job_timeout_s = float(resp.json()["stale_job_timeout_s"])
+        except (requests.RequestException, KeyError, ValueError, TypeError) as exc:
+            print(f"[worker] no se pudo consultar stale_job_timeout_s al coordinator ({exc}) -- "
+                  f"usando default local de {_DEFAULT_STALE_JOB_TIMEOUT_S}s.")
+            _stale_job_timeout_s = float(_DEFAULT_STALE_JOB_TIMEOUT_S)
+    return _stale_job_timeout_s
+
+
+def _post_result(job_id: int, data: dict, files: dict) -> dict:
+    resp = SESSION.post(f"{COORDINATOR_URL}/api/v1/jobs/{job_id}/result", data=data, files=files, timeout=60)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _save_pending_result(job_id: int, data: dict, results_csv_text: str, manifest_csv_text: str) -> Path:
+    PENDING_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    job_dir = PENDING_RESULTS_DIR / str(job_id)
+    job_dir.mkdir(exist_ok=True)
+    # created_at es un timestamp ABSOLUTO (epoch, time.time()) -- no un
+    # contador de intentos ni un backoff relativo. Lo que decide si vale
+    # la pena seguir insistiendo es cuanto tiempo de reloj real paso
+    # desde que el job dejo de tener heartbeat, comparado contra el
+    # mismo umbral que usa el coordinator (ver get_stale_job_timeout_s())
+    # -- eso vale igual si el worker sigue reintentando en el mismo
+    # proceso o si se reinicio diez veces entre medio, algo que un
+    # "numero de intentos" no puede expresar.
+    data = dict(data, created_at=data.get("created_at", time.time()))
+    (job_dir / "data.json").write_text(json.dumps(data))
+    (job_dir / "results.csv").write_text(results_csv_text)
+    (job_dir / "manifest.csv").write_text(manifest_csv_text)
+    return job_dir
+
+
 def report_result(worker_id: str, job_id: int, exit_code: int, duration_s: float,
                    results_csv_text: str, manifest_csv_text: str) -> None:
+    data = {"worker_id": worker_id, "exit_code": str(exit_code), "duration_s": str(duration_s)}
+    # Persistir PRIMERO, antes de cualquier intento de red -- si el
+    # proceso se cae o se corta la luz a mitad de los reintentos de
+    # abajo, el resultado ya esta a salvo en disco de todos modos.
+    job_dir = _save_pending_result(job_id, data, results_csv_text, manifest_csv_text)
+    deadline = json.loads((job_dir / "data.json").read_text())["created_at"] + get_stale_job_timeout_s()
     files = {
         "results_csv": ("results.csv", results_csv_text.encode("utf-8"), "text/csv"),
         "manifest_csv": ("manifest.csv", manifest_csv_text.encode("utf-8"), "text/csv"),
     }
-    data = {"worker_id": worker_id, "exit_code": str(exit_code), "duration_s": str(duration_s)}
-    resp = SESSION.post(f"{COORDINATOR_URL}/api/v1/jobs/{job_id}/result", data=data, files=files, timeout=60)
-    resp.raise_for_status()
-    print(f"[worker] job {job_id} reportado: {resp.json()}")
+    while True:
+        try:
+            result = _post_result(job_id, data, files)
+            print(f"[worker] job {job_id} reportado: {result}")
+            shutil.rmtree(job_dir, ignore_errors=True)
+            return
+        except (requests.ConnectionError, requests.Timeout) as exc:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                print(f"[worker] job {job_id}: paso el umbral de {get_stale_job_timeout_s():.0f}s sin poder "
+                      f"subir -- el coordinator ya reencolo este job a otro worker. El archivo queda en "
+                      f"{job_dir} para inspeccion manual, retry_pending_results() ya no insistira con el.")
+                return
+            sleep_s = min(_REPORT_RESULT_BACKOFF_S, remaining)
+            print(f"[worker] job {job_id}: fallo de red al subir el resultado, reintentando en {sleep_s:.0f}s "
+                  f"(quedan ~{remaining/60:.0f} min antes de que el coordinator lo de por perdido): {exc}")
+            time.sleep(sleep_s)
+
+
+def retry_pending_results() -> None:
+    """Reintenta subir cualquier resultado que quedo guardado en
+    PENDING_RESULTS_DIR por un corte de red que supero los reintentos
+    largos de report_result() (mas comun: el propio worker se reinicio a
+    mitad de esos reintentos, ej. --restart unless-stopped de Docker
+    tras un crash). Se llama al arrancar el worker y en cada vuelta del
+    loop principal -- barata cuando el directorio esta vacio (el caso
+    normal). El plazo se sigue midiendo desde el created_at ABSOLUTO
+    guardado en data.json, no desde que arranca este proceso -- un
+    worker que se reinicia varias veces durante el mismo corte de red
+    sigue teniendo el plazo correcto, ni mas ni menos tiempo del que ya
+    habia consumido antes de reiniciarse."""
+    if not PENDING_RESULTS_DIR.is_dir():
+        return
+    for job_dir in sorted(PENDING_RESULTS_DIR.iterdir()):
+        if not job_dir.is_dir():
+            continue
+        try:
+            job_id = int(job_dir.name)
+            data = json.loads((job_dir / "data.json").read_text())
+            created_at = float(data["created_at"])
+            results_csv_text = (job_dir / "results.csv").read_text()
+            manifest_csv_text = (job_dir / "manifest.csv").read_text()
+        except (ValueError, OSError, KeyError) as exc:
+            print(f"[worker] {job_dir} no se pudo leer como resultado pendiente, se deja para revision manual: {exc}")
+            continue
+
+        deadline = created_at + get_stale_job_timeout_s()
+        if time.time() > deadline:
+            print(f"[worker] job {job_id} pendiente lleva mas de {get_stale_job_timeout_s():.0f}s sin poder "
+                  "subirse -- el coordinator ya lo reencolo a otro worker, se descarta sin reintentar mas.")
+            shutil.rmtree(job_dir, ignore_errors=True)
+            continue
+
+        files = {
+            "results_csv": ("results.csv", results_csv_text.encode("utf-8"), "text/csv"),
+            "manifest_csv": ("manifest.csv", manifest_csv_text.encode("utf-8"), "text/csv"),
+        }
+        try:
+            result = _post_result(job_id, data, files)
+            print(f"[worker] job {job_id} (pendiente de una caida de red anterior) reportado: {result}")
+            shutil.rmtree(job_dir, ignore_errors=True)
+        except requests.HTTPError as exc:
+            # El coordinator lo rechaza de verdad (ej. otro worker ya lo
+            # completo mientras este no tenia red, o el job ya no existe
+            # en ese estado) -- no es un problema de red, reintentar no
+            # lo arreglaria. Se descarta con un aviso explicito en vez de
+            # reintentar para siempre un resultado que nunca sera aceptado.
+            print(f"[worker] job {job_id} pendiente fue rechazado por el coordinator ({exc}) -- se descarta, "
+                  "probablemente ya lo completo otro worker mientras este no tenia red.")
+            shutil.rmtree(job_dir, ignore_errors=True)
+        except requests.RequestException as exc:
+            print(f"[worker] job {job_id} sigue sin poder subirse ({exc}), se reintentara en la proxima vuelta.")
 
 
 def report_failure(worker_id: str, job_id: int, error: str, duration_s: float) -> None:
@@ -426,6 +596,12 @@ def main() -> None:
     stop = threading.Event()
     threading.Thread(target=heartbeat_loop, args=(worker_id, stop), daemon=True).start()
 
+    # Antes de pedir trabajo nuevo: si el worker se reinicio (crash,
+    # --restart unless-stopped, actualizacion) mientras un resultado
+    # seguia pendiente de subir por un corte de red, esta es la primera
+    # oportunidad de retomarlo -- ver retry_pending_results().
+    retry_pending_results()
+
     print(f"[worker] escuchando jobs en {COORDINATOR_URL} (poll cada {POLL_INTERVAL_S}s)")
     while True:
         try:
@@ -437,6 +613,7 @@ def main() -> None:
 
         if job is None:
             heartbeat(worker_id)
+            retry_pending_results()
             time.sleep(POLL_INTERVAL_S)
             continue
 

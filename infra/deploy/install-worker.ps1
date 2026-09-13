@@ -52,7 +52,13 @@
 
 .PARAMETER WorkerLabel
     Nombre para identificar esta PC en el coordinator (ver
-    GET /api/v1/workers). Default: nombre de la maquina.
+    GET /api/v1/workers). Si no se especifica: si ya existe un worker
+    corriendo en esta PC (instalado con este script o con el docker run
+    manual de GUIA_VOLUNTARIOS.md), se reusa su label actual sin
+    preguntar nada. Si no existe ninguno, se pregunta de forma
+    interactiva -- dejar vacio usa $env:USERNAME (tu usuario de Windows,
+    mas legible que el nombre de maquina que se usaba antes por
+    defecto).
 
 .PARAMETER WorkerThreads
     Nucleos logicos que el worker le pide a Geant4 por run. Default (sin
@@ -77,14 +83,22 @@
     "4g". Sin limite por defecto.
 
 .EXAMPLE
+    # Primera instalacion en esta PC -- pregunta el nombre a usar.
     .\install-worker.ps1
     .\install-worker.ps1 -WorkerLabel "laptop-dante" -WorkerThreads 4
     .\install-worker.ps1 -Cpus 2 -MemoryLimit 4g
+
+    # Actualizar un worker que YA existe (instalado con este script o
+    # con el docker run manual de GUIA_VOLUNTARIOS.md): mismo comando,
+    # sin parametros -- detecta el contenedor existente, reusa su label
+    # actual sin preguntar, salta las verificaciones de WSL2/Docker
+    # Desktop (ya funcionan), y solo descarga la imagen nueva si cambio.
+    .\install-worker.ps1
 #>
 [CmdletBinding()]
 param(
     [string]$CoordinatorUrl = "https://coordinator.vlaboratory.org",
-    [string]$WorkerLabel = $env:COMPUTERNAME,
+    [string]$WorkerLabel,
     [int]$WorkerThreads = 0,
     [string]$WorkerToken = "",
     [string]$Cpus = "",
@@ -572,6 +586,66 @@ function Invoke-DockerPullWithRetry {
     }
 }
 
+function Get-ExistingWorkerEnvValue {
+    # Lee una variable de entorno real (WORKER_LABEL, WORKER_THREADS,
+    # etc.) del contenedor 'geant4-worker' YA EXISTENTE, sin importar si
+    # lo creo este script o el docker run manual de
+    # GUIA_VOLUNTARIOS.md -- necesario para el modo "actualizar" (ver
+    # Resolve-WorkerLabel y el flujo principal): un voluntario que ya
+    # tiene un worker corriendo con Docker manual nunca corrio este
+    # script, asi que no hay ningun rastro de su config en
+    # C:\ProgramData\Geant4Worker -- la unica fuente de verdad es leer
+    # el contenedor mismo. $null si el contenedor no existe o esa
+    # variable no esta definida en el.
+    param([string]$VarName)
+    $envList = docker inspect geant4-worker --format '{{json .Config.Env}}' 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $envList) { return $null }
+    try {
+        $vars = $envList | ConvertFrom-Json
+    } catch {
+        return $null
+    }
+    $prefix = "$VarName="
+    $match = $vars | Where-Object { $_ -like "$prefix*" } | Select-Object -First 1
+    if (-not $match) { return $null }
+    return $match.Substring($prefix.Length)
+}
+
+function Resolve-WorkerLabel {
+    # -WasSpecified viene de $PSBoundParameters.ContainsKey('WorkerLabel')
+    # DEL SCRIPT TOP-LEVEL (ver flujo principal) -- pasado explicito en
+    # vez de leido aqui adentro porque $PSBoundParameters dentro de esta
+    # funcion se referiria a los parametros de ESTA funcion (que no
+    # tiene ninguno declarado con ese nombre), no a los del script que
+    # la llama. Bug real encontrado probando esta funcion de forma
+    # aislada: sin este parametro explicito, -WorkerLabel nunca ganaba,
+    # ni siquiera pasandolo.
+    param([Parameter(Mandatory)][bool]$WasSpecified, [string]$CurrentValue)
+    if ($WasSpecified) {
+        return $CurrentValue
+    }
+    # Ya existe un worker corriendo en esta PC (Docker manual o una
+    # instalacion anterior de este script) -- reusar su label real tal
+    # cual, sin preguntar. Bug real de UX que esto corrige: antes,
+    # cualquiera que quisiera un label distinto del nombre de maquina
+    # tenia que usar la sintaxis de [scriptblock]::Create(...) (dificil
+    # de escribir bien, ver GUIA_VOLUNTARIOS.md) -- ahora, si ya eligieron
+    # un label la primera vez (a mano, con docker run), simplemente se
+    # conserva solo.
+    $existingLabel = Get-ExistingWorkerEnvValue -VarName "WORKER_LABEL"
+    if ($existingLabel) {
+        Write-InstallLog "Worker existente encontrado con label '$existingLabel' -- se conserva (usa -WorkerLabel para cambiarlo)."
+        return $existingLabel
+    }
+    # Primera instalacion en esta PC, sin label explicito -- preguntar en
+    # vez de usar el nombre de maquina en silencio (poco legible, ej.
+    # 'DESKTOP-A1B2C3'); dejar vacio usa el nombre de usuario de Windows,
+    # normalmente mas reconocible para el resto del equipo.
+    $answer = Read-Host "Nombre para identificarte en el Coordinator (Enter para usar '$env:USERNAME')"
+    if ([string]::IsNullOrWhiteSpace($answer)) { return $env:USERNAME }
+    return $answer
+}
+
 function Get-DesiredWorkerConfigHash {
     # Huella de todo lo que --docker run recibiria, para comparar contra
     # un contenedor ya existente sin tener que enumerar campo por campo
@@ -882,8 +956,39 @@ if (-not `$running) {
 
 $isResume = [bool](Get-ScheduledTask -TaskName $ResumeTaskName -ErrorAction SilentlyContinue)
 
+# Deteccion automatica actualizar vs. instalar desde cero: si YA existe
+# un contenedor 'geant4-worker' (sin importar si lo creo este script o
+# el docker run manual de GUIA_VOLUNTARIOS.md -- Test-DockerAvailable
+# corre 'docker' directo, funciona igual en ambos casos), Docker/WSL2 ya
+# estan funcionando en esta PC por definicion: no tiene sentido repetir
+# las verificaciones de arquitectura/Windows/virtualizacion/RAM ni la
+# instalacion de WSL2/Docker Desktop, que solo hacen falta la primera
+# vez. $isUpdate se decide ANTES de resolver el label (el propio label
+# resuelto usa esta misma deteccion, ver Resolve-WorkerLabel) para poder
+# mostrar un mensaje inicial distinto y mas corto en el caso de
+# actualizacion.
+$dockerCmdAvailable = [bool](Get-Command docker -ErrorAction SilentlyContinue)
+$isUpdate = $false
+if ($dockerCmdAvailable) {
+    docker inspect geant4-worker *> $null
+    $isUpdate = ($LASTEXITCODE -eq 0)
+}
+
+$WorkerLabel = Resolve-WorkerLabel -WasSpecified $PSBoundParameters.ContainsKey('WorkerLabel') -CurrentValue $WorkerLabel
+
 if ($isResume) {
     Write-InstallLog "=== Reanudando la instalacion despues del reinicio por WSL2 ==="
+} elseif ($isUpdate) {
+    Write-InstallLog "=================================================================="
+    Write-InstallLog " Actualizando el worker de computo distribuido (ActiveShield_Sim)"
+    Write-InstallLog ""
+    Write-InstallLog " Ya existe un worker en esta PC -- Docker/WSL2 ya estan listos, asi"
+    Write-InstallLog " que se salta directo a: descargar la imagen mas reciente (si cambio)"
+    Write-InstallLog " y recrear el contenedor con ella, conservando tu label ('$WorkerLabel'),"
+    Write-InstallLog " limites de CPU/RAM, y configuracion actuales."
+    Write-InstallLog "=================================================================="
+    Write-InstallLog ""
+    Write-InstallLog "Coordinator: $CoordinatorUrl | Label: $WorkerLabel"
 } else {
     Write-InstallLog "=================================================================="
     Write-InstallLog " Instalador del worker de computo distribuido (ActiveShield_Sim)"
@@ -912,20 +1017,28 @@ if ($isResume) {
 # quedar permanente).
 Unregister-ScheduledTask -TaskName $ResumeTaskName -Confirm:$false -ErrorAction SilentlyContinue
 
-if (-not (Test-ArchitectureSupported)) { exit 1 }
-if (-not (Test-WindowsVersionSupported)) { exit 1 }
-if (-not (Test-VirtualizationEnabled)) { exit 1 }
-if (-not (Test-EnoughRam)) { exit 1 }
+if (-not $isUpdate) {
+    if (-not (Test-ArchitectureSupported)) { exit 1 }
+    if (-not (Test-WindowsVersionSupported)) { exit 1 }
+    if (-not (Test-VirtualizationEnabled)) { exit 1 }
+    if (-not (Test-EnoughRam)) { exit 1 }
 
-Install-Wsl2
-# Si Install-Wsl2 registro un reinicio, Register-ResumeTask ya llamo a
-# Restart-Computer y el script no continua mas alla de este punto.
+    Install-Wsl2
+    # Si Install-Wsl2 registro un reinicio, Register-ResumeTask ya llamo
+    # a Restart-Computer y el script no continua mas alla de este punto.
 
-Install-DockerDesktop
-Set-DockerAutoStart
-Start-DockerAndWait
+    Install-DockerDesktop
+    Set-DockerAutoStart
+    Start-DockerAndWait
 
-if (-not (Test-LinuxContainersMode)) { exit 1 }
+    if (-not (Test-LinuxContainersMode)) { exit 1 }
+} else {
+    # Ya sabemos que Docker responde (es como se detecto $isUpdate) --
+    # solo falta refrescar el PATH de esta sesion de PowerShell por si
+    # se abrio antes de que Docker Desktop terminara de instalarse.
+    Sync-PathWithDockerCli
+}
+
 if (-not (Test-CoordinatorReachable)) { exit 1 }
 
 Install-WorkerContainer

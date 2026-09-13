@@ -1926,31 +1926,161 @@ inspect`, `linux/amd64`) antes de actualizar el pin:
 (`WORKER_THREADS`/`available_cpu_count()` + `cpu_score`), como se
 decidió (una sola publicación coordinada, no dos separadas).
 
-**Aún no aplicado a ningún worker en producción — sigue pendiente la
-coordinación ya descrita arriba**: cada voluntario (Fabiola, laptop-juan,
-bryam-local, y el propio `bryam-parrot`/worker local del usuario) debe
-volver a instalar/actualizar recién cuando su corrida actual termine
-sola, no de inmediato — el nuevo digest en el repo no fuerza ninguna
-actualización por sí solo, cada quien sigue corriendo la imagen que ya
-tenía descargada hasta que vuelva a correr `install-worker.ps1` (o,
-para quien corre sin Docker como el propio usuario, hasta que reinicie
-`worker.py` manualmente con el código actualizado del repo).
+**Migración aplicada en producción (2026-09-13).** Repo actualizado en
+la VM (`git fetch`+`reset --hard` a `2a8a8db`), backup de
+`coordinator.db` tomado antes por precaución
+(`coordinator.db.backup-pre-cpuscore`), y `systemctl restart
+geant4-coordinator` corrido — confirmado con `GET /api/v1/workers`
+mostrando `cpu_score: null` en los 5 workers reales (ninguno tiene la
+imagen nueva todavía, esperado) y `GET /api/v1/health` con
+`jobs_done: 108` intacto, sin pérdida de datos.
 
-**Pendiente, no bloqueante:** aplicar la migración de esquema
-(`cpu_score`/`min_cpu_score`) en la VM de producción real — ya
-verificada segura contra datos existentes, solo falta que ocurra (pasa
-sola la próxima vez que el servicio `geant4-coordinator` se reinicie y
-corra `init_db()`, o se puede forzar antes con un reinicio deliberado
-del servicio); coordinar con cada voluntario que actualice cuando
-termine su corrida actual (ver arriba); publicar el resto de imágenes
-vía un workflow de GitHub Actions en general (hoy es push manual);
-reintentar Azure cuando soporte resuelva el bloqueo de región (opcional,
-GCP ya cubre la necesidad inmediata); y confirmar con Eddy/Joel si las
-11 combinaciones faltantes de SEP_p y el `GCR_He bin6` de offsets 0,1
-los tiene pendientes de correr/subir, o si nunca los corrió (para saber
-si esas 11 de SEP_p deben quedar en la cola distribuida a propósito,
-cosa que ya parece ser el caso dado que nadie las ha corrido en ningún
-lado).
+**Aún no aplicado a ningún worker en producción** — cada voluntario debe
+volver a instalar/actualizar recién cuando su corrida actual termine
+sola, no de inmediato (ver más abajo el rediseño del instalador que
+facilita esto).
+
+**Bug real de pérdida de datos, encontrado en producción (2026-09-13),
+corregido de raíz — no solo documentado.** Investigando por qué
+`bryam-parrot` (worker local del usuario, sin Docker) aparecía inactivo
+pese a tener jobs recientes: `job 38` (`GCR_H bin5 offset1.0`) llevaba
+horas en `running` sin heartbeat reciente del todo — el propio log local
+(`~/.geant4-worker/worker.log`) mostró la causa exacta: la simulación
+**sí terminó exitosamente** (`142 filas de organo encontradas`), pero
+justo al momento de subir el resultado la red se cayó
+(`Network is unreachable`, duró varios minutos) — `report_result()`
+lanzaba `requests.RequestException` sin ningún reintento, `run_job()` lo
+capturaba como si la simulación misma hubiera fallado, e intentaba
+`report_failure()` (que también fracasó, misma red caída). El CSV real
+vivía solo en un `tempfile.TemporaryDirectory()` que se autoborraba al
+salir del `with` — **5,5 horas de cómputo real perdidas por un corte de
+red transitorio**, sin ningún mecanismo de recuperación. Reencolado
+manualmente en la VM (`UPDATE jobs SET status='pending' WHERE
+job_id=38`) mientras se corregía el bug de raíz — otro worker lo
+reclamó y recompute casi al instante.
+
+**Corregido en dos capas, no solo con más reintentos en memoria** (esos
+alcanzan para un corte de segundos, no de varios minutos como el real):
+1. `report_result()` (`worker.py`) ahora **persiste el resultado a
+   disco ANTES de intentar cualquier subida** (`PENDING_RESULTS_DIR`,
+   mismo volumen persistente que `WORKER_ID_FILE` — sobrevive
+   `docker rm -f` y reinicios del propio worker) y solo lo borra tras
+   una subida confirmada. Reintentos con backoff mientras tanto para el
+   caso común (corte breve, se resuelve en segundos).
+2. Si los reintentos no alcanzan, el archivo YA está a salvo —
+   `retry_pending_results()` (nuevo, llamado al arrancar el worker y en
+   cada vuelta ociosa del loop principal) retoma cualquier resultado
+   pendiente de una sesión anterior, sin importar cuánto duró el corte
+   ni si el propio worker se reinició varias veces entre medio.
+
+**El plazo para insistir es un timestamp ABSOLUTO, no relativo — punto
+señalado explícitamente por el usuario, cambia el diseño.** Un
+contador de intentos o un backoff relativo (ej. "reintenta 5 veces y
+ríndete") no tiene sentido aquí: lo que decide si vale la pena seguir
+insistiendo es cuánto tiempo de reloj real pasó desde que el job dejó de
+tener heartbeat, comparado contra el mismo `STALE_JOB_TIMEOUT_S` (6h)
+que usa el coordinator para reencolar — pasado ese punto, el coordinator
+ya le dio el job a otro worker, y seguir insistiendo en subir el
+resultado viejo solo arriesgaría pisar uno ya aceptado. `created_at`
+(epoch real, `time.time()`) se guarda en `data.json` junto al resultado
+persistido; tanto los reintentos en `report_result()` como
+`retry_pending_results()` comparan contra `created_at +
+stale_job_timeout_s`, no contra un contador — un worker que se reinicia
+diez veces durante el mismo corte de red conserva el plazo correcto, ni
+más ni menos tiempo del que ya había consumido antes de reiniciarse.
+
+**El umbral real se consulta al coordinator, no se duplica como env var
+— decisión explícita del usuario, aprovechando que la imagen nueva
+aún no se había publicado.** `GET /api/v1/health` ahora expone
+`stale_job_timeout_s` (nuevo campo, lee `db.STALE_JOB_TIMEOUT_S`
+directamente); `get_stale_job_timeout_s()` (nuevo en `worker.py`) lo
+consulta una sola vez al arrancar, con fallback al mismo default local
+(6h) solo si el coordinator no responde ni para esta consulta. Si
+alguien cambia `STALE_JOB_TIMEOUT_S` en el coordinator más adelante,
+todos los workers lo ven solos, sin tener que reconfigurar una variable
+de entorno en cada máquina por separado.
+
+7 tests nuevos en `test_worker.py` (10 en total): reintento con éxito
+limpia el archivo persistido; deadline vencido durante el intento en
+curso se rinde sin loop infinito, dejando el archivo intacto;
+`retry_pending_results()` retoma un resultado de una "sesión anterior"
+simulada y lo sube; un resultado cuyo deadline ya venció se descarta sin
+ni siquiera intentar la subida (`mock_post.assert_not_called()`). 23
+tests del coordinator siguen pasando.
+
+**Instalador de Windows rediseñado como un único script universal
+(2026-09-13), a pedido del usuario** — antes de esto, Fabiola y
+laptop-juan (que instalaron con el `docker run` manual de
+`GUIA_VOLUNTARIOS.md`, no con `install-worker.ps1`) no tenían ninguna
+vía simple para recibir la imagen nueva sin volver a escribir el
+comando `docker run` completo a mano. En vez de mantener un segundo
+script "solo para actualizar", **el mismo `install-worker.ps1` ahora
+detecta el caso automáticamente**:
+- Si ya existe un contenedor `geant4-worker` en la PC (sin importar si
+  lo creó este script o el `docker run` manual — `Get-
+  ExistingWorkerEnvValue` lee `docker inspect geant4-worker --format
+  '{{json .Config.Env}}'` directo, funciona igual en ambos casos), el
+  script asume que Docker/WSL2 ya funcionan (evidenciado por el
+  contenedor mismo) y **salta** todas las verificaciones de
+  arquitectura/Windows/virtualización/RAM y la instalación de
+  WSL2/Docker Desktop — va directo a `Test-CoordinatorReachable` +
+  `Install-WorkerContainer`, que ya sabe no recrear el contenedor si el
+  hash de config no cambió (mecanismo existente, sin tocar).
+- Si no existe ningún contenedor, seguro es la primera instalación:
+  corre el flujo completo de siempre, sin cambios.
+
+**Label interactivo con default de usuario, no de máquina** — segundo
+pedido del usuario. Antes, sin `-WorkerLabel`, el default silencioso era
+`$env:COMPUTERNAME` (poco legible, ej. `DESKTOP-A1B2C3`), y personalizarlo
+exigía la sintaxis incómoda de `[scriptblock]::Create(...)` documentada
+en `GUIA_VOLUNTARIOS.md`. `Resolve-WorkerLabel` (nuevo) resuelve en este
+orden: (1) `-WorkerLabel` explícito siempre gana; (2) si ya existe un
+worker en la PC, reusa su label real tal cual, sin preguntar — así
+Fabiola/laptop-juan conservan su nombre actual al actualizar sin hacer
+nada especial; (3) si es la primera instalación sin label explícito,
+`Read-Host` pregunta el nombre, con `$env:USERNAME` (usuario de Windows,
+más reconocible que el nombre de máquina) como default si se deja
+vacío. **Bug real encontrado probando esto de forma aislada, no en el
+diseño en sí:** `$PSBoundParameters` dentro de una función se refiere a
+los parámetros de *esa función*, no a los del script que la llama —
+`Resolve-WorkerLabel` inicialmente intentaba leerlo directamente y
+`-WorkerLabel` explícito nunca ganaba. Corregido pasando `-WasSpecified`
+(`$PSBoundParameters.ContainsKey('WorkerLabel')`, evaluado en el script
+top-level donde sí es correcto) y `-CurrentValue` como parámetros
+explícitos de la función. Verificado con los 3 casos por separado
+(explícito gana, reusa el existente, pregunta con default de usuario)
+simulando `docker`/`Read-Host` — sin infraestructura de PSScriptAnalyzer
+o pytest para PowerShell en este repo, se probó extrayendo y evaluando
+las funciones relevantes de forma aislada con `pwsh`.
+
+**`Cpus`/`MemoryLimit` deliberadamente NO se preservan al actualizar**
+(decisión explícita del usuario) — si alguien limitó su worker con
+`-Cpus 2` la primera vez y actualiza sin volver a pasarlo, vuelve a
+"sin límite", igual que hoy. Distinto del label: preservar límites
+exigiría leer `HostConfig.NanoCpus`/`Memory` del contenedor (no solo
+`Env`), más complejidad para un caso que se decidió no cubrir en esta
+ronda.
+
+`GUIA_VOLUNTARIOS.md` actualizada: el link de `irm | iex` sirve ahora
+tanto para instalar como para actualizar (mismo comando), y se agregó
+una nota explícita para quienes instalaron con Docker manual de que el
+instalador de PowerShell también les sirve para actualizar sin repetir
+el `docker run` completo.
+
+**Pendiente, no bloqueante:** publicar la imagen con el fix de
+persistencia de resultados (bug del `job 38`) junto con
+`WORKER_THREADS`/`cpu_score` — **ya NO es solo una mejora de
+rendimiento, es una corrección de pérdida de datos real**, sube la
+prioridad de esta publicación; coordinar con cada voluntario que
+actualice cuando termine su corrida actual; publicar el resto de
+imágenes vía un workflow de GitHub Actions en general (hoy es push
+manual); reintentar Azure cuando soporte resuelva el bloqueo de región
+(opcional, GCP ya cubre la necesidad inmediata); y confirmar con
+Eddy/Joel si las 11 combinaciones faltantes de SEP_p y el `GCR_He bin6`
+de offsets 0,1 los tiene pendientes de correr/subir, o si nunca los
+corrió (para saber si esas 11 de SEP_p deben quedar en la cola
+distribuida a propósito, cosa que ya parece ser el caso dado que nadie
+las ha corrido en ningún lado).
 
 **Bug real, encontrado 2026-09-13, corregido en la quinta ronda de
 revisión (ver más abajo):** `GET /api/v1/workers` mostraba
