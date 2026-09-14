@@ -667,8 +667,16 @@ function runningCellHtml(j){
   // Job ya terminado (done): duracion REAL reportada por el worker al
   // subir el resultado (tabla results, expuesta como actual_duration_s
   // desde list_jobs() -- dato que ya se guardaba, solo no se exponia).
+  // estimated_duration_s se conserva tambien para 'done' (pedido del
+  // usuario, 2026-09-14: antes desaparecia justo al terminar, cuando mas
+  // interesa comparar que tan buena fue la estimacion) -- se recalcula
+  // con el cpu_score ACTUAL del worker que lo corrio (claimed_by se
+  // conserva tras 'done'), no el que tenia en el momento exacto de esa
+  // corrida en particular, que no se guarda por separado.
   if (j.status === "done" && j.actual_duration_s != null){
-    return `<span class="tab-num">${fmtSpan(j.actual_duration_s)}</span> <span class="text-faint">real</span>`;
+    const estimated = j.estimated_duration_s;
+    const estimateText = estimated ? ` <span class="text-faint">/ ~${fmtSpan(estimated)} est.</span>` : "";
+    return `<span class="tab-num">${fmtSpan(j.actual_duration_s)}</span> <span class="text-faint">real</span>${estimateText}`;
   }
   return `<span class="unassigned">—</span>`;
 }
@@ -709,6 +717,7 @@ function detailRowHtml(j){
           <div><b>min_cpu_score</b><span class="tab-num">${j.min_cpu_score ?? 0}</span></div>
           <div><b>claimed_at</b>${fmtDate(j.claimed_at)}</div>
           <div><b>created_at</b>${fmtDate(j.created_at)}</div>
+          ${j.status === "done" ? `<div><b>Completado</b><span title="updated_at -- para un job done, coincide con el momento exacto en que record_result() lo marco 'done' (nada lo vuelve a tocar despues)">${fmtDate(j.updated_at)}</span></div>` : ""}
           <div><b>worker_id</b><code>${esc(j.claimed_by) || "—"}</code></div>
           <div><b>Tiempo conectado</b><span class="tab-num" title="segundos reales de heartbeat recibido mientras este job esta activo -- no cuenta el tiempo que la PC estuvo apagada/desconectada">${fmtSpan(j.connected_s)}</span></div>
           <div><b>Asignado desde (pared)</b><span class="tab-num" title="tiempo de reloj desde claimed_at, incluye tiempo desconectado">${fmtSpan(elapsedSinceClaim(j))}</span></div>
