@@ -1082,6 +1082,8 @@ if (-not `$running) {
 }
 
 function Uninstall-Worker {
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
     if ($RemoveDocker -and -not $RemoveWorkerData) {
         throw "-RemoveDocker requiere -RemoveWorkerData: Docker elimina TODOS sus contenedores, imagenes y volumenes, incluidos resultados pendientes."
     }

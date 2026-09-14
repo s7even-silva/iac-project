@@ -2812,3 +2812,30 @@ SHA real ya confirmado (no un supuesto) antes de fijarlo, siguiendo
 exactamente el procedimiento de verificación (`curl` al raw URL del SHA
 elegido, confirmar que `Invoke-NativeCommand` aparece) ya usado las dos
 veces anteriores.
+
+**Warning de PSScriptAnalyzer detectado en VSCode: `Uninstall-Worker`
+llama `ShouldProcess` sin declarar `SupportsShouldProcess` propio.** La
+función usa `$PSCmdlet.ShouldProcess(...)` (para el `-WhatIf`/`-Confirm`
+de `-Action Uninstall`) pero nunca tuvo su propio
+`[CmdletBinding(SupportsShouldProcess)]` — dependía de heredar `$PSCmdlet`
+del `CmdletBinding(SupportsShouldProcess)` a nivel de script (linea 111).
+**Verificado en un script de prueba aislado, no asumido, que esa
+herencia SI funciona en tiempo de ejecucion** (una funcion sin
+`CmdletBinding` propia, llamada desde el scope de nivel superior de un
+script que si lo tiene, hereda su `$PSCmdlet` correctamente — confirmado
+con y sin `-WhatIf`) — no era un bug funcional, la instalacion real
+nunca estuvo en riesgo. Pero `PSScriptAnalyzer` analiza cada funcion de
+forma aislada y no puede rastrear esa herencia entre scopes, de ahi el
+falso positivo. Corregido agregando `[CmdletBinding(SupportsShouldProcess)]`
++ `param()` directo a `Uninstall-Worker` (mejor practica de todos modos:
+una funcion que usa `ShouldProcess` deberia declararlo explicitamente, no
+depender de heredarlo) — verificado que el comportamiento real no cambia
+(mismo script de prueba, con la funcion interna declarando su propio
+`CmdletBinding`: `-WhatIf` y la ejecucion normal dan resultados
+identicos) y que las variables de script (`$RemoveDocker`,
+`$RemoveWorkerData`, etc., leidas por nombre sin ser parametros) siguen
+resolviendo bien con `param()` vacio. Confirmado con `Invoke-ScriptAnalyzer`
+real (no solo lectura manual): 12 hallazgos totales antes, 11 despues,
+exactamente el `PSShouldProcess` desaparecido y ningun hallazgo nuevo.
+17 escenarios de `test_worker_lifecycle.ps1` (que ya ejercitan `-WhatIf`/
+`-Confirm:$false` sobre esta funcion) siguen pasando sin cambios.
