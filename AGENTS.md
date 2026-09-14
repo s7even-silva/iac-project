@@ -2612,6 +2612,27 @@ hacia adelante: ningún job nuevo se asigna fuera de secuencia desde este
 cambio. No se tocó `replicate_repeats.py`/`seed_full_sweep.py` — ninguno
 de los dos asume nada sobre el orden de asignación, solo siembran filas.
 
+**Job huérfano encontrado y corregido en la misma revisión (2026-09-14):**
+verificando si `bryam-local` podía detenerse tras terminar una corrida,
+se encontró `job_id=3` (GCR_He bin7 offset 0.0m, repetición 0) atascado
+en `status='running'` desde hacía 10.6h sin ningún avance, con
+`last_error="liberado manualmente: worker detenido a proposito"` — texto
+que no aparece en ningún script del repo (`grep` explícito, sin
+resultados), así que es edición manual directa sobre la DB de producción
+que quedó a medias: alguien escribió el `last_error` pero nunca cambió
+`status` de vuelta a `pending` ni limpió `claimed_by`. Este tipo de job no
+lo detecta `requeue_stale_jobs()` porque ese chequeo mira el heartbeat del
+worker asignado, no cuánto avanza el job en sí — y el worker (`bryam-local`)
+seguía online y con heartbeat normal (solo trabajando en otro job distinto
+mientras tanto). Corregido con un `UPDATE` directo vía `sqlite3` de Python
+en la VM (no hay `sqlite3` CLI instalado ahí): `status='pending'`,
+`claimed_by=NULL`, `claimed_at=NULL`, conservando `attempt=2` (le queda 1
+intento de los 3 antes de `failed`) y reemplazando `last_error` por una
+nota que documenta el requeue manual. No hay ningún script administrativo
+dedicado a esto en el repo todavía — pendiente si se repite el patrón: un
+`release_job.py` explícito sería más seguro que un `UPDATE` ad-hoc cada
+vez.
+
 ### Dashboard: columna de antigüedad del worker (2026-09-14)
 
 A pedido del usuario, `infra/coordinator/dashboard.html` gana una columna
