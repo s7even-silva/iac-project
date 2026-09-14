@@ -5,7 +5,7 @@ $installer = Join-Path $repo 'deploy/install-worker.ps1'
 $tokens=$null; $errors=$null
 $ast=[System.Management.Automation.Language.Parser]::ParseFile($installer,[ref]$tokens,[ref]$errors)
 if ($errors) { throw ($errors | Out-String) }
-foreach ($name in @('Uninstall-Worker','Test-WorkerVolumeMounted','Test-DockerSockMounted','Save-LegacyWorkerData','Get-ExistingWorkerEnvValue','Save-SelfCopy')) {
+foreach ($name in @('Uninstall-Worker','Test-WorkerVolumeMounted','Test-DockerSockMounted','Test-DockerEngineRunning','Save-LegacyWorkerData','Get-ExistingWorkerEnvValue','Save-SelfCopy')) {
     $fn=$ast.Find({param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
     Invoke-Expression $fn.Extent.Text
 }
@@ -93,6 +93,44 @@ try {
     Assert (Test-DockerSockMounted) 'No detecto el socket de Docker montado'
     function docker { $global:LASTEXITCODE=0; '[{"Name":"geant4-worker-data","Destination":"/var/lib/geant4-worker"}]' }
     Assert (-not (Test-DockerSockMounted)) 'Acepto un contenedor sin el socket de Docker montado'
+    Reset
+    # Bug real reportado en produccion (2026-09-13, log completo de un
+    # voluntario): con $ErrorActionPreference='Stop' (global del
+    # instalador) y Windows PowerShell 5.1 (lo que de hecho usan las
+    # Scheduled Tasks), un comando nativo que escribe a stderr y se
+    # redirige con "*>"/"2>&1" se convertia en un NativeCommandError que
+    # abortaba el instalador entero -- exactamente cuando "docker info"
+    # fallaba porque el motor todavia no habia arrancado, el propio
+    # chequeo que debia DETECTAR eso terminaba el script antes de llegar
+    # a Start-Process "Docker Desktop.exe". No se puede reproducir el
+    # NativeCommandError exacto de PS 5.1 aqui (pwsh 7.x ya no lo tiene,
+    # cambio de comportamiento documentado por Microsoft) -- se simula el
+    # mismo tipo de error (un comando nativo que escribe a stderr y
+    # devuelve LASTEXITCODE!=0) via un ErrorRecord real, no un throw
+    # generico. Esta funcion aisla 'Continue' alrededor de "docker info"
+    # precisamente para neutralizar esto bajo 'Stop'.
+    $ErrorActionPreference = 'Stop'
+    function docker {
+        $err = [System.Management.Automation.ErrorRecord]::new(
+            [System.Exception]::new('simulated stderr from native command'),
+            'NativeCommandError', [System.Management.Automation.ErrorCategory]::NotSpecified, $null)
+        $global:LASTEXITCODE = 1
+        $PSCmdlet.WriteError($err)
+    }
+    $result = Test-DockerEngineRunning
+    Assert ($result -eq $false) 'Test-DockerEngineRunning no debio propagar el NativeCommandError bajo Stop'
+    Assert ($ErrorActionPreference -eq 'Stop') 'Test-DockerEngineRunning no restauro ErrorActionPreference tras NativeCommandError'
+    Reset
+    # Barrera adicional: una excepcion real de PowerShell (no solo un
+    # comando nativo con exit code) tampoco debe propagarse -- por eso la
+    # funcion real tiene 'catch' ademas de 'finally'. Sin ese catch, este
+    # caso especifico fallaria (la excepcion se propagaria pese al finally).
+    $ErrorActionPreference = 'Stop'
+    function docker { throw [System.Management.Automation.RuntimeException]::new('simulated non-native exception') }
+    $result = Test-DockerEngineRunning
+    Assert ($result -eq $false) 'Test-DockerEngineRunning no debio propagar una excepcion real bajo Stop'
+    Assert ($ErrorActionPreference -eq 'Stop') 'Test-DockerEngineRunning no restauro ErrorActionPreference tras excepcion real'
+    Reset
     # Ejecutar el bloque REAL que conserva configuracion al actualizar.
     $global:updateBlock = $ast.Find({param($node)
         $node -is [System.Management.Automation.Language.IfStatementAst] -and
@@ -119,5 +157,5 @@ try {
     Assert ($resolved.AutoUpdate -eq '0') 'Instalador reactiva auto-update deshabilitado'
     $resolved=Resolve-UpdateFixture -WorkerImage 'explicit-pin' -WorkerAutoUpdate '1'
     Assert ($resolved.Image -eq 'explicit-pin' -and $resolved.AutoUpdate -eq '1') 'Ignora opciones explicitas'
-    Write-Host 'PASS: 16 escenarios de ciclo de vida (mocks; no certifican Windows).'
+    Write-Host 'PASS: 17 escenarios de ciclo de vida (mocks; no certifican Windows).'
 } finally { Remove-Item $temp -Recurse -Force }

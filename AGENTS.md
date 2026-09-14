@@ -2650,3 +2650,59 @@ antigüedad. Aclarado con un tooltip en la celda (`title="registrado el
 ... · no descuenta tiempo offline"`) en vez de una columna separada de
 "tiempo online acumulado", que exigiría trackear sesiones de
 conexión/desconexión — dato que el coordinator no guarda hoy.
+
+### Sexta ronda de revisión externa: `NativeCommandError` bajo PowerShell 5.1 abortaba el instalador (2026-09-13)
+
+**Bug real reportado por un voluntario ("Joel"), con log completo y
+diagnóstico propio verificado antes de aplicar el fix.** Con
+`$ErrorActionPreference = "Stop"` (global, ver el inicio del script) y
+**Windows PowerShell 5.1** (`powershell.exe`, no `pwsh` — lo que de hecho
+ejecutan las Scheduled Tasks que este mismo script registra), un comando
+nativo que escribe a stderr y se redirige con `*>`/`2>&1` se convierte en
+un `NativeCommandError` que **sí** respeta `ErrorActionPreference` — a
+diferencia de PowerShell 7.2+, donde ese mismo patrón ya no aborta el
+script (cambio de comportamiento documentado oficialmente por Microsoft
+entre versiones). El síntoma real visto en el log: `docker info` fallaba
+como se esperaba (Docker Desktop recién instalado, el motor todavía no
+había arrancado) y esa falla esperada abortaba el instalador ENTERO antes
+de llegar a `Start-Process "Docker Desktop.exe"` — el propio chequeo que
+debía **detectar** "el motor no está listo todavía" era lo que terminaba
+la instalación.
+
+**Corregido exactamente como propuso el usuario, sin cambiar el `Stop`
+global** (sigue siendo correcto para errores reales del instalador) —
+aislado a los puntos específicos donde se invoca un comando nativo que se
+espera que falle durante una comprobación: nueva `Test-
+DockerEngineRunning` (aísla `$ErrorActionPreference = "Continue"`
+solo alrededor de `docker info *> $null`, restaurando el valor previo en
+`finally`), reemplazando las llamadas directas a `docker info` en
+`Start-DockerAndWait` (chequeo inicial y dentro del loop de espera),
+`Test-LinuxContainersMode` (chequeo previo agregado por consistencia) y
+`Uninstall-Worker` (mensaje de error explícito). El watchdog embebido
+(generado como script de texto para su propia Scheduled Task, sin scope
+compartido con el instalador) recibió su propia copia idéntica de la
+función, por el mismo motivo por el que ya duplicaba otra lógica antes.
+
+**Segundo bug encontrado releyendo el propio fix antes de darlo por
+completo, no reportado por nadie:** la primera versión de
+`Test-DockerEngineRunning` solo tenía `try`/`finally`, sin `catch` — el
+`Continue` neutraliza un `NativeCommandError` (error no terminante), pero
+una excepción real de PowerShell (terminante) se sigue propagando pese al
+`finally`, que solo restaura `$ErrorActionPreference` antes de que la
+excepción siga su curso hacia el llamador. Verificado escribiendo un test
+que mockea `docker` con `throw` directo (no un `ErrorRecord` de comando
+nativo) — sin `catch`, ese caso habría fallado. Corregido agregando
+`catch { return $false }` a ambas copias de la función (la real y la del
+watchdog embebido): la función pasa a ser una barrera total, nunca
+propaga ningún tipo de error hacia quien la llama.
+
+**Test nuevo en `test_worker_lifecycle.ps1`**, agregado a la lista de
+funciones extraídas del AST (`Test-DockerEngineRunning` faltaba ahí y
+rompió el test existente al empezar a llamarse desde `Uninstall-Worker`
+en una ronda anterior — corregido agregándola a esa lista): dos
+escenarios bajo `$ErrorActionPreference = 'Stop'` — un `NativeCommandError`
+real simulado con `$PSCmdlet.WriteError()` + `$LASTEXITCODE=1` (el caso
+que motivó todo el fix) y una excepción de PowerShell genuina simulada
+con `throw` (el segundo bug, el que exigía `catch`) — ambos deben
+devolver `$false` sin propagar el error ni dejar `$ErrorActionPreference`
+alterado. 17 escenarios de ciclo de vida pasan en total (antes 16).
