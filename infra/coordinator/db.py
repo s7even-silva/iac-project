@@ -192,7 +192,17 @@ def claim_next_job(worker_id: str) -> sqlite3.Row | None:
     aunque su RAM instalada alcance en teoria -- y cpu_score, capacidad de
     computo real medida por benchmark en el worker, ver cpu_score() en
     worker.py). None si no hay ninguno elegible o el worker no esta
-    registrado."""
+    registrado.
+
+    Las repeticiones se corren en serie, nunca en paralelo (decision de
+    equipo, 2026-09-14): un worker libre siempre recibe primero un job de
+    la repeticion MAS BAJA que todavia tenga trabajo pendiente, sin
+    importar la prioridad de especie/bin de una repeticion mas alta --
+    'repeticion' entra antes que 'priority' en el ORDER BY. Antes de este
+    fix, claim_next_job() ordenaba solo por priority/job_id, lo que dejaba
+    que jobs de repeticiones 1-4 arrancaran mientras la 0 seguia con
+    trabajo pendiente (encontrado en produccion: 4 jobs corriendo en
+    paralelo en repeticiones distintas con la 0 sin terminar todavia)."""
     with get_conn() as conn:
         conn.execute("BEGIN IMMEDIATE")
         worker = conn.execute("SELECT * FROM workers WHERE worker_id=?", (worker_id,)).fetchone()
@@ -208,7 +218,7 @@ def claim_next_job(worker_id: str) -> sqlite3.Row | None:
             """
             SELECT job_id FROM jobs
             WHERE status='pending' AND min_cpu_count <= ? AND min_ram_gb <= ? AND min_cpu_score <= ?
-            ORDER BY priority DESC, job_id ASC LIMIT 1
+            ORDER BY repeticion ASC, priority DESC, job_id ASC LIMIT 1
             """,
             (worker["cpu_count"] or 0, available_ram or 0, worker_cpu_score),
         ).fetchone()
