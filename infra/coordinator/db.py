@@ -451,10 +451,28 @@ def requeue_stale_jobs() -> list[int]:
 
 
 def list_jobs(status: str | None = None) -> list[sqlite3.Row]:
+    """Cada fila trae ademas 'actual_duration_s' -- el duration_s REAL
+    reportado por el worker en la subida mas reciente de ese job (tabla
+    results, que ya lo guarda desde record_result() pero ningun endpoint
+    lo habia expuesto hasta ahora). NULL para un job que nunca subio un
+    resultado (pending/failed sin intentos exitosos) -- se toma la fila
+    de results mas reciente por submitted_at, no necesariamente la que
+    dejo el job en 'done' (un job con reintentos puede tener resultados
+    fallidos previos en la tabla, pero la ULTIMA fila siempre corresponde
+    al estado actual porque record_result()/record_failure() son lo
+    ultimo que corre en cada intento)."""
+    query = """
+        SELECT j.*, (
+            SELECT r.duration_s FROM results r
+            WHERE r.job_id = j.job_id
+            ORDER BY r.submitted_at DESC LIMIT 1
+        ) AS actual_duration_s
+        FROM jobs j
+    """
     with get_conn() as conn:
         if status:
-            return conn.execute("SELECT * FROM jobs WHERE status=? ORDER BY job_id", (status,)).fetchall()
-        return conn.execute("SELECT * FROM jobs ORDER BY job_id").fetchall()
+            return conn.execute(query + " WHERE j.status=? ORDER BY j.job_id", (status,)).fetchall()
+        return conn.execute(query + " ORDER BY j.job_id").fetchall()
 
 
 def counts_by_status() -> dict:

@@ -67,6 +67,34 @@ def test_full_cycle_pending_to_done():
     jobs_done = db.list_jobs(status="done")
     assert len(jobs_done) == 1
     assert jobs_done[0]["job_id"] == job_id
+    assert jobs_done[0]["actual_duration_s"] == pytest.approx(42.5)
+
+
+def test_list_jobs_actual_duration_uses_most_recent_result():
+    # Un job puede tener varios intentos (results tiene una fila por
+    # intento, exitoso o no) -- actual_duration_s debe ser el de la
+    # subida MAS RECIENTE (submitted_at), que es la que corresponde al
+    # estado actual del job, no la primera fila insertada.
+    db.upsert_worker("w1", "h1", 8, 16.0, "")
+    job_id = db.insert_job("SEP_p", 2, 0.0, 0, 100)
+
+    db.claim_next_job("w1")
+    db.record_result(job_id, "w1", duration_s=5.0, exit_code=1, n_rows=0,
+                      results_csv_path="/tmp/r1.csv", manifest_csv_path="/tmp/m1.csv")  # falla, vuelve a pending
+
+    db.claim_next_job("w1")
+    db.record_result(job_id, "w1", duration_s=9.7, exit_code=0, n_rows=142,
+                      results_csv_path="/tmp/r2.csv", manifest_csv_path="/tmp/m2.csv")  # exito
+
+    job = db.list_jobs(status="done")[0]
+    assert job["actual_duration_s"] == pytest.approx(9.7)
+
+
+def test_list_jobs_actual_duration_none_without_any_result():
+    db.upsert_worker("w1", "h1", 8, 16.0, "")
+    db.insert_job("SEP_p", 2, 0.0, 0, 100)
+    job = db.list_jobs(status="pending")[0]
+    assert job["actual_duration_s"] is None
 
 
 def test_claim_prefers_lower_repetition_over_higher_priority():

@@ -2964,3 +2964,58 @@ usuario de incluirlo en este cambio de todos modos, sabiendo eso) — los
 workers Docker actuales no lo notan hasta que les ocurra este caso raro
 específico, y seguirán funcionando correctamente (sin pérdida de datos)
 mientras tanto, solo con el log confuso de antes.
+
+### Dashboard: tiempo en curso y duración real de cada job (2026-09-14)
+
+**Dos pedidos seguidos del usuario tras ver el tiempo estimado:** (1)
+"solo ver el tiempo estimado no es muy útil, también serviría ver cuánto
+tiempo lleva corriendo el job en específico" — resuelto con
+`claimed_at`, ya devuelto por `GET /api/v1/jobs` sin ningún cambio de
+backend, solo cálculo en el dashboard; (2) "¿también sería útil
+almacenar el tiempo de runs en los datos de los jobs completados?" — al
+revisar el código para responder, se confirmó que **ese dato ya se
+guardaba desde antes** (`results.duration_s`, insertado por cada
+`record_result()` exitoso desde que existe la tabla) pero **ningún
+endpoint lo había expuesto nunca** — no hacía falta agregar
+almacenamiento nuevo, solo exponer lo que ya existía.
+
+**`list_jobs()` (`db.py`) gana `actual_duration_s`** vía subquery
+correlacionada (`SELECT ... FROM results WHERE job_id=j.job_id ORDER BY
+submitted_at DESC LIMIT 1`) — el `duration_s` de la subida MÁS RECIENTE
+de ese job, no la primera: un job con reintentos tiene una fila en
+`results` por cada intento (exitoso o no, ver `record_result()`), y la
+más reciente es siempre la que corresponde al estado actual del job
+(record_result()/record_failure() son lo último que corre en cada
+intento). `None` para un job que nunca completó un intento
+(pending/failed sin ninguna subida). `row_to_dict()` en `app.py` ya
+pasa cualquier columna del `SELECT` sin cambios — no hizo falta tocar
+`app.py` para exponer el campo en `GET /api/v1/jobs`.
+
+**Dashboard, columna "Duración" (antes "En curso"), ampliada para
+cubrir ambos casos, no solo uno nuevo al lado del otro:**
+`runningCellHtml()` ahora resuelve tres estados — job en curso (tiempo
+transcurrido desde `claimed_at`, comparado contra `estimated_duration_s`
+con color de aviso si supera el 80%/100% del estimado, ya implementado
+antes), job `done` (`actual_duration_s` real, etiquetado "real" para no
+confundirlo con una estimación), o ninguno de los dos (`—`). Mismo
+patrón agregado al detalle expandible ("Corriendo desde" / "Tiempo
+estimado" / "Duración real" juntos, para comparar de un vistazo).
+
+**2 tests nuevos en `test_coordinator.py` (37 en total):** un job con un
+intento fallido seguido de uno exitoso expone el `duration_s` del
+intento exitoso (más reciente), no el del fallido; un job sin ningún
+resultado subido da `None`. Verificado también en vivo (servidor local
+real): un job `done` sembrado con `duration_s=91.3` devuelve
+`actual_duration_s: 91.3` y `estimated_duration_s: null` en la misma
+respuesta que un job `claimed` en paralelo muestra lo inverso —
+confirma que ambos campos se excluyen mutuamente como se diseñó (uno
+aplica a jobs con worker activo, el otro a jobs ya completados).
+
+**Mejora futura, no implementada ahora, mencionada solo como
+observación:** con `actual_duration_s` ahora expuesto, una vez que se
+acumulen suficientes duraciones reales de producción (más allá del
+manifiesto de `bryam-local` usado para `REFERENCE_TIMINGS_S`),
+`REFERENCE_TIMINGS_S` podría recalcularse a partir de datos reales de
+múltiples workers en vez de una sola máquina — no es parte de este
+cambio, solo queda anotado como posibilidad habilitada por este mismo
+dato.
