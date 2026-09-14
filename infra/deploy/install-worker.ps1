@@ -514,6 +514,40 @@ function Set-DockerAutoStart {
     Set-ItemProperty -Path $runKey -Name "Docker Desktop" -Value "`"$dockerExe`"" -Force
 }
 
+function Test-DockerEngineRunning {
+    # Bug real de produccion (2026-09-13, reportado con log completo por un
+    # voluntario -- "Joel"): con $ErrorActionPreference = "Stop" (global,
+    # ver el inicio del script) y Windows PowerShell 5.1 (powershell.exe,
+    # no pwsh -- lo que de hecho usan las Scheduled Tasks de este mismo
+    # script), un comando nativo que escribe a stderr y se redirige con
+    # "2>&1" o "*>" se convierte en un NativeCommandError que SI respeta
+    # ErrorActionPreference -- a diferencia de pwsh 7.2+, donde ese mismo
+    # patron no aborta el script (cambio de comportamiento documentado por
+    # Microsoft). El resultado real visto en el log: "docker info" fallaba
+    # (esperado, Docker Desktop recien instalado, el motor aun no arranca)
+    # y esa falla esperada terminaba el script ENTERO antes de llegar a
+    # Start-Process "Docker Desktop.exe" -- el propio chequeo que debia
+    # detectar "el motor no esta listo todavia" era lo que abortaba la
+    # instalacion. NO se cambia el "Stop" global (sigue siendo correcto
+    # para errores reales del instalador) -- se aisla "Continue" solo
+    # alrededor de este comando nativo especifico, que se espera que falle
+    # mientras el motor no este arriba.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        docker info *> $null
+        return ($LASTEXITCODE -eq 0)
+    } catch {
+        # "Continue" evita que un NativeCommandError aborte, pero no protege
+        # contra una excepcion real de PowerShell (ej. "docker" no encontrado
+        # como comando). Esta funcion es una barrera total: nunca debe
+        # propagar ningun tipo de error, solo informar con $false.
+        return $false
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+}
+
 function Start-DockerAndWait {
     param([int]$TimeoutSeconds = 180)
 
@@ -526,8 +560,7 @@ function Start-DockerAndWait {
     Sync-PathWithDockerCli
 
     $dockerExe = "$env:ProgramFiles\Docker\Docker\Docker Desktop.exe"
-    docker info 2>&1 | Out-Null
-    $engineUp = ($LASTEXITCODE -eq 0)
+    $engineUp = Test-DockerEngineRunning
 
     if (-not $engineUp) {
         Write-InstallLog "Iniciando Docker Desktop..."
@@ -540,8 +573,7 @@ function Start-DockerAndWait {
     Write-InstallLog "Esperando a que Docker Engine este operativo (hasta $TimeoutSeconds s)..."
     $elapsed = 0
     while ($elapsed -lt $TimeoutSeconds) {
-        docker info *> $null
-        if ($LASTEXITCODE -eq 0) {
+        if (Test-DockerEngineRunning) {
             Write-InstallLog "Docker Engine operativo."
             return
         }
@@ -553,6 +585,10 @@ function Start-DockerAndWait {
 
 function Test-LinuxContainersMode {
     Write-InstallLog "Verificando que Docker corra contenedores Linux (no modo Windows containers)..."
+    if (-not (Test-DockerEngineRunning)) {
+        Write-InstallLog "Docker Engine no responde -- no se puede verificar el modo de contenedores." "ERROR"
+        return $false
+    }
     $osType = docker info --format '{{.OSType}}' 2>&1
     if ($LASTEXITCODE -ne 0 -or $osType -ne "linux") {
         Write-InstallLog "Docker esta en modo '$osType', no 'linux'. La imagen del worker es Linux (Ubuntu+Geant4) y no correra en modo Windows containers." "ERROR"
@@ -948,6 +984,26 @@ function Register-WatchdogTask {
 `$PauseFile = '$PauseFile'
 function Log(`$m) { Add-Content -Path `$LogFile -Value ("[{0}] [WATCHDOG] {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), `$m) }
 
+# Mismo patron que Test-DockerEngineRunning en install-worker.ps1 (ver ahi
+# el bug real de PowerShell 5.1 + NativeCommandError que motiva esto) --
+# este watchdog corre como script independiente via Scheduled Task, sin
+# scope compartido con el instalador, asi que se replica la funcion en
+# vez de llamarla. Aqui el riesgo era menor (SilentlyContinue, no Stop),
+# pero se unifica el patron para no tener dos comportamientos distintos
+# ante el mismo tipo de comando nativo.
+function Test-DockerEngineRunning {
+    `$previous = `$ErrorActionPreference
+    `$ErrorActionPreference = "Continue"
+    try {
+        docker info *> `$null
+        return (`$LASTEXITCODE -eq 0)
+    } catch {
+        return `$false
+    } finally {
+        `$ErrorActionPreference = `$previous
+    }
+}
+
 # Bug real corregido aqui: antes el watchdog volvia a arrancar el
 # contenedor con 'docker start' sin importar POR QUE estaba detenido --
 # un 'docker stop geant4-worker' voluntario (la forma documentada de
@@ -960,14 +1016,12 @@ if (Test-Path `$PauseFile) {
 }
 
 Start-Sleep -Seconds 30  # dar tiempo a que la sesion termine de cargar
-docker info *> `$null
-if (`$LASTEXITCODE -ne 0) {
+if (-not (Test-DockerEngineRunning)) {
     Log "Docker no operativo, iniciando Docker Desktop..."
     Start-Process -FilePath "`$env:ProgramFiles\Docker\Docker\Docker Desktop.exe"
     `$elapsed = 0
     while (`$elapsed -lt 180) {
-        docker info *> `$null
-        if (`$LASTEXITCODE -eq 0) { break }
+        if (Test-DockerEngineRunning) { break }
         Start-Sleep -Seconds 5
         `$elapsed += 5
     }
@@ -1020,11 +1074,15 @@ function Uninstall-Worker {
     if ($RemoveWSL) { $description += "; retirar WSL del usuario y desactivar WSL/VirtualMachinePlatform (afecta otras aplicaciones; reinicio manual)" }
     if ($RemoveDockerAutostart) { $description += "; quitar autoinicio Docker del usuario" }
     if (-not $PSCmdlet.ShouldProcess($env:COMPUTERNAME, $description)) { return }
-    # No afirmar exito si Docker existe pero el daemon no responde.
+    # No afirmar exito si Docker existe pero el daemon no responde. Mismo
+    # patron que Test-DockerEngineRunning (ver ahi el bug real de
+    # PowerShell 5.1 + NativeCommandError bajo $ErrorActionPreference =
+    # "Stop") -- aqui interesa el mensaje explicito de abajo, no un
+    # NativeCommandError crudo si el comando nativo llegara a fallar de
+    # forma inesperada.
     $hasDocker = [bool](Get-Command docker -ErrorAction SilentlyContinue)
     if ($hasDocker) {
-        docker info *> $null
-        if ($LASTEXITCODE -ne 0) { throw "Docker no responde. Inicialo y reintenta; no se ha eliminado nada." }
+        if (-not (Test-DockerEngineRunning)) { throw "Docker no responde. Inicialo y reintenta; no se ha eliminado nada." }
     } elseif ($installers -or $RemoveWorkerData) {
         throw "No se puede verificar/eliminar el worker sin el CLI de Docker. Repara el PATH e inicia Docker."
     }
