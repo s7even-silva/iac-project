@@ -484,6 +484,12 @@ function fmtDuration(sinceIso){
   if (totalH < 48) return `${totalH.toFixed(1)}h`;
   return `${(totalH / 24).toFixed(1)}d`;
 }
+function fmtSpan(sec){
+  if (sec == null) return "—";
+  if (sec < 60) return `${Math.round(sec)}s`;
+  if (sec < 3600) return `${(sec/60).toFixed(1)}min`;
+  return `${(sec/3600).toFixed(1)}h`;
+}
 function esc(s){
   return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
@@ -655,6 +661,7 @@ function detailRowHtml(j){
           <div><b>claimed_at</b>${fmtDate(j.claimed_at)}</div>
           <div><b>created_at</b>${fmtDate(j.created_at)}</div>
           <div><b>worker_id</b><code>${esc(j.claimed_by) || "—"}</code></div>
+          <div><b>Tiempo estimado</b><span class="tab-num" title="basado en cpu_score del worker asignado, escalado contra la tabla de referencia medida en bryam-local">${fmtSpan(j.estimated_duration_s)}</span></div>
           ${errBlock}
         </div>
       </td>

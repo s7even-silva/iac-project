@@ -9,6 +9,7 @@ Correr:
 """
 import concurrent.futures
 import time
+from datetime import datetime, timezone
 
 import pytest
 
@@ -115,6 +116,74 @@ def test_result_rejected_if_not_claimed_by_that_worker():
     with pytest.raises(PermissionError):
         db.record_result(job_id, "w2", duration_s=1.0, exit_code=0, n_rows=1,
                           results_csv_path="/tmp/r.csv", manifest_csv_path="/tmp/m.csv")
+
+
+def test_estimate_job_duration_scales_by_cpu_score():
+    reference_s = db.REFERENCE_TIMINGS_S[("GCR_H", 3)]
+    # Worker con la mitad de cpu_score que la referencia -> tarda el doble.
+    half_score = db.REFERENCE_CPU_SCORE / 2
+    estimated = db.estimate_job_duration_s("GCR_H", 3, half_score)
+    assert estimated == pytest.approx(reference_s * 2, rel=1e-6)
+
+
+def test_estimate_job_duration_none_without_cpu_score():
+    assert db.estimate_job_duration_s("GCR_H", 3, None) is None
+    assert db.estimate_job_duration_s("GCR_H", 3, 0) is None
+
+
+def test_estimate_job_duration_none_for_unknown_combo():
+    assert db.estimate_job_duration_s("GCR_H", 99, db.REFERENCE_CPU_SCORE) is None
+
+
+def test_requeue_respects_estimated_duration_beyond_fixed_timeout(monkeypatch):
+    # Timeout fijo corto a proposito para poder probar sin esperar horas
+    # reales -- la estimacion (bin7, referencia ~4669.7s) con margen de
+    # seguridad debe seguir protegiendo al job aunque ya haya pasado el
+    # piso fijo de 100s.
+    monkeypatch.setattr(db, "STALE_JOB_TIMEOUT_S", 100.0)
+    db.upsert_worker("fast", "h1", 8, 16.0, "", cpu_score=db.REFERENCE_CPU_SCORE)
+    job_id = db.insert_job("GCR_H", 7, 0.0, 0, 10000)
+    db.claim_next_job("fast")
+
+    # Heartbeat vencido hace 200s -- ya paso el piso fijo (100s) pero no el
+    # timeout estimado (referencia ~4669.7s * ESTIMATE_SAFETY_FACTOR).
+    stale_at = datetime.fromtimestamp(time.time() - 200, tz=timezone.utc).isoformat()
+    with db.get_conn() as conn:
+        conn.execute("UPDATE workers SET last_heartbeat=? WHERE worker_id='fast'", (stale_at,))
+
+    requeued = db.requeue_stale_jobs()
+    assert job_id not in requeued
+    assert db.get_job(job_id)["status"] == "claimed"
+
+
+def test_requeue_still_uses_fixed_floor_when_estimate_is_short(monkeypatch):
+    # Job barato (bin0) en un worker rapido -- la estimacion con margen es
+    # mucho menor que el piso fijo, asi que el piso fijo debe seguir
+    # aplicando (no reencolar antes de tiempo solo porque la estimacion es
+    # corta).
+    monkeypatch.setattr(db, "STALE_JOB_TIMEOUT_S", 5.0)
+    db.upsert_worker("fast", "h1", 8, 16.0, "", cpu_score=db.REFERENCE_CPU_SCORE)
+    job_id = db.insert_job("GCR_H", 0, 0.0, 0, 10000)
+    db.claim_next_job("fast")
+
+    stale_at = datetime.fromtimestamp(time.time() - 2, tz=timezone.utc).isoformat()
+    with db.get_conn() as conn:
+        conn.execute("UPDATE workers SET last_heartbeat=? WHERE worker_id='fast'", (stale_at,))
+
+    requeued = db.requeue_stale_jobs()
+    assert job_id not in requeued  # 2s de heartbeat vencido < piso fijo de 5s
+
+
+def test_requeue_falls_back_to_fixed_timeout_without_cpu_score():
+    db.upsert_worker("w1", "h1", 8, 16.0, "")  # sin cpu_score
+    job_id = db.insert_job("GCR_H", 7, 0.0, 0, 10000)
+    db.claim_next_job("w1")
+
+    with db.get_conn() as conn:
+        conn.execute("UPDATE workers SET last_heartbeat=? WHERE worker_id='w1'", ("2000-01-01T00:00:00+00:00",))
+
+    requeued = db.requeue_stale_jobs()
+    assert job_id in requeued  # sin cpu_score, cae al timeout fijo (ya vencido)
 
 
 def test_requeue_stale_jobs_without_heartbeat():
