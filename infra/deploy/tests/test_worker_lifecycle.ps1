@@ -5,7 +5,7 @@ $installer = Join-Path $repo 'deploy/install-worker.ps1'
 $tokens=$null; $errors=$null
 $ast=[System.Management.Automation.Language.Parser]::ParseFile($installer,[ref]$tokens,[ref]$errors)
 if ($errors) { throw ($errors | Out-String) }
-foreach ($name in @('Uninstall-Worker','Test-WorkerVolumeMounted','Save-LegacyWorkerData','Get-ExistingWorkerEnvValue','Save-SelfCopy')) {
+foreach ($name in @('Uninstall-Worker','Test-WorkerVolumeMounted','Test-DockerSockMounted','Save-LegacyWorkerData','Get-ExistingWorkerEnvValue','Save-SelfCopy')) {
     $fn=$ast.Find({param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
     Invoke-Expression $fn.Extent.Text
 }
@@ -88,5 +88,36 @@ try {
     Assert (-not (Test-WorkerVolumeMounted)) 'Acepto destino incorrecto'
     function Get-Command { param($Name) return $null }
     Assert ($null -eq (Get-ExistingWorkerEnvValue 'WORKER_LABEL')) 'Docker ausente no soportado'
-    Write-Host 'PASS: 12 escenarios de ciclo de vida (mocks; no certifican Windows).'
+    Reset
+    function docker { $global:LASTEXITCODE=0; '[{"Source":"/var/run/docker.sock","Destination":"/var/run/docker.sock"}]' }
+    Assert (Test-DockerSockMounted) 'No detecto el socket de Docker montado'
+    function docker { $global:LASTEXITCODE=0; '[{"Name":"geant4-worker-data","Destination":"/var/lib/geant4-worker"}]' }
+    Assert (-not (Test-DockerSockMounted)) 'Acepto un contenedor sin el socket de Docker montado'
+    # Ejecutar el bloque REAL que conserva configuracion al actualizar.
+    $global:updateBlock = $ast.Find({param($node)
+        $node -is [System.Management.Automation.Language.IfStatementAst] -and
+        $node.Extent.Text.StartsWith('if ($isUpdate) {')
+    }, $true).Extent.Text
+    function Get-ExistingWorkerEnvValue {
+        param($VarName)
+        if ($VarName -eq 'WORKER_AUTO_UPDATE') { return '0' }
+        return $null
+    }
+    function docker {
+        $global:LASTEXITCODE=0
+        if ($args -contains '{{.Config.Image}}') { return 'repo@sha256:updated' }
+        return '{"NanoCpus":1000000000,"Memory":2147483648}'
+    }
+    function Resolve-UpdateFixture {
+        [CmdletBinding()]param($WorkerImage='old-installer-pin', $WorkerAutoUpdate='1')
+        $isUpdate=$true
+        Invoke-Expression $global:updateBlock
+        return @{ Image=$WorkerImage; AutoUpdate=$WorkerAutoUpdate }
+    }
+    $resolved=Resolve-UpdateFixture
+    Assert ($resolved.Image -eq 'repo@sha256:updated') 'Instalador revierte imagen actualizada'
+    Assert ($resolved.AutoUpdate -eq '0') 'Instalador reactiva auto-update deshabilitado'
+    $resolved=Resolve-UpdateFixture -WorkerImage 'explicit-pin' -WorkerAutoUpdate '1'
+    Assert ($resolved.Image -eq 'explicit-pin' -and $resolved.AutoUpdate -eq '1') 'Ignora opciones explicitas'
+    Write-Host 'PASS: 16 escenarios de ciclo de vida (mocks; no certifican Windows).'
 } finally { Remove-Item $temp -Recurse -Force }

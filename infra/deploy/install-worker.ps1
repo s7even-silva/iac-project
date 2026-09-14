@@ -119,6 +119,8 @@ param(
     [string]$CoordinatorUrl = "https://coordinator.vlaboratory.org",
     [string]$WorkerLabel,
     [int]$WorkerThreads = 0,
+    [ValidateSet("0", "1")]
+    [string]$WorkerAutoUpdate = "1",
     [string]$WorkerToken = "",
     [string]$Cpus = "",
     [string]$MemoryLimit = "",
@@ -377,7 +379,7 @@ function Register-ResumeTask {
     # compartido entre companeros de confianza.
     $argList = "-NoProfile -ExecutionPolicy Bypass -File `"$SelfCopyPath`" " +
                "-CoordinatorUrl `"$CoordinatorUrl`" -WorkerLabel `"$WorkerLabel`" " +
-               "-WorkerThreads $WorkerThreads -WorkerToken `"$WorkerToken`" " +
+               "-WorkerAutoUpdate $WorkerAutoUpdate -WorkerThreads $WorkerThreads -WorkerToken `"$WorkerToken`" " +
                "-Cpus `"$Cpus`" -MemoryLimit `"$MemoryLimit`" -WorkerImage `"$WorkerImage`""
     $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $argList
     $trigger = New-ScheduledTaskTrigger -AtLogOn
@@ -686,7 +688,7 @@ function Get-DesiredWorkerConfigHash {
     # Huella de todo lo que --docker run recibiria, para comparar contra
     # un contenedor ya existente sin tener que enumerar campo por campo
     # en dos lugares distintos.
-    $parts = @($WorkerImage, $CoordinatorUrl, $WorkerLabel, $WorkerThreads, $WorkerToken, $Cpus, $MemoryLimit) -join "|"
+    $parts = @($WorkerImage, $CoordinatorUrl, $WorkerLabel, $WorkerThreads, $WorkerToken, $Cpus, $MemoryLimit, $WorkerAutoUpdate) -join "|"
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($parts)
     return [System.BitConverter]::ToString([System.Security.Cryptography.SHA256]::Create().ComputeHash($bytes))
 }
@@ -705,6 +707,21 @@ function Test-WorkerVolumeMounted {
     if ($LASTEXITCODE -ne 0) { throw "No se pudieron inspeccionar los montajes." }
     return [bool](($mounts | ConvertFrom-Json) | Where-Object {
         $_.Name -eq "geant4-worker-data" -and $_.Destination -eq "/var/lib/geant4-worker"
+    })
+}
+
+function Test-DockerSockMounted {
+    # Mismo patron que Test-WorkerVolumeMounted -- un worker creado antes
+    # de que este instalador montara el socket de Docker (ver
+    # auto_update() en worker.py) puede tener el mismo config-hash
+    # deseado sin tener el socket, asi que la comparacion de hash sola no
+    # basta para detectar que hace falta recrear el contenedor para
+    # habilitar la auto-actualizacion.
+    param([string]$ContainerName = "geant4-worker")
+    $mounts = docker inspect $ContainerName --format '{{json .Mounts}}' 2>$null
+    if ($LASTEXITCODE -ne 0) { throw "No se pudieron inspeccionar los montajes." }
+    return [bool](($mounts | ConvertFrom-Json) | Where-Object {
+        $_.Source -eq "/var/run/docker.sock" -and $_.Destination -eq "/var/run/docker.sock"
     })
 }
 
@@ -755,13 +772,16 @@ function Install-WorkerContainer {
         $existingHash = docker inspect geant4-worker --format '{{index .Config.Labels "geant4-worker-config-hash"}}' 2>$null
         $isRunning = docker ps --filter "name=^geant4-worker$" --format "{{.Names}}" 2>$null
         $hasVolume = Test-WorkerVolumeMounted
-        if ($existingHash -eq $desiredHash -and $isRunning -eq "geant4-worker" -and $hasVolume) {
-            Write-InstallLog "El contenedor 'geant4-worker' ya existe, esta corriendo, tiene el volumen persistente, y su configuracion no cambio -- no se toca (evita interrumpir una simulacion en curso)."
+        $hasDockerSock = Test-DockerSockMounted
+        if ($existingHash -eq $desiredHash -and $isRunning -eq "geant4-worker" -and $hasVolume -and $hasDockerSock) {
+            Write-InstallLog "El contenedor 'geant4-worker' ya existe, esta corriendo, tiene el volumen persistente y el socket de Docker montado, y su configuracion no cambio -- no se toca (evita interrumpir una simulacion en curso)."
             return
         }
         if (-not $hasVolume) {
             Write-InstallLog "El contenedor 'geant4-worker' existente no tiene el volumen persistente (instalado por una version anterior de este script) -- se migra." "WARN"
             $legacyData = Save-LegacyWorkerData
+        } elseif (-not $hasDockerSock) {
+            Write-InstallLog "El contenedor 'geant4-worker' existente no tiene el socket de Docker montado (instalado antes de la auto-actualizacion) -- se recrea para habilitarla. Sin resultados que perder: el socket no contiene datos, solo el volumen (ya presente) los tiene." "WARN"
         } elseif ($isRunning -eq "geant4-worker") {
             Write-InstallLog "La configuracion cambio (imagen/label/threads/token/limites) -- se recrea el contenedor. Si tenia una run asignada, el Coordinator la reencola sola tras el timeout de heartbeat (ver infra/README.md), los resultados ya persistidos se conservan, pero el calculo en curso se reiniciara." "WARN"
         } else {
@@ -773,7 +793,8 @@ function Install-WorkerContainer {
 
     $envArgs = @(
         "-e", "COORDINATOR_URL=$CoordinatorUrl",
-        "-e", "WORKER_LABEL=$WorkerLabel"
+        "-e", "WORKER_LABEL=$WorkerLabel",
+        "-e", "WORKER_AUTO_UPDATE=$WorkerAutoUpdate"
     )
     # Bug real encontrado en produccion (2026-09-13): si no se pasaba
     # -WorkerThreads, esta variable nunca se mandaba al contenedor --
@@ -820,10 +841,26 @@ function Install-WorkerContainer {
         } finally { docker rm $helper | Out-Null }
     }
 
+    # Socket de Docker montado DENTRO del contenedor -- permite que
+    # worker.py se auto-actualice solo (docker_client.py, auto_update())
+    # cuando el equipo publica una imagen nueva (ver
+    # set_worker_image.py/AGENTS.md), sin pedirle a cada voluntario que
+    # vuelva a correr este instalador a mano. Tradeoff de seguridad
+    # aceptado a proposito (decision del usuario, 2026-09-13): el
+    # contenedor gana la capacidad de crear/eliminar OTROS contenedores
+    # en esta PC (no solo administrar el suyo propio) -- razonable para
+    # maquinas de voluntarios de confianza conocidos, no para terceros
+    # anonimos. Docker Desktop (WSL2 backend, el default en este
+    # proyecto) traduce '/var/run/docker.sock' igual que en Linux nativo,
+    # sin necesitar la named pipe de Windows (\\.\pipe\docker_engine)
+    # aparte.
+    $dockerSockArgs = @("-v", "/var/run/docker.sock:/var/run/docker.sock")
+
     Write-InstallLog "Creando el contenedor del worker..."
     docker run -d --name geant4-worker --restart unless-stopped `
         --label "geant4-worker-config-hash=$desiredHash" `
         -v geant4-worker-data:/var/lib/geant4-worker `
+        @dockerSockArgs `
         @envArgs @limitArgs $WorkerImage 2>&1 | ForEach-Object { Write-InstallLog "  $_" }
     if ($LASTEXITCODE -ne 0) { throw "docker run fallo." }
 
@@ -1063,7 +1100,12 @@ if ($dockerCmdAvailable) {
 }
 
 if ($isUpdate) {
-    foreach ($entry in @{CoordinatorUrl='COORDINATOR_URL'; WorkerToken='WORKER_TOKEN'; WorkerThreads='WORKER_THREADS'}.GetEnumerator()) {
+    # Una imagen auto-actualizada no debe retroceder al pin de un instalador viejo.
+    if (-not $PSBoundParameters.ContainsKey('WorkerImage')) {
+        $WorkerImage = docker inspect geant4-worker --format '{{.Config.Image}}'
+        if ($LASTEXITCODE -ne 0 -or -not $WorkerImage) { throw "No se pudo conservar la imagen actual." }
+    }
+    foreach ($entry in @{CoordinatorUrl='COORDINATOR_URL'; WorkerToken='WORKER_TOKEN'; WorkerThreads='WORKER_THREADS'; WorkerAutoUpdate='WORKER_AUTO_UPDATE'}.GetEnumerator()) {
         if (-not $PSBoundParameters.ContainsKey($entry.Key)) {
             $value = Get-ExistingWorkerEnvValue $entry.Value
             if ($null -ne $value) { Set-Variable -Name $entry.Key -Value $value }

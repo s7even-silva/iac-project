@@ -2067,18 +2067,57 @@ una nota explícita para quienes instalaron con Docker manual de que el
 instalador de PowerShell también les sirve para actualizar sin repetir
 el `docker run` completo.
 
+**Auto-actualización Docker (2026-09-13), revisión antes de publicar:**
+El primer diseño se corrigió antes del despliegue: el heartbeat del padre
+confirmaba falsamente al candidato, dos procesos podían reclamar jobs con la
+misma identidad, el nombre temporal rompía watchdog/pausa y se confundían ID
+interno de imagen y digest de manifiesto (pueden coincidir en algún artefacto,
+pero no son intercambiables).
+
+La prueba Docker real encontró además que con `--network host` el hostname
+puede ser el de la PC: se identifica el contenedor por mountinfo/cgroups, no
+por asumir `platform.node()==ID`.
+
+El protocolo vigente exige la etiqueta de imagen
+`org.iac.worker-update-protocol=1`, candidato en standby con heartbeat HTTP propio
+confirmado mediante nonce/ID en el volumen, commit atómico y `flock` de toda la
+vida activa sobre `worker.lock`. El padre entrega el nombre original al hijo,
+conserva restart hasta commit (recuperación ante crash), desactiva su restart y
+sale limpiamente; el hijo adquiere el lock antes de registro/outbox/jobs. Se
+conservan montajes, límites, entorno y labels; configuraciones custom no soportadas
+se rechazan para actualización manual. Fallos de preparación limpian el candidato
+y restauran al padre; rollback fallido exige intervención antes de volver a pedir
+jobs. El journal persistente distingue reinicios anteriores/posteriores al commit.
+
+`WORKER_AUTO_UPDATE=0` sigue siendo el interruptor. `install-worker.ps1` añade
+`-WorkerAutoUpdate`, conserva este valor y la imagen ya actualizada salvo selección
+explícita de `-WorkerImage`. Se evita degradar un worker al pin antiguo del script.
+`set_worker_image.py` exige DB existente explícita al modificar (`--db` o
+`COORDINATOR_DB`) y valida el digest completo. El checklist anterior que anunciaba
+un digest antes de publicar la imagen era incorrecto: **publicar y validar el
+candidato primero, activar el digest deseado después**, usando un canario y API de
+prueba. No probar contra producción: la prueba histórica anterior dejó un job
+huérfano (`135`, reencolado entonces), precisamente por usar el coordinator real.
+
+Guía vigente, operaciones soportadas, recuperación, límites y comandos de pruebas
+en [infra/deploy/README.md](infra/deploy/README.md). El socket mantiene los permisos
+amplios aceptados previamente; no se ha activado configuración ni publicado imagen
+externa en esta revisión. Las imágenes locales de ensayo no son releases.
+
 **Pendiente, no bloqueante:** publicar la imagen con el fix de
 persistencia de resultados (bug del `job 38`) junto con
-`WORKER_THREADS`/`cpu_score` — **ya NO es solo una mejora de
-rendimiento, es una corrección de pérdida de datos real**, sube la
-prioridad de esta publicación; coordinar con cada voluntario que
-actualice cuando termine su corrida actual; publicar el resto de
-imágenes vía un workflow de GitHub Actions en general (hoy es push
-manual); reintentar Azure cuando soporte resuelva el bloqueo de región
-(opcional, GCP ya cubre la necesidad inmediata); y confirmar con
-Eddy/Joel si las 11 combinaciones faltantes de SEP_p y el `GCR_He bin6`
-de offsets 0,1 los tiene pendientes de correr/subir, o si nunca los
-corrió (para saber si esas 11 de SEP_p deben quedar en la cola
+`WORKER_THREADS`/`cpu_score`/auto-actualización de imagen — **ya NO es
+solo una mejora de rendimiento, es una corrección de pérdida de datos
+real**, sube la prioridad de esta publicación; coordinar con cada
+voluntario que actualice cuando termine su corrida actual (con
+auto-actualización activada, esto podría dejar de ser necesario para
+publicaciones futuras, pero la primera activación sigue siendo manual);
+publicar el resto de imágenes vía un workflow de GitHub Actions en
+general (hoy es push manual); reintentar Azure cuando soporte resuelva
+el bloqueo de región (opcional, GCP ya cubre la necesidad inmediata); y
+confirmar con Eddy/Joel si las 11 combinaciones faltantes de SEP_p y el
+`GCR_He bin6` de offsets 0,1 los tiene pendientes de correr/subir, o si
+nunca los corrió (para saber si esas 11 de SEP_p deben quedar en la cola
 distribuida a propósito, cosa que ya parece ser el caso dado que nadie
 las ha corrido en ningún lado).
 
@@ -2505,3 +2544,10 @@ autocopia, pausa/reanudación y provisionadores Bash. Instrucciones, recuperaci�
 fuentes y límites de validación en [infra/deploy/README.md](infra/deploy/README.md).
 No se cambió la lógica de resultados pendientes de `worker.py`. Las pruebas de
 retirada son con mocks, sin validación real en Windows ni despliegue de nube.
+
+Validación final de auto-update (2026-09-13): 64 pruebas Python + 2 escenarios
+Docker reales aislados aprobados; 16 escenarios PowerShell con mocks y 4 Bash
+aprobados. Docker Engine 29.8.0 reveló dos fallos adicionales ya corregidos:
+identidad con red host y defaults ausentes/vacíos (`User`). Recursos de ensayo
+retirados, sin jobs/API/DB de producción. Canario con digest publicado y pruebas
+Windows/Docker Desktop siguen siendo requisitos antes del despliegue general.

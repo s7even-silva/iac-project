@@ -82,13 +82,13 @@ def row_to_dict(row: sqlite3.Row) -> dict:
 @app.post("/api/v1/workers/register")
 def register_worker(body: WorkerRegister):
     db.upsert_worker(body.worker_id, body.hostname, body.cpu_count, body.ram_gb, body.label,
-                      body.ram_free_gb, body.cpu_load_pct, body.cpu_score)
+                      body.ram_free_gb, body.cpu_load_pct, body.cpu_score, body.image_digest)
     return {"worker_id": body.worker_id, "status": "registered"}
 
 
 @app.post("/api/v1/workers/{worker_id}/heartbeat")
 def heartbeat(worker_id: str, body: HeartbeatIn = HeartbeatIn()):
-    ok = db.touch_heartbeat(worker_id, body.ram_free_gb, body.cpu_load_pct)
+    ok = db.touch_heartbeat(worker_id, body.ram_free_gb, body.cpu_load_pct, body.image_digest)
     if not ok:
         raise HTTPException(404, f"worker {worker_id} no registrado")
     return {"ok": True}
@@ -239,4 +239,14 @@ def health():
         # STALE_JOB_TIMEOUT_S en el coordinator, todos los workers lo ven
         # sin tener que reconfigurarse uno por uno.
         "stale_job_timeout_s": db.STALE_JOB_TIMEOUT_S,
+        # Digest de imagen que el equipo quiere que TODOS los workers
+        # Docker corran ahora mismo -- null si nunca se fijo (comportamiento
+        # de siempre: cada worker se queda con la imagen que ya tiene).
+        # Un worker Docker (ver auto_update() en worker.py) lo compara
+        # contra su propio digest antes de pedir el siguiente job y se
+        # auto-actualiza si difieren -- nunca a mitad de una simulacion.
+        # Fijado con infra/coordinator/set_worker_image.py, no por HTTP
+        # publico (mismo criterio que seed_jobs.py: no abrir esta
+        # superficie sin autenticacion, ver AGENTS.md riesgos aceptados).
+        "worker_image_digest": db.get_config("worker_image_digest") or None,
     }

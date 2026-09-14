@@ -54,3 +54,6 @@ ENV COORDINATOR_URL=http://localhost:8000
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["python3", "/opt/iac-project/infra/worker/worker.py"]
+
+# Replacements must enter standby before sharing identity/outbox.
+LABEL org.iac.worker-update-protocol="1"

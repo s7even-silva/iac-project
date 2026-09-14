@@ -18,10 +18,22 @@ Variables de entorno:
                       genera un id nuevo en cada arranque -- aceptable, ver
                       AGENTS.md)
     POLL_INTERVAL_S   default 30 (segundos entre polls cuando no hay job)
+    DOCKER_SOCK_PATH  default /var/run/docker.sock (ver docker_client.py)
+    WORKER_AUTO_UPDATE  default "1" -- "0" desactiva la auto-actualizacion
+                      (ver auto_update()) sin tocar codigo. Solo aplica
+                      dentro de Docker con el socket del host montado
+                      (-v /var/run/docker.sock:/var/run/docker.sock); sin
+                      eso, self_image_digest() da None y auto_update()
+                      es no-op de todos modos.
 
 Uso local (sin Docker, contra un build ya compilado):
     COORDINATOR_URL=http://localhost:8000 python3 infra/worker/worker.py
 """
+import copy
+import re
+import fcntl
+from contextlib import contextmanager
+
 import csv
 import io
 import json
@@ -40,6 +52,8 @@ import uuid
 from pathlib import Path
 
 import requests
+
+import docker_client
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 RUN_ORGAN_SWEEP = REPO_ROOT / "geant4" / "ActiveShield_Sim" / "scripts" / "run_organ_sweep.py"
@@ -175,7 +189,193 @@ def cpu_score() -> float | None:
     except Exception as exc:  # nunca bloquear el registro del worker por esto
         print(f"[worker] cpu_score() fallo, se registra sin score ({exc})")
         return None
+
+
 POLL_INTERVAL_S = float(os.environ.get("POLL_INTERVAL_S", "30"))
+
+# Socket del host montado dentro del contenedor -- ver docker_client.py
+# y auto_update() mas abajo. Ausente en la via sin Docker
+# (GUIA_WORKER_LOCAL.md, donde no hay "propio contenedor" que recrear),
+# asi que toda esta funcionalidad se vuelve no-op ahi, no un error.
+DOCKER_SOCK_PATH = os.environ.get("DOCKER_SOCK_PATH", "/var/run/docker.sock")
+DOCKER = docker_client.DockerClient(DOCKER_SOCK_PATH)
+
+
+DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
+UPDATE_PROTOCOL_LABEL = "org.iac.worker-update-protocol"
+_UPDATE_RETRY_AFTER = 0.0
+
+
+def image_repository(reference: str) -> str:
+    # Un puerto de registro (registry:5000/repo:tag) no es un tag.
+    value = reference.split("@", 1)[0]
+    head, slash, tail = value.rpartition("/")
+    return (head + slash if slash else "") + tail.split(":", 1)[0]
+
+
+def self_container_id() -> str | None:
+    """No asumir hostname=ID: con red host puede ser el nombre de la PC.
+
+    Docker monta sus archivos hostname/hosts/resolv.conf desde el directorio
+    del contenedor. cgroup v1 es una alternativa; en v2 privado puede ser 0::/.
+    Si no hay evidencia de ID, desactivar auto-update sin adivinar otro container.
+    """
+    try:
+        for line in Path('/proc/self/mountinfo').read_text().splitlines():
+            fields = line.split()
+            if len(fields) > 4 and fields[4] in ('/etc/hostname', '/etc/hosts', '/etc/resolv.conf'):
+                match = re.search(r'/containers/([0-9a-f]{64})/(?:hostname|hosts|resolv.conf)$', fields[3])
+                if match:
+                    return match.group(1)
+    except OSError:
+        pass
+    try:
+        match = re.search(r'/docker(?:/|-)([0-9a-f]{64})(?:\.scope)?(?:/|$)',
+                          Path('/proc/self/cgroup').read_text(), re.MULTILINE)
+        if match:
+            return match.group(1)
+    except OSError:
+        pass
+    hostname = platform.node()
+    return hostname if re.fullmatch(r'[0-9a-f]{12}|[0-9a-f]{64}', hostname) else None
+
+
+def self_image_digest() -> str | None:
+    """Digest de manifiesto del registro; Docker inspect .Image es un CONFIG ID."""
+    if not DOCKER.available():
+        return None
+    try:
+        container_id = self_container_id()
+        if container_id is None:
+            return None
+        info = DOCKER.inspect_container(container_id)
+        reference = info["Config"]["Image"]
+        # Docker resolvio/verifico esta referencia inmutable al crear el contenedor.
+        if "@" in reference and DIGEST_RE.fullmatch(reference.rsplit("@", 1)[1]):
+            return reference.rsplit("@", 1)[1]
+        repo = image_repository(reference)
+        digests = DOCKER.inspect_image(info["Image"]).get("RepoDigests", [])
+        return next((ref.rsplit("@", 1)[1] for ref in digests
+                     if ref.startswith(repo + "@")), None)
+    except (docker_client.DockerAPIError, KeyError, ValueError, TypeError):
+        return None
+
+
+@contextmanager
+def worker_lock():
+    """Un solo proceso puede registrar, tocar el outbox o pedir jobs por volumen.
+
+    flock se libera tambien con SIGKILL/reinicio. Nunca borrar este archivo:
+    reemplazar su inode permitiria a dos procesos tener locks distintos.
+    """
+    WORKER_ID_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with (WORKER_ID_FILE.parent / "worker.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
+def update_path(token: str, suffix: str) -> Path:
+    if not re.fullmatch(r"[0-9a-f]{32}", token):
+        raise ValueError("Invalid update token")
+    return WORKER_ID_FILE.parent / f"update-{token}.{suffix}"
+
+
+def write_update_state(path: Path, data: dict) -> None:
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    with temporary.open("w") as stream:
+        json.dump(data, stream)
+        stream.flush()
+        os.fsync(stream.fileno())
+    temporary.replace(path)
+    directory_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+
+
+def prepare_replacement() -> None:
+    """Standby: heartbeat confirmado propio, sin register, outbox ni jobs.
+
+    El padre autoriza el relevo en el volumen compartido. Luego worker_lock
+    impide actividad hasta que el padre termine, incluso tras reinicios.
+    """
+    token = os.environ.get("WORKER_UPDATE_TOKEN")
+    if not token:
+        return
+    state = json.loads(update_path(token, "request").read_text())
+    if self_image_digest() != state["digest"]:
+        raise RuntimeError("Replacement image does not match requested manifest")
+    if WORKER_ID_FILE.read_text().strip() != state["worker_id"]:
+        raise RuntimeError("Replacement does not share the worker identity volume")
+    if update_path(token, "commit").exists():
+        return  # reinicio de un reemplazo ya activado
+    response = SESSION.post(
+        f"{COORDINATOR_URL}/api/v1/workers/{state['worker_id']}/heartbeat",
+        json={}, timeout=15)
+    response.raise_for_status()
+    write_update_state(update_path(token, "ready"), {
+        "token": token, "container": self_container_id(),
+        "worker_id": state["worker_id"], "digest": state["digest"],
+    })
+    deadline = time.monotonic() + _AUTO_UPDATE_VERIFY_TIMEOUT_S + 60
+    while time.monotonic() < deadline:
+        if update_path(token, "commit").exists():
+            return
+        time.sleep(1)
+    raise RuntimeError("Replacement was never authorized; exiting without claiming jobs")
+
+
+def recover_interrupted_update() -> bool:
+    """Padre reiniciado tras un crash: deshacer preparacion o retirarse si hubo commit.
+
+    No iniciar contenedores detenidos por el usuario; respetar su pausa.
+    """
+    if not DOCKER.available():
+        return True
+    try:
+        container_id = self_container_id()
+        if container_id is None:
+            return True
+        info = DOCKER.inspect_container(container_id)
+        for request in WORKER_ID_FILE.parent.glob("update-*.request"):
+            state = json.loads(request.read_text())
+            if state["parent"] != info["Id"] or state.get("aborted"):
+                continue
+            token = request.name.removeprefix("update-").removesuffix(".request")
+            if update_path(token, "commit").exists():
+                DOCKER.set_restart_policy(info["Id"], {"Name": "no"})
+                return False  # el candidato autorizado es el unico sucesor
+            # Nombre determinista tambien permite limpiar si create dio timeout
+            # antes de devolver el ID. Nunca tocar el padre ni borrar el volumen.
+            DOCKER.remove_container(state.get("replacement", state["candidate_name"]), force=True)
+            DOCKER.rename_container(info["Id"], state["original_name"])
+            state["aborted"] = True
+            write_update_state(request, state)
+        return True
+    except (OSError, ValueError, KeyError, docker_client.DockerAPIError) as exc:
+        raise RuntimeError(f"Interrupted update needs recovery before claiming jobs: {exc}") from exc
+
+
+def cleanup_retired_worker() -> None:
+    token = os.environ.get("WORKER_UPDATE_TOKEN")
+    if not token:
+        return
+    try:
+        state = json.loads(update_path(token, "request").read_text())
+        # Lock ya adquirido: el proceso viejo termino, pero Docker puede tardar
+        # un instante en registrar exited. No forzar la eliminacion.
+        for _ in range(10):
+            if not DOCKER.is_running(state["parent"]):
+                DOCKER.remove_container(state["parent"])
+                return
+            time.sleep(1)
+    except (OSError, ValueError, docker_client.DockerAPIError) as exc:
+        print(f"[worker] contenedor retirado pendiente de limpieza (sin restart): {exc}")
+
 
 # Sesion compartida: si el coordinator exige WORKER_TOKEN (ver app.py),
 # el header se manda en TODAS las llamadas sin tener que acordarse de
@@ -256,6 +456,7 @@ def register(worker_id: str) -> None:
     cpus = available_cpu_count()
     print(f"[worker] midiendo capacidad de computo real ({cpus} procesos, ~1-2s)...")
     score = cpu_score()
+    digest = self_image_digest()
     resp = SESSION.post(
         f"{COORDINATOR_URL}/api/v1/workers/register",
         json={
@@ -267,6 +468,7 @@ def register(worker_id: str) -> None:
             "ram_free_gb": ram_free_gb(),
             "cpu_load_pct": cpu_load_pct(),
             "cpu_score": score,
+            "image_digest": digest,
         },
         timeout=15,
     )
@@ -519,6 +721,146 @@ def report_failure(worker_id: str, job_id: int, error: str, duration_s: float) -
         print(f"[worker] no se pudo reportar el fallo del job {job_id} al coordinator: {exc}")
 
 
+# Cuanto esperar a que el contenedor de reemplazo este 'running' segun
+# Docker Y a que aparezca un heartbeat REAL de su worker_id en el
+# coordinator, antes de dar la actualizacion por exitosa. Ver
+# auto_update() -- las dos condiciones importan: 'running' solo confirma
+# que el proceso arranco, no que worker.py de adentro no crasheo al
+# inicializarse (ej. un bug real en la imagen nueva).
+_AUTO_UPDATE_VERIFY_TIMEOUT_S = 120
+_AUTO_UPDATE_VERIFY_POLL_S = 3
+def get_desired_image_digest() -> str | None:
+    """A diferencia de get_stale_job_timeout_s() (cacheado, se consulta
+    una sola vez porque ese valor no cambia en la vida del proceso), este
+    SI debe consultarse fresco cada vez -- es exactamente el valor que
+    puede cambiar en cualquier momento (cuando el equipo publica una
+    imagen nueva, ver set_worker_image.py) y que auto_update() necesita
+    ver actualizado antes de cada job, no solo al arrancar."""
+    try:
+        resp = SESSION.get(f"{COORDINATOR_URL}/api/v1/health", timeout=15)
+        resp.raise_for_status()
+        payload = resp.json()
+        return payload.get("worker_image_digest") if isinstance(payload, dict) else None
+    except (requests.RequestException, ValueError) as exc:
+        print(f"[worker] no se pudo consultar worker_image_digest al coordinator ({exc}) -- se sigue con la imagen actual.")
+        return None
+
+
+def auto_update(worker_id: str) -> bool:
+    """Transaccion local entre jobs. True pide salida limpia, nunca auto-SIGKILL.
+
+    Solo imagenes con protocolo standby: el candidato no reclama jobs antes
+    de commit + liberacion del lock. Un heartbeat del padre no confirma nada.
+    """
+    global _UPDATE_RETRY_AFTER
+    if os.environ.get("WORKER_AUTO_UPDATE", "1") != "1" or time.monotonic() < _UPDATE_RETRY_AFTER:
+        return False
+    current_digest = self_image_digest()
+    if current_digest is None:
+        return False
+    desired_digest = get_desired_image_digest()
+    if not desired_digest or desired_digest == current_digest:
+        return False
+    if not isinstance(desired_digest, str) or not DIGEST_RE.fullmatch(desired_digest):
+        print("[worker] digest deseado invalido; se conserva imagen actual")
+        return False
+    # No descargar repetidamente una imagen rota entre cada job/poll.
+    _UPDATE_RETRY_AFTER = time.monotonic() + 300
+    replacement_id = None
+    renamed_parent = False
+    committed = False
+    token = uuid.uuid4().hex
+    try:
+        self_id = self_container_id()
+        if self_id is None:
+            return False
+        info = DOCKER.inspect_container(self_id)
+        # Exigir persistencia realmente compartida del directorio de identidad/outbox.
+        data_path = str(WORKER_ID_FILE.parent)
+        if not any(m.get("Type") in ("volume", "bind") and m.get("RW", True)
+                   and (data_path == m["Destination"] or data_path.startswith(m["Destination"].rstrip("/") + "/"))
+                   for m in info.get("Mounts", [])):
+            raise RuntimeError("Auto-update requires a shared persistent worker data mount")
+        if info["HostConfig"].get("AutoRemove"):
+            raise RuntimeError("Auto-update does not support --rm containers")
+        if info["HostConfig"].get("NetworkMode") not in ("default", "bridge", "host"):
+            raise RuntimeError("Custom networking needs manual update (endpoints are not cloned)")
+        original_image = DOCKER.inspect_image(info["Image"])
+        # Engine puede omitir User en la imagen y devolver "" en el contenedor.
+        # Normalizar defaults vacios sin aceptar overrides reales.
+        if any((info["Config"].get(key) or None) != (original_image.get("Config", {}).get(key) or None)
+               for key in ("Cmd", "Entrypoint", "User", "WorkingDir")):
+            raise RuntimeError("Custom command/user/workdir requires manual update")
+        image_repo = image_repository(info["Config"]["Image"])
+        target = f"{image_repo}@{desired_digest}"
+        DOCKER.pull_image(image_repo, desired_digest)
+        target_info = DOCKER.inspect_image(target)
+        target_labels = (target_info.get("Config") or {}).get("Labels") or {}
+        if target_labels.get(UPDATE_PROTOCOL_LABEL) != "1":
+            raise RuntimeError("Target image lacks standby update protocol 1; manual update required")
+        original_name = info["Name"].lstrip("/")
+        original_policy = info["HostConfig"].get("RestartPolicy", {"Name": "no"})
+        host_config = copy.deepcopy(info["HostConfig"])
+        host_config["RestartPolicy"] = {"Name": "no"}
+        env = [value for value in info["Config"]["Env"] if not value.startswith("WORKER_UPDATE_")]
+        env.append(f"WORKER_UPDATE_TOKEN={token}")
+        request_state = {
+            "parent": info["Id"], "worker_id": worker_id, "digest": desired_digest,
+            "original_name": original_name, "candidate_name": f"{original_name}-update-{token[:8]}"}
+        write_update_state(update_path(token, "request"), request_state)
+        # Conservar el nombre incluso si create termina remotamente pero pierde su respuesta.
+        replacement_id = request_state["candidate_name"]
+        replacement_id = DOCKER.create_container(
+            replacement_id, target, env, host_config,
+            labels=info["Config"].get("Labels", {}))
+        request_state["replacement"] = replacement_id
+        write_update_state(update_path(token, "request"), request_state)
+        DOCKER.start_container(replacement_id)
+        deadline = time.monotonic() + _AUTO_UPDATE_VERIFY_TIMEOUT_S
+        confirmed = False
+        while time.monotonic() < deadline:
+            if DOCKER.is_running(replacement_id) and update_path(token, "ready").is_file():
+                ready = json.loads(update_path(token, "ready").read_text())
+                confirmed = (ready.get("token") == token and ready.get("worker_id") == worker_id
+                             and ready.get("digest") == desired_digest
+                             and ready.get("container") in (replacement_id, replacement_id[:12]))
+                if confirmed:
+                    break
+            time.sleep(_AUTO_UPDATE_VERIFY_POLL_S)
+        if not confirmed:
+            raise RuntimeError("Replacement did not acknowledge its own successful heartbeat")
+        # Conservar restart del padre HASTA commit para recuperarse de un crash.
+        # Conservar el nombre que usan
+        # pause/resume/watchdog/uninstall, y luego habilitar al candidato.
+        renamed_parent = True
+        DOCKER.rename_container(self_id, f"{original_name}-retired-{token[:8]}")
+        DOCKER.rename_container(replacement_id, original_name)
+        DOCKER.set_restart_policy(replacement_id, original_policy)
+        write_update_state(update_path(token, "commit"), {"committed": True})
+        committed = True
+        DOCKER.set_restart_policy(self_id, {"Name": "no"})
+        print("[worker] reemplazo listo; saliendo limpiamente para liberar identidad y outbox")
+        return True
+    except (docker_client.DockerAPIError, OSError, ValueError, KeyError, TypeError, RuntimeError) as exc:
+        if committed:
+            print(f"[worker] relevo autorizado; limpieza del padre pendiente: {exc}")
+            return True
+        print(f"[worker] auto-update cancelado: {exc}")
+        # Mantener lock y worker viejo si falla la fase de preparacion.
+        # Si una API de rollback falla, no seguir simulando en estado ambiguo.
+        try:
+            if replacement_id:
+                DOCKER.remove_container(replacement_id, force=True)
+            if renamed_parent:
+                DOCKER.rename_container(self_id, original_name)
+            if replacement_id:
+                request_state["aborted"] = True
+                write_update_state(update_path(token, "request"), request_state)
+        except docker_client.DockerAPIError as rollback_error:
+            raise RuntimeError(f"Update rollback needs operator intervention: {rollback_error}") from exc
+        return False
+
+
 def run_job(worker_id: str, job: dict) -> None:
     job_id = job["job_id"]
     label = f"{job['species']} bin{job['bin_index']} offset_x_m={job['offset_x_m']}"
@@ -591,36 +933,59 @@ def main() -> None:
     if HEARTBEAT_INTERVAL_S <= 0 or POLL_INTERVAL_S <= 0 or WORKER_THREADS < 1:
         sys.exit("Intervals and WORKER_THREADS must be positive")
     signal.signal(signal.SIGTERM, stop_worker)
+    if not recover_interrupted_update():
+        return
+    prepare_replacement()
+    with worker_lock():
+        cleanup_retired_worker()
+        run_worker_loop()
+
+
+def run_worker_loop() -> None:
     worker_id = get_or_create_worker_id()
     register(worker_id)
     stop = threading.Event()
-    threading.Thread(target=heartbeat_loop, args=(worker_id, stop), daemon=True).start()
+    heartbeat_thread = threading.Thread(target=heartbeat_loop, args=(worker_id, stop), daemon=True)
+    heartbeat_thread.start()
+    try:
+        # Antes de pedir trabajo nuevo: si el worker se reinicio (crash,
+        # --restart unless-stopped, actualizacion) mientras un resultado
+        # seguia pendiente de subir por un corte de red, esta es la primera
+        # oportunidad de retomarlo -- ver retry_pending_results().
+        retry_pending_results()
 
-    # Antes de pedir trabajo nuevo: si el worker se reinicio (crash,
-    # --restart unless-stopped, actualizacion) mientras un resultado
-    # seguia pendiente de subir por un corte de red, esta es la primera
-    # oportunidad de retomarlo -- ver retry_pending_results().
-    retry_pending_results()
+        print(f"[worker] escuchando jobs en {COORDINATOR_URL} (poll cada {POLL_INTERVAL_S}s)")
+        while True:
+            # Siempre ANTES de pedir el siguiente job, nunca a mitad de una
+            # simulacion -- ver auto_update(). Si devuelve True, el
+            # reemplazo ya esta corriendo y confirmado sano: este proceso
+            # cede el puesto ahora mismo, sin pedir mas jobs ni mandar mas
+            # heartbeats (seguiria compitiendo con el reemplazo por el mismo
+            # worker_id si continuara).
+            if os.environ.get("WORKER_AUTO_UPDATE", "1") == "1" and auto_update(worker_id):
+                stop.set()
+                return
 
-    print(f"[worker] escuchando jobs en {COORDINATOR_URL} (poll cada {POLL_INTERVAL_S}s)")
-    while True:
-        try:
-            job = poll_next_job(worker_id)
-        except requests.RequestException as exc:
-            print(f"[worker] error consultando el coordinator (reintentando): {exc}")
-            time.sleep(POLL_INTERVAL_S)
-            continue
+            try:
+                job = poll_next_job(worker_id)
+            except requests.RequestException as exc:
+                print(f"[worker] error consultando el coordinator (reintentando): {exc}")
+                time.sleep(POLL_INTERVAL_S)
+                continue
 
-        if job is None:
-            heartbeat(worker_id)
-            retry_pending_results()
-            time.sleep(POLL_INTERVAL_S)
-            continue
+            if job is None:
+                heartbeat(worker_id)
+                retry_pending_results()
+                time.sleep(POLL_INTERVAL_S)
+                continue
 
-        run_job(worker_id, job)
-        if os.environ.get("WORKER_ONCE") == "1":
-            stop.set()
-            return
+            run_job(worker_id, job)
+            if os.environ.get("WORKER_ONCE") == "1":
+                stop.set()
+                return
+    finally:
+        stop.set()
+        heartbeat_thread.join(timeout=20)
 
 
 if __name__ == "__main__":

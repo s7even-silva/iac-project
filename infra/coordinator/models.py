@@ -11,6 +11,7 @@ class WorkerRegister(BaseModel):
     ram_free_gb: float | None = None
     cpu_load_pct: float | None = None
     cpu_score: float | None = None
+    image_digest: str | None = None
 
 
 class WorkerRef(BaseModel):
@@ -20,6 +21,7 @@ class WorkerRef(BaseModel):
 class HeartbeatIn(BaseModel):
     ram_free_gb: float | None = None
     cpu_load_pct: float | None = None
+    image_digest: str | None = None
 
 
 class JobOut(BaseModel):

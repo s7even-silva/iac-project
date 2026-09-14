@@ -28,10 +28,22 @@ CREATE TABLE IF NOT EXISTS workers (
     ram_free_gb     REAL,
     cpu_load_pct    REAL,
     cpu_score       REAL,
+    image_digest    TEXT,
     label           TEXT,
     registered_at   TEXT NOT NULL,
     last_heartbeat  TEXT,
     status          TEXT NOT NULL DEFAULT 'online'
+);
+
+-- Clave/valor generico para config global de despliegue -- pensado para
+-- crecer sin agregar una columna nueva a "workers" cada vez que se
+-- necesita un valor global (empieza con worker_image_digest, el digest
+-- que el equipo quiere que todos los workers Docker corran; ver
+-- auto-actualizacion en worker.py y AGENTS.md, "Computo distribuido").
+CREATE TABLE IF NOT EXISTS config (
+    key             TEXT PRIMARY KEY,
+    value           TEXT,
+    updated_at      TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS jobs (
@@ -91,6 +103,7 @@ def now_iso() -> str:
 _MIGRATIONS = [
     "ALTER TABLE workers ADD COLUMN cpu_score REAL",
     "ALTER TABLE jobs ADD COLUMN min_cpu_score REAL NOT NULL DEFAULT 0",
+    "ALTER TABLE workers ADD COLUMN image_digest TEXT",
 ]
 
 
@@ -121,35 +134,55 @@ def get_conn():
 
 
 def upsert_worker(worker_id: str, hostname: str, cpu_count: int, ram_gb: float, label: str,
-                   ram_free_gb: float = None, cpu_load_pct: float = None, cpu_score: float = None) -> None:
+                   ram_free_gb: float = None, cpu_load_pct: float = None, cpu_score: float = None,
+                   image_digest: str = None) -> None:
     with get_conn() as conn:
         conn.execute(
             """
             INSERT INTO workers (worker_id, hostname, cpu_count, ram_gb, ram_free_gb, cpu_load_pct,
-                                  cpu_score, label, registered_at, last_heartbeat, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'online')
+                                  cpu_score, image_digest, label, registered_at, last_heartbeat, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'online')
             ON CONFLICT(worker_id) DO UPDATE SET
                 hostname=excluded.hostname, cpu_count=excluded.cpu_count, ram_gb=excluded.ram_gb,
                 ram_free_gb=excluded.ram_free_gb, cpu_load_pct=excluded.cpu_load_pct,
-                cpu_score=excluded.cpu_score,
+                cpu_score=excluded.cpu_score, image_digest=excluded.image_digest,
                 label=excluded.label, last_heartbeat=excluded.last_heartbeat, status='online'
             """,
-            (worker_id, hostname, cpu_count, ram_gb, ram_free_gb, cpu_load_pct, cpu_score, label,
+            (worker_id, hostname, cpu_count, ram_gb, ram_free_gb, cpu_load_pct, cpu_score, image_digest, label,
              now_iso(), now_iso()),
         )
 
 
-def touch_heartbeat(worker_id: str, ram_free_gb: float = None, cpu_load_pct: float = None) -> bool:
+def touch_heartbeat(worker_id: str, ram_free_gb: float = None, cpu_load_pct: float = None,
+                     image_digest: str = None) -> bool:
     with get_conn() as conn:
         cur = conn.execute(
             """
             UPDATE workers SET last_heartbeat=?, status='online',
-                   ram_free_gb=COALESCE(?, ram_free_gb), cpu_load_pct=COALESCE(?, cpu_load_pct)
+                   ram_free_gb=COALESCE(?, ram_free_gb), cpu_load_pct=COALESCE(?, cpu_load_pct),
+                   image_digest=COALESCE(?, image_digest)
             WHERE worker_id=?
             """,
-            (now_iso(), ram_free_gb, cpu_load_pct, worker_id),
+            (now_iso(), ram_free_gb, cpu_load_pct, image_digest, worker_id),
         )
         return cur.rowcount > 0
+
+
+def get_config(key: str) -> str | None:
+    with get_conn() as conn:
+        row = conn.execute("SELECT value FROM config WHERE key=?", (key,)).fetchone()
+        return row["value"] if row else None
+
+
+def set_config(key: str, value: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO config (key, value, updated_at) VALUES (?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
+            """,
+            (key, value, now_iso()),
+        )
 
 
 def claim_next_job(worker_id: str) -> sqlite3.Row | None:
