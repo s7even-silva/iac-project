@@ -128,7 +128,7 @@ param(
     # saber exactamente que version del worker produjo cada resultado.
     # Actualizar este hash cuando se publique una imagen nueva de
     # verdad (docker buildx imagetools inspect ... para obtenerlo).
-    [string]$WorkerImage = "ghcr.io/s7even-silva/iac-project/geant4-worker@sha256:78cce5255237fe3296bcd985fc04c8675ed98d46d07dd20cef7f0ea70f1ac461"
+    [string]$WorkerImage = "ghcr.io/s7even-silva/iac-project/geant4-worker@sha256:8d081e5d4f3fd345d3f47832d37a443d996fa741dd2f2449db5f4ad3b7674797"
 )
 
 $ErrorActionPreference = "Stop"
