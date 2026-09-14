@@ -128,7 +128,14 @@ param(
     # saber exactamente que version del worker produjo cada resultado.
     # Actualizar este hash cuando se publique una imagen nueva de
     # verdad (docker buildx imagetools inspect ... para obtenerlo).
-    [string]$WorkerImage = "ghcr.io/s7even-silva/iac-project/geant4-worker@sha256:8d081e5d4f3fd345d3f47832d37a443d996fa741dd2f2449db5f4ad3b7674797"
+    [string]$WorkerImage = "ghcr.io/s7even-silva/iac-project/geant4-worker@sha256:8d081e5d4f3fd345d3f47832d37a443d996fa741dd2f2449db5f4ad3b7674797",
+    # Parametro INTERNO -- no documentado en .PARAMETER, no pensado para
+    # que un voluntario lo pase a mano. Solo lo usa la propia Scheduled
+    # Task de resume (ver Register-ResumeTask) para decirle a esta
+    # instancia del script "esto es una reanudacion post-reinicio de
+    # WSL2", sin depender de consultar Task Scheduler (ver mas abajo,
+    # $isResume, el bug real que este parametro corrige de raiz).
+    [switch]$ResumeAfterWsl
 )
 
 $ErrorActionPreference = "Stop"
@@ -140,6 +147,17 @@ $LogDir = Join-Path $env:ProgramData "Geant4Worker"
 $LogFile = Join-Path $LogDir "install-worker.log"
 $ResumeTaskName = "Geant4WorkerInstallResume"
 $WatchdogTaskName = "Geant4WorkerWatchdog"
+# Marcador de "hay un reinicio pendiente por WSL2 en curso" -- NO es
+# como se detecta $isResume (ver -ResumeAfterWsl, mas abajo), es la
+# defensa contraria: si Windows no logra desregistrar $ResumeTaskName
+# por algun motivo, esa tarea huerfana podria disparar este script de
+# nuevo en un login futuro que NO tiene nada que ver con este reinicio.
+# Register-ResumeTask crea este archivo antes de reiniciar; el bloque de
+# -ResumeAfterWsl lo borra al arrancar. Si el archivo ya no existe cuando
+# la tarea huerfana dispara el script, esa ejecucion sale de inmediato
+# sin instalar ni actualizar nada -- ver el bloque `if ($ResumeAfterWsl)`
+# mas abajo.
+$ResumePendingFile = Join-Path $LogDir "resume.pending"
 $SelfCopyPath = Join-Path $LogDir "install-worker.ps1"
 $PauseScriptPath = Join-Path $LogDir "pause-worker.ps1"
 $ResumeScriptPath = Join-Path $LogDir "resume-worker.ps1"
@@ -374,10 +392,11 @@ function Test-Wsl2Ready {
 }
 
 function Register-ResumeTask {
-    # Scheduled Task de un solo uso: se registra a si misma para
-    # auto-eliminarse en cuanto corre una vez (Unregister-ScheduledTask
-    # al inicio del script, ver mas abajo) -- no deja tareas huerfanas
-    # despues del reinicio que de verdad necesitaba.
+    # Scheduled Task de un solo uso, invocada con -ResumeAfterWsl para
+    # que la instancia que arranca en el proximo login sepa que es una
+    # reanudacion SIN tener que consultar Task Scheduler (ver el bloque
+    # `if ($ResumeAfterWsl)` en el flujo principal, y el comentario de
+    # $ResumePendingFile mas arriba para el caso de una tarea huerfana).
     #
     # LogonType Interactive + el usuario actual (no SYSTEM/ServiceAccount)
     # a proposito: una tarea corriendo como SYSTEM se ejecuta en una
@@ -402,6 +421,12 @@ function Register-ResumeTask {
     $answer = Read-Host "Escribe 'si' para reiniciar ahora, o cualquier otra cosa para cancelar (la tarea queda programada, reinicia tu mismo cuando quieras)"
     Save-SelfCopy
 
+    # Marcador que hace tolerante la reanudacion a una tarea huerfana (ver
+    # $ResumePendingFile mas arriba) -- se crea ANTES de programar la
+    # tarea/reiniciar, se borra al empezar a reanudar de verdad.
+    New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
+    Set-Content -Path $ResumePendingFile -Value (Get-Date -Format 'o')
+
     # RIESGO CONOCIDO, sin resolver a proposito: WorkerToken (si se usa)
     # queda visible en los argumentos de esta Scheduled Task -- cualquiera
     # con acceso a 'schtasks /query /tv' o al Task Scheduler en esta PC
@@ -410,7 +435,13 @@ function Register-ResumeTask {
     # si se activa, cifrar esto (DPAPI/Credential Manager) antes de
     # depender de el como control de acceso real, no solo un secreto
     # compartido entre companeros de confianza.
-    $argList = "-NoProfile -ExecutionPolicy Bypass -File `"$SelfCopyPath`" " +
+    #
+    # -ResumeAfterWsl es lo que le dice a la proxima instancia que esto es
+    # una reanudacion -- ya no se consulta Task Scheduler para eso (ver
+    # $isResume en el flujo principal, corrige de raiz el bug real
+    # reportado con captura de pantalla, 2026-09-14: Get-ScheduledTask
+    # ahi se colgaba en al menos una maquina).
+    $argList = "-NoProfile -ExecutionPolicy Bypass -File `"$SelfCopyPath`" -ResumeAfterWsl " +
                "-CoordinatorUrl `"$CoordinatorUrl`" -WorkerLabel `"$WorkerLabel`" " +
                "-WorkerAutoUpdate $WorkerAutoUpdate -WorkerThreads $WorkerThreads -WorkerToken `"$WorkerToken`" " +
                "-Cpus `"$Cpus`" -MemoryLimit `"$MemoryLimit`" -WorkerImage `"$WorkerImage`""
@@ -419,7 +450,11 @@ function Register-ResumeTask {
     $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
 
-    Unregister-ScheduledTask -TaskName $ResumeTaskName -Confirm:$false -ErrorAction SilentlyContinue
+    # -Force ya reemplaza una tarea existente con el mismo nombre -- no
+    # hace falta un Unregister-ScheduledTask previo (fuente del cuelgue
+    # real reportado, ver comentario de $isResume/Unregister-ScheduledTaskSafe
+    # mas abajo). Sacar Task Scheduler del camino critico por completo es
+    # el fix permanente pedido, no solo aislar la llamada con un timeout.
     Register-ScheduledTask -TaskName $ResumeTaskName -Action $action -Trigger $trigger `
         -Principal $principal -Settings $settings -Force | Out-Null
 
@@ -591,6 +626,41 @@ function Invoke-NativeCommand {
         return [pscustomobject]@{ Output = $null; ExitCode = 1 }
     } finally {
         $ErrorActionPreference = $previous
+    }
+}
+
+# Timeout real para una limpieza de Task Scheduler que ya NO esta en el
+# camino critico (ver $isResume/-ResumeAfterWsl en el flujo principal,
+# fix permanente 2026-09-14: la deteccion de "es esto una reanudacion"
+# dejo de depender de Get-ScheduledTask por completo). Esta funcion sigue
+# usandose para la limpieza real que aun hace falta (Uninstall-Worker
+# desregistrando ambas tareas; el `if ($isResume)` desregistrando la
+# tarea de resume ya usada) -- protegida con timeout porque el mismo
+# cuelgue observado en produccion (causa exacta en esa PC sin confirmar
+# -- Task Scheduler local en estado raro, WMI/CIM lento, o antivirus
+# interceptando la llamada) podria repetirse ahi, y esos puntos ya no son
+# criticos para completar la instalacion si tardan (a diferencia de antes).
+#
+# Nota para quien pruebe esto: Start-Job arranca un runspace/proceso
+# NUEVO -- un mock de Unregister-ScheduledTask definido en el scope del
+# llamador (patron que test_worker_lifecycle.ps1 usa para otros cmdlets)
+# nunca es visible ahi, confirmado en revision (el test pasaba sin
+# invocar de verdad el mock). test_worker_lifecycle.ps1 reemplaza esta
+# funcion COMPLETA por una version sin Start-Job en vez de intentar
+# mockear a traves de esa frontera de proceso -- ver ese archivo.
+function Unregister-ScheduledTaskSafe {
+    param([Parameter(Mandatory)][string]$TaskName, [int]$TimeoutSeconds = 15)
+    $job = Start-Job -ScriptBlock {
+        param($Name)
+        Unregister-ScheduledTask -TaskName $Name -Confirm:$false -ErrorAction SilentlyContinue
+    } -ArgumentList $TaskName
+    try {
+        if (-not (Wait-Job -Job $job -Timeout $TimeoutSeconds)) {
+            Write-InstallLog "Unregister-ScheduledTask ('$TaskName') no respondio en ${TimeoutSeconds}s -- se continua igual (probable problema local de Task Scheduler, no fatal para la instalacion)." "WARN"
+        }
+    } finally {
+        Stop-Job -Job $job -ErrorAction SilentlyContinue | Out-Null
+        Remove-Job -Job $job -Force -ErrorAction SilentlyContinue | Out-Null
     }
 }
 
@@ -1041,17 +1111,16 @@ function Test-WorkerRegistered {
     return $false
 }
 
-function Register-WatchdogTask {
-    # Recurrente (a diferencia de Register-ResumeTask): corre al inicio
-    # de sesion Y despues cada 30 minutos mientras la sesion siga activa
-    # -- solo AtLogOn dejaba un hueco real (si Docker Desktop se cae
-    # horas despues del login, nadie lo nota hasta el proximo inicio de
-    # sesion). No reemplaza --restart unless-stopped (esa sigue siendo
-    # la primera linea de defensa para el CONTENEDOR) -- esto cubre que
-    # el propio Docker Desktop (el motor) siga arriba.
-    Write-InstallLog "Registrando el watchdog que revisa el worker en cada inicio de sesion..."
+function Update-WatchdogScript {
+    # Escribe/actualiza watchdog.ps1 en una ruta ESTABLE ($LogDir, no
+    # cambia entre versiones) -- separado de registrar la Scheduled Task
+    # en si (ver Register-WatchdogTask mas abajo) para que una
+    # actualizacion pueda refrescar el contenido de este script sin tocar
+    # Task Scheduler en absoluto: la tarea ya existente (de la instalacion
+    # original) sigue apuntando a esta misma ruta, asi que recibe el
+    # watchdog.ps1 nuevo la proxima vez que dispare, sin necesitar volver
+    # a registrarse. Devuelve la ruta escrita.
     Save-SelfCopy
-
     $watchdogScript = Join-Path $LogDir "watchdog.ps1"
     @"
 `$ErrorActionPreference = 'SilentlyContinue'
@@ -1114,6 +1183,26 @@ if (-not `$running) {
     Log "geant4-worker ya estaba corriendo (`$running)."
 }
 "@ | Set-Content -Path $watchdogScript -Encoding UTF8
+    return $watchdogScript
+}
+
+function Register-WatchdogTask {
+    # Recurrente (a diferencia de Register-ResumeTask): corre al inicio
+    # de sesion Y despues cada 30 minutos mientras la sesion siga activa
+    # -- solo AtLogOn dejaba un hueco real (si Docker Desktop se cae
+    # horas despues del login, nadie lo nota hasta el proximo inicio de
+    # sesion). No reemplaza --restart unless-stopped (esa sigue siendo
+    # la primera linea de defensa para el CONTENEDOR) -- esto cubre que
+    # el propio Docker Desktop (el motor) siga arriba.
+    #
+    # Solo se llama en una instalacion NUEVA (ver el flujo principal) --
+    # una actualizacion ya tiene esta Scheduled Task registrada de antes
+    # apuntando a la misma ruta estable de watchdog.ps1, asi que no hace
+    # falta tocar Task Scheduler de nuevo, solo refrescar el contenido del
+    # script (ver Update-WatchdogScript, llamada por separado desde el
+    # flujo principal en ambos casos).
+    Write-InstallLog "Registrando el watchdog que revisa el worker en cada inicio de sesion..."
+    $watchdogScript = Update-WatchdogScript
 
     $action = New-ScheduledTaskAction -Execute "powershell.exe" `
         -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$watchdogScript`""
@@ -1126,7 +1215,10 @@ if (-not `$running) {
     $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
 
-    Unregister-ScheduledTask -TaskName $WatchdogTaskName -Confirm:$false -ErrorAction SilentlyContinue
+    # -Force reemplaza una tarea existente del mismo nombre -- no hace
+    # falta un Unregister-ScheduledTask previo (mismo razonamiento que
+    # Register-ResumeTask: sacar Task Scheduler del camino critico,
+    # fix permanente, 2026-09-14).
     Register-ScheduledTask -TaskName $WatchdogTaskName -Action $action -Trigger @($logonTrigger, $recurringTrigger) `
         -Principal $principal -Settings $settings -Force | Out-Null
     Write-InstallLog "Watchdog registrado (tarea '$WatchdogTaskName', corre al iniciar sesion y cada 30 min mientras siga activa)."
@@ -1165,7 +1257,7 @@ function Uninstall-Worker {
     }
     foreach ($taskName in @($WatchdogTaskName, $ResumeTaskName)) {
         if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
-            Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+            Unregister-ScheduledTaskSafe -TaskName $taskName
         }
     }
     if ($hasDocker) {
@@ -1214,7 +1306,32 @@ function Uninstall-Worker {
 
 if ($Action -eq "Uninstall") { Uninstall-Worker; return }
 
-$isResume = [bool](Get-ScheduledTask -TaskName $ResumeTaskName -ErrorAction SilentlyContinue)
+# $isResume ya NO se detecta consultando Task Scheduler (Get-ScheduledTask
+# -TaskName $ResumeTaskName) -- bug real reportado con captura de pantalla
+# (2026-09-14): ese cmdlet se colgo indefinidamente en al menos una
+# maquina, bloqueando el script ANTES de llegar a "[Paso 1/3]", incluso en
+# una ejecucion normal/actualizacion que ni siquiera es una reanudacion.
+# Fix permanente (no un timeout aislando la llamada): sacar Task Scheduler
+# del camino critico por completo. Ahora es la propia Scheduled Task de
+# resume la que le dice a esta instancia que lo es, pasando -ResumeAfterWsl
+# como argumento (ver Register-ResumeTask) -- una ejecucion normal nunca
+# consulta Task Scheduler para decidir esto.
+#
+# Tolerancia a una tarea huerfana, sin la cual -ResumeAfterWsl por si solo
+# reintroduciria un riesgo distinto: si Windows llega a fallar al
+# desregistrar $ResumeTaskName (ver mas abajo), esa tarea podria disparar
+# el script de nuevo en un login FUTURO que no tiene nada que ver con este
+# reinicio -- reinstalando/actualizando sin que nadie lo pidiera. Por eso
+# -ResumeAfterWsl no basta solo: se exige ADEMAS que $ResumePendingFile
+# siga existiendo (lo crea Register-ResumeTask antes de reiniciar, se
+# borra aqui mismo al aceptar la reanudacion) -- si el archivo ya no
+# esta, esta ejecucion sale de inmediato sin tocar nada.
+if ($ResumeAfterWsl -and -not (Test-Path $ResumePendingFile)) {
+    Write-InstallLog "Se invoco con -ResumeAfterWsl pero no hay una reanudacion pendiente real (marcador ausente) -- probablemente una Scheduled Task de resume que quedo huerfana de una instalacion anterior. Saliendo sin instalar ni actualizar nada."
+    return
+}
+$isResume = [bool]$ResumeAfterWsl
+if ($isResume) { Remove-Item $ResumePendingFile -ErrorAction SilentlyContinue }
 
 # Deteccion automatica actualizar vs. instalar desde cero: si YA existe
 # un contenedor 'geant4-worker' (sin importar si lo creo este script o
@@ -1295,8 +1412,20 @@ if ($isResume) {
 # Si esto es una reanudacion post-reinicio, la tarea de un solo uso ya
 # cumplio su proposito -- eliminarla antes de seguir para no dejarla
 # corriendo en cada login futuro (a diferencia del watchdog, que si debe
-# quedar permanente).
-Unregister-ScheduledTask -TaskName $ResumeTaskName -Confirm:$false -ErrorAction SilentlyContinue
+# quedar permanente). CONDICIONAL a $isResume (fix real, 2026-09-14): antes
+# esta llamada corria SIEMPRE, incluso en una ejecucion normal/actualizacion
+# donde la tarea de resume nunca existio -- ahi no habia nada que
+# desregistrar, y en al menos una maquina esa llamada de mas se colgo,
+# bloqueando el script antes de "[Paso 1/3]". Con $isResume ya resuelto sin
+# depender de Task Scheduler (ver mas arriba), esta limpieza solo se
+# intenta cuando de verdad aplica; Unregister-ScheduledTaskSafe (con
+# timeout real, no solo -ErrorAction) sigue siendo la forma correcta de
+# hacerla, por si la propia Task Scheduler tarda o falla en este paso
+# especifico -- eso ya no bloquea nada critico si pasa, solo deja la tarea
+# vieja sin limpiar (inofensivo: el marcador ya la volvio inerte).
+if ($isResume) {
+    Unregister-ScheduledTaskSafe -TaskName $ResumeTaskName
+}
 
 if (-not $isUpdate) {
     # 8 pasos en una instalacion nueva -- ver Write-InstallStep. La
@@ -1374,10 +1503,19 @@ if (Test-WorkerPaused) {
         throw "El worker se creo pero no se confirmo conectado al Coordinator -- no se reporta exito. Revisa 'docker logs geant4-worker' y vuelve a correr este script."
     }
 
-    if (-not $isUpdate) {
+    if ($isUpdate) {
+        # Solo refrescar watchdog.ps1 (por si el contenido cambio en una
+        # version mas reciente del instalador) -- SIN tocar Task Scheduler
+        # en absoluto. La Scheduled Task de la instalacion original ya
+        # apunta a esta misma ruta estable, asi que el proximo disparo
+        # (login o el intervalo de 30 min) ya recoge el contenido nuevo.
+        # Fix permanente (2026-09-14): una actualizacion nunca debe volver
+        # a registrar/tocar la tarea del watchdog, ver Register-WatchdogTask.
+        Update-WatchdogScript | Out-Null
+    } else {
         Write-InstallStep "Registrando el watchdog que revisa el worker en cada inicio de sesion..."
+        Register-WatchdogTask
     }
-    Register-WatchdogTask
 
     Write-InstallLog "=== Listo. El worker esta corriendo y conectado. ==="
     Write-InstallLog "Ver progreso:  docker logs -f geant4-worker"
