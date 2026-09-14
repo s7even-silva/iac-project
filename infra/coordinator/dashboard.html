@@ -308,6 +308,9 @@ tbody tr.detail-row:hover{background:var(--surface-2)}
   font-weight:600;
 }
 .unassigned{color:var(--text-faint);font-style:italic}
+.text-faint{color:var(--text-faint);font-size:.78rem}
+.near-estimate{color:var(--warn);font-weight:600}
+.over-estimate{color:var(--bad);font-weight:600}
 
 .empty-state{
   padding:36px 18px;
@@ -437,6 +440,7 @@ footer.note code{font-family:"IBM Plex Mono",monospace;background:var(--surface-
             <th>Offset X</th>
             <th>Rep.</th>
             <th>Asignado a</th>
+            <th>Duración</th>
             <th>Intento</th>
             <th>Actualizado</th>
           </tr>
@@ -625,6 +629,40 @@ function matchesFilters(j){
   return true;
 }
 
+function elapsedSinceClaim(j){
+  if (!j.claimed_at || (j.status !== "claimed" && j.status !== "running")) return null;
+  const claimed = new Date(j.claimed_at);
+  if (isNaN(claimed)) return null;
+  return (Date.now() - claimed.getTime()) / 1000;
+}
+
+function runningCellHtml(j){
+  // Job en curso: tiempo transcurrido desde claimed_at, comparado contra
+  // la estimacion si hay una disponible.
+  const elapsedSec = elapsedSinceClaim(j);
+  if (elapsedSec != null){
+    const estimated = j.estimated_duration_s;
+    let cls = "";
+    if (estimated){
+      const ratio = elapsedSec / estimated;
+      // >100% del estimado: puede seguir siendo normal (el margen real es
+      // 2.5x, ver ESTIMATE_SAFETY_FACTOR en db.py) pero vale la pena
+      // llamar la atencion visualmente antes de llegar al timeout real.
+      if (ratio >= 1) cls = "over-estimate";
+      else if (ratio >= 0.8) cls = "near-estimate";
+    }
+    const estimateText = estimated ? ` <span class="text-faint">/ ~${fmtSpan(estimated)} est.</span>` : "";
+    return `<span class="tab-num ${cls}">${fmtSpan(elapsedSec)}</span>${estimateText}`;
+  }
+  // Job ya terminado (done): duracion REAL reportada por el worker al
+  // subir el resultado (tabla results, expuesta como actual_duration_s
+  // desde list_jobs() -- dato que ya se guardaba, solo no se exponia).
+  if (j.status === "done" && j.actual_duration_s != null){
+    return `<span class="tab-num">${fmtSpan(j.actual_duration_s)}</span> <span class="text-faint">real</span>`;
+  }
+  return `<span class="unassigned">—</span>`;
+}
+
 function jobRowHtml(j){
   const label = workerLabelFor(j.claimed_by);
   const assigned = label
@@ -639,6 +677,7 @@ function jobRowHtml(j){
       <td class="tab-num">${j.offset_x_m.toFixed(1)} m</td>
       <td class="tab-num">${j.repeticion}</td>
       <td>${assigned}</td>
+      <td>${runningCellHtml(j)}</td>
       <td class="tab-num">${j.attempt}/${j.max_attempts}</td>
       <td class="tab-num">${fmtDate(j.updated_at)}</td>
     </tr>
@@ -651,7 +690,7 @@ function detailRowHtml(j){
     : "";
   return `
     <tr class="detail-row" data-detail-for="${j.job_id}">
-      <td colspan="9">
+      <td colspan="10">
         <div class="detail-grid">
           <div><b>job_id</b><span class="tab-num">${j.job_id}</span></div>
           <div><b>n_events</b><span class="tab-num">${j.n_events.toLocaleString()}</span></div>
@@ -661,7 +700,9 @@ function detailRowHtml(j){
           <div><b>claimed_at</b>${fmtDate(j.claimed_at)}</div>
           <div><b>created_at</b>${fmtDate(j.created_at)}</div>
           <div><b>worker_id</b><code>${esc(j.claimed_by) || "—"}</code></div>
+          <div><b>Corriendo desde</b><span class="tab-num">${fmtSpan(elapsedSinceClaim(j))}</span></div>
           <div><b>Tiempo estimado</b><span class="tab-num" title="basado en cpu_score del worker asignado, escalado contra la tabla de referencia medida en bryam-local">${fmtSpan(j.estimated_duration_s)}</span></div>
+          <div><b>Duración real</b><span class="tab-num" title="duration_s reportado por el worker al subir el resultado exitoso">${fmtSpan(j.actual_duration_s)}</span></div>
           ${errBlock}
         </div>
       </td>
