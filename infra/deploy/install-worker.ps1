@@ -159,7 +159,7 @@ $PauseFile = Join-Path $UserStateDir "worker.paused"
 # arranco la instalacion, no una version distinta si alguien pusheo
 # cambios entre medio. Actualizar este hash cuando el script cambie de
 # verdad y se quiera que los voluntarios reciban la version nueva.
-$InstallScriptCommit = "38e5ee60bdbf26c89c01b96adf712f04ffae066e"
+$InstallScriptCommit = "26507d0f175528a6e63834b69bd490abcc796669"
 $InstallScriptUrl = "https://raw.githubusercontent.com/s7even-silva/iac-project/$InstallScriptCommit/infra/deploy/install-worker.ps1"
 $MaxResumeAttempts = 3
 
@@ -424,8 +424,9 @@ function Install-Wsl2 {
     Set-Content -Path $attemptFile -Value ($attempts + 1)
 
     Write-InstallLog "Instalando WSL2 (wsl --install)..."
-    wsl --install --no-distribution 2>&1 | ForEach-Object { Write-InstallLog "  $_" }
-    $installExitCode = $LASTEXITCODE
+    $installResult = Invoke-NativeCommand { wsl --install --no-distribution 2>&1 }
+    $installResult.Output | ForEach-Object { Write-InstallLog "  $_" }
+    $installExitCode = $installResult.ExitCode
     Start-Sleep -Seconds 3
 
     if (Test-Wsl2Ready) {
@@ -514,38 +515,55 @@ function Set-DockerAutoStart {
     Set-ItemProperty -Path $runKey -Name "Docker Desktop" -Value "`"$dockerExe`"" -Force
 }
 
-function Test-DockerEngineRunning {
-    # Bug real de produccion (2026-09-13, reportado con log completo por un
-    # voluntario -- "Joel"): con $ErrorActionPreference = "Stop" (global,
-    # ver el inicio del script) y Windows PowerShell 5.1 (powershell.exe,
-    # no pwsh -- lo que de hecho usan las Scheduled Tasks de este mismo
-    # script), un comando nativo que escribe a stderr y se redirige con
-    # "2>&1" o "*>" se convierte en un NativeCommandError que SI respeta
+function Invoke-NativeCommand {
+    # Helper generico para CUALQUIER comando nativo (docker, wsl, etc.)
+    # cuyo fallo se espera y se maneja a mano revisando LASTEXITCODE --
+    # no para comandos cuyo fallo es un error real del instalador (esos
+    # deben seguir bajo el "Stop" global tal cual).
+    #
+    # Bug real de produccion (2026-09-13, reportado con log completo por
+    # un voluntario -- "Joel", ver Test-DockerEngineRunning mas abajo
+    # para el primer caso encontrado): con $ErrorActionPreference =
+    # "Stop" (global) y Windows PowerShell 5.1 (powershell.exe, no pwsh
+    # -- lo que de hecho usan las Scheduled Tasks de este mismo script),
+    # un comando nativo que escribe a stderr y se redirige con "2>&1" o
+    # "*>" se convierte en un NativeCommandError que SI respeta
     # ErrorActionPreference -- a diferencia de pwsh 7.2+, donde ese mismo
-    # patron no aborta el script (cambio de comportamiento documentado por
-    # Microsoft). El resultado real visto en el log: "docker info" fallaba
-    # (esperado, Docker Desktop recien instalado, el motor aun no arranca)
-    # y esa falla esperada terminaba el script ENTERO antes de llegar a
-    # Start-Process "Docker Desktop.exe" -- el propio chequeo que debia
-    # detectar "el motor no esta listo todavia" era lo que abortaba la
-    # instalacion. NO se cambia el "Stop" global (sigue siendo correcto
-    # para errores reales del instalador) -- se aisla "Continue" solo
-    # alrededor de este comando nativo especifico, que se espera que falle
-    # mientras el motor no este arriba.
+    # patron no aborta el script (cambio de comportamiento documentado
+    # por Microsoft). Encontrado primero en "docker info" (Test-
+    # DockerEngineRunning), pero el mismo patron -- comando nativo mas
+    # inspeccion posterior de $LASTEXITCODE, sin try/catch propio --
+    # aparecia repetido en Install-Wsl2, Test-LinuxContainersMode,
+    # Invoke-DockerPullWithRetry, Install-WorkerContainer y varios
+    # helpers de Test-Worker*/Get-*WorkerConfigHash: CUALQUIERA de esos
+    # comandos fallando con un stderr real (no solo un exit code
+    # distinto de 0) abortaria el script entero antes de que la logica
+    # de reintento/deteccion que los rodea pudiera actuar. Centralizado
+    # aqui en vez de repetir el mismo try/finally en cada funcion.
+    #
+    # Recibe un scriptblock que invoca el comando nativo (para poder
+    # capturar su Output/LASTEXITCODE exactos, tal como los produciria
+    # el call site original) y devuelve ambos ya resueltos.
+    param([Parameter(Mandatory)][scriptblock]$ScriptBlock)
     $previous = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     try {
-        docker info *> $null
-        return ($LASTEXITCODE -eq 0)
+        $output = & $ScriptBlock
+        return [pscustomobject]@{ Output = $output; ExitCode = $LASTEXITCODE }
     } catch {
         # "Continue" evita que un NativeCommandError aborte, pero no protege
-        # contra una excepcion real de PowerShell (ej. "docker" no encontrado
-        # como comando). Esta funcion es una barrera total: nunca debe
-        # propagar ningun tipo de error, solo informar con $false.
-        return $false
+        # contra una excepcion real de PowerShell (ej. el comando no existe).
+        # Esta funcion es una barrera total: nunca debe propagar ningun tipo
+        # de error, solo informar con un ExitCode distinto de 0.
+        return [pscustomobject]@{ Output = $null; ExitCode = 1 }
     } finally {
         $ErrorActionPreference = $previous
     }
+}
+
+function Test-DockerEngineRunning {
+    $result = Invoke-NativeCommand { docker info *> $null }
+    return ($result.ExitCode -eq 0)
 }
 
 function Start-DockerAndWait {
@@ -589,8 +607,9 @@ function Test-LinuxContainersMode {
         Write-InstallLog "Docker Engine no responde -- no se puede verificar el modo de contenedores." "ERROR"
         return $false
     }
-    $osType = docker info --format '{{.OSType}}' 2>&1
-    if ($LASTEXITCODE -ne 0 -or $osType -ne "linux") {
+    $result = Invoke-NativeCommand { docker info --format '{{.OSType}}' 2>&1 }
+    $osType = $result.Output
+    if ($result.ExitCode -ne 0 -or $osType -ne "linux") {
         Write-InstallLog "Docker esta en modo '$osType', no 'linux'. La imagen del worker es Linux (Ubuntu+Geant4) y no correra en modo Windows containers." "ERROR"
         Write-InstallLog "En el icono de Docker Desktop (bandeja del sistema), boton derecho -> 'Switch to Linux containers...'" "ERROR"
         return $false
@@ -638,9 +657,10 @@ function Invoke-DockerPullWithRetry {
     }
     for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
         Write-InstallLog "Descargando la imagen del worker ($WorkerImage), intento $attempt de $MaxAttempts..."
-        $output = docker pull $WorkerImage 2>&1
+        $pullResult = Invoke-NativeCommand { docker pull $WorkerImage 2>&1 }
+        $output = $pullResult.Output
         $output | ForEach-Object { Write-InstallLog "  $_" }
-        if ($LASTEXITCODE -eq 0) { return }
+        if ($pullResult.ExitCode -eq 0) { return }
 
         $outputText = $output -join "`n"
         # "failed to fetch oauth token" / timeout / "net/http" son fallos
@@ -672,8 +692,9 @@ function Get-ExistingWorkerEnvValue {
     # variable no esta definida en el.
     param([string]$VarName)
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { return $null }
-    $envList = docker inspect geant4-worker --format '{{json .Config.Env}}' 2>$null
-    if ($LASTEXITCODE -ne 0 -or -not $envList) { return $null }
+    $result = Invoke-NativeCommand { docker inspect geant4-worker --format '{{json .Config.Env}}' 2>$null }
+    $envList = $result.Output
+    if ($result.ExitCode -ne 0 -or -not $envList) { return $null }
     try {
         $vars = $envList | ConvertFrom-Json
     } catch {
@@ -739,9 +760,9 @@ function Test-WorkerVolumeMounted {
     # seguiria perdiendo en cada recreacion futura. Se comprueba aparte,
     # explicitamente.
     param([string]$ContainerName = "geant4-worker")
-    $mounts = docker inspect $ContainerName --format '{{json .Mounts}}' 2>$null
-    if ($LASTEXITCODE -ne 0) { throw "No se pudieron inspeccionar los montajes." }
-    return [bool](($mounts | ConvertFrom-Json) | Where-Object {
+    $result = Invoke-NativeCommand { docker inspect $ContainerName --format '{{json .Mounts}}' 2>$null }
+    if ($result.ExitCode -ne 0) { throw "No se pudieron inspeccionar los montajes." }
+    return [bool](($result.Output | ConvertFrom-Json) | Where-Object {
         $_.Name -eq "geant4-worker-data" -and $_.Destination -eq "/var/lib/geant4-worker"
     })
 }
@@ -754,21 +775,21 @@ function Test-DockerSockMounted {
     # basta para detectar que hace falta recrear el contenedor para
     # habilitar la auto-actualizacion.
     param([string]$ContainerName = "geant4-worker")
-    $mounts = docker inspect $ContainerName --format '{{json .Mounts}}' 2>$null
-    if ($LASTEXITCODE -ne 0) { throw "No se pudieron inspeccionar los montajes." }
-    return [bool](($mounts | ConvertFrom-Json) | Where-Object {
+    $result = Invoke-NativeCommand { docker inspect $ContainerName --format '{{json .Mounts}}' 2>$null }
+    if ($result.ExitCode -ne 0) { throw "No se pudieron inspeccionar los montajes." }
+    return [bool](($result.Output | ConvertFrom-Json) | Where-Object {
         $_.Source -eq "/var/run/docker.sock" -and $_.Destination -eq "/var/run/docker.sock"
     })
 }
 
 function Save-LegacyWorkerData {
     # Detener antes de copiar para no capturar un outbox a medio escribir.
-    docker stop geant4-worker | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "No se pudo detener el worker; se conserva el contenedor." }
+    $stopResult = Invoke-NativeCommand { docker stop geant4-worker | Out-Null }
+    if ($stopResult.ExitCode -ne 0) { throw "No se pudo detener el worker; se conserva el contenedor." }
     $backup = Join-Path $LogDir ("legacy-data-" + [guid]::NewGuid().ToString())
     New-Item -ItemType Directory -Force -Path $backup | Out-Null
-    docker cp 'geant4-worker:/var/lib/geant4-worker/.' $backup
-    if ($LASTEXITCODE -ne 0) { throw "No se pudo respaldar el estado completo; NO se elimina el contenedor." }
+    $cpResult = Invoke-NativeCommand { docker cp 'geant4-worker:/var/lib/geant4-worker/.' $backup }
+    if ($cpResult.ExitCode -ne 0) { throw "No se pudo respaldar el estado completo; NO se elimina el contenedor." }
     Write-InstallLog "Estado completo (incluidos resultados pendientes) respaldado en $backup. Conservar para recuperacion."
     return $backup
 }
@@ -792,7 +813,7 @@ function Install-WorkerContainer {
     Invoke-DockerPullWithRetry
     $desiredHash = Get-DesiredWorkerConfigHash
 
-    $existing = docker ps -a --filter "name=^geant4-worker$" --format "{{.Names}}" 2>&1
+    $existing = (Invoke-NativeCommand { docker ps -a --filter "name=^geant4-worker$" --format "{{.Names}}" 2>&1 }).Output
     $legacyData = $null
     if ($existing -eq "geant4-worker") {
         # No matar un worker que puede llevar horas de simulacion solo
@@ -805,8 +826,8 @@ function Install-WorkerContainer {
         # comparaba el hash, asi que un worker de una version anterior a
         # la del volumen nombrado pasaba esta comprobacion como "ya
         # configurado" sin tener el volumen, y nunca se migraba.
-        $existingHash = docker inspect geant4-worker --format '{{index .Config.Labels "geant4-worker-config-hash"}}' 2>$null
-        $isRunning = docker ps --filter "name=^geant4-worker$" --format "{{.Names}}" 2>$null
+        $existingHash = (Invoke-NativeCommand { docker inspect geant4-worker --format '{{index .Config.Labels "geant4-worker-config-hash"}}' 2>$null }).Output
+        $isRunning = (Invoke-NativeCommand { docker ps --filter "name=^geant4-worker$" --format "{{.Names}}" 2>$null }).Output
         $hasVolume = Test-WorkerVolumeMounted
         $hasDockerSock = Test-DockerSockMounted
         if ($existingHash -eq $desiredHash -and $isRunning -eq "geant4-worker" -and $hasVolume -and $hasDockerSock) {
@@ -823,8 +844,8 @@ function Install-WorkerContainer {
         } else {
             Write-InstallLog "Existe un contenedor 'geant4-worker' detenido -- se elimina para recrearlo."
         }
-        docker rm -f geant4-worker *> $null
-        if ($LASTEXITCODE -ne 0) { throw "No se pudo eliminar el contenedor anterior." }
+        $rmResult = Invoke-NativeCommand { docker rm -f geant4-worker *> $null }
+        if ($rmResult.ExitCode -ne 0) { throw "No se pudo eliminar el contenedor anterior." }
     }
 
     $envArgs = @(
@@ -864,16 +885,15 @@ function Install-WorkerContainer {
     # esto, cada docker rm -f borraba /var/lib/geant4-worker DENTRO del
     # contenedor y la misma PC volvia a aparecer como worker nuevo en
     # el Coordinator, perdiendo su identidad.
-    docker volume create geant4-worker-data *> $null
-
-    if ($LASTEXITCODE -ne 0) { throw "No se pudo crear el volumen persistente." }
+    $volumeResult = Invoke-NativeCommand { docker volume create geant4-worker-data *> $null }
+    if ($volumeResult.ExitCode -ne 0) { throw "No se pudo crear el volumen persistente." }
     if ($legacyData) {
         $helper = "geant4-restore-" + [guid]::NewGuid().ToString('N')
-        docker create --name $helper -v geant4-worker-data:/data --entrypoint sh $WorkerImage -c true | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw "No se pudo crear el restaurador; respaldo: $legacyData" }
+        $createResult = Invoke-NativeCommand { docker create --name $helper -v geant4-worker-data:/data --entrypoint sh $WorkerImage -c true | Out-Null }
+        if ($createResult.ExitCode -ne 0) { throw "No se pudo crear el restaurador; respaldo: $legacyData" }
         try {
-            docker cp "$legacyData/." "${helper}:/data"
-            if ($LASTEXITCODE -ne 0) { throw "Restauracion fallida; respaldo conservado en $legacyData" }
+            $cpResult = Invoke-NativeCommand { docker cp "$legacyData/." "${helper}:/data" }
+            if ($cpResult.ExitCode -ne 0) { throw "Restauracion fallida; respaldo conservado en $legacyData" }
         } finally { docker rm $helper | Out-Null }
     }
 
@@ -893,17 +913,20 @@ function Install-WorkerContainer {
     $dockerSockArgs = @("-v", "/var/run/docker.sock:/var/run/docker.sock")
 
     Write-InstallLog "Creando el contenedor del worker..."
-    docker run -d --name geant4-worker --restart unless-stopped `
-        --label "geant4-worker-config-hash=$desiredHash" `
-        -v geant4-worker-data:/var/lib/geant4-worker `
-        @dockerSockArgs `
-        @envArgs @limitArgs $WorkerImage 2>&1 | ForEach-Object { Write-InstallLog "  $_" }
-    if ($LASTEXITCODE -ne 0) { throw "docker run fallo." }
+    $runResult = Invoke-NativeCommand {
+        docker run -d --name geant4-worker --restart unless-stopped `
+            --label "geant4-worker-config-hash=$desiredHash" `
+            -v geant4-worker-data:/var/lib/geant4-worker `
+            @dockerSockArgs `
+            @envArgs @limitArgs $WorkerImage 2>&1
+    }
+    $runResult.Output | ForEach-Object { Write-InstallLog "  $_" }
+    if ($runResult.ExitCode -ne 0) { throw "docker run fallo." }
 
     Start-Sleep -Seconds 5
-    $status = docker ps --filter "name=^geant4-worker$" --format "{{.Status}}"
+    $status = (Invoke-NativeCommand { docker ps --filter "name=^geant4-worker$" --format "{{.Status}}" }).Output
     if (-not $status) {
-        $logs = docker logs geant4-worker 2>&1
+        $logs = (Invoke-NativeCommand { docker logs geant4-worker 2>&1 }).Output
         throw "El contenedor no quedo corriendo. Logs:`n$logs"
     }
     Write-InstallLog "Contenedor corriendo: $status"
@@ -921,8 +944,9 @@ function Test-WorkerRegistered {
     $workerId = $null
     $idElapsed = 0
     while ($idElapsed -lt 30) {
-        $workerId = docker exec geant4-worker cat /var/lib/geant4-worker/worker_id 2>$null
-        if ($LASTEXITCODE -eq 0 -and $workerId) { break }
+        $idResult = Invoke-NativeCommand { docker exec geant4-worker cat /var/lib/geant4-worker/worker_id 2>$null }
+        $workerId = $idResult.Output
+        if ($idResult.ExitCode -eq 0 -and $workerId) { break }
         Start-Sleep -Seconds 3
         $idElapsed += 3
     }
@@ -1092,21 +1116,21 @@ function Uninstall-Worker {
         }
     }
     if ($hasDocker) {
-        $existing = docker ps -a --filter 'name=^geant4-worker$' --format '{{.Names}}'
-        if ($LASTEXITCODE -ne 0) { throw "No se pudo consultar el contenedor." }
-        if ($existing -eq 'geant4-worker') {
+        $existingResult = Invoke-NativeCommand { docker ps -a --filter 'name=^geant4-worker$' --format '{{.Names}}' }
+        if ($existingResult.ExitCode -ne 0) { throw "No se pudo consultar el contenedor." }
+        if ($existingResult.Output -eq 'geant4-worker') {
             if (-not $RemoveWorkerData -and -not (Test-WorkerVolumeMounted)) { $null = Save-LegacyWorkerData }
-            docker stop geant4-worker | Out-Null
-            if ($LASTEXITCODE -ne 0) { throw "No se pudo detener el worker." }
-            docker rm geant4-worker | Out-Null
-            if ($LASTEXITCODE -ne 0) { throw "No se pudo eliminar el worker." }
+            $stopResult = Invoke-NativeCommand { docker stop geant4-worker | Out-Null }
+            if ($stopResult.ExitCode -ne 0) { throw "No se pudo detener el worker." }
+            $rmResult = Invoke-NativeCommand { docker rm geant4-worker | Out-Null }
+            if ($rmResult.ExitCode -ne 0) { throw "No se pudo eliminar el worker." }
         }
         if ($RemoveWorkerData) {
-            $volumes = docker volume ls --format '{{.Name}}'
-            if ($LASTEXITCODE -ne 0) { throw "No se pudieron consultar volumenes." }
-            if ($volumes -contains 'geant4-worker-data') {
-                docker volume rm geant4-worker-data | Out-Null
-                if ($LASTEXITCODE -ne 0) { throw "No se pudo eliminar el volumen del worker." }
+            $volumesResult = Invoke-NativeCommand { docker volume ls --format '{{.Name}}' }
+            if ($volumesResult.ExitCode -ne 0) { throw "No se pudieron consultar volumenes." }
+            if ($volumesResult.Output -contains 'geant4-worker-data') {
+                $volRmResult = Invoke-NativeCommand { docker volume rm geant4-worker-data | Out-Null }
+                if ($volRmResult.ExitCode -ne 0) { throw "No se pudo eliminar el volumen del worker." }
             }
         }
     }
@@ -1153,15 +1177,15 @@ $isResume = [bool](Get-ScheduledTask -TaskName $ResumeTaskName -ErrorAction Sile
 $dockerCmdAvailable = [bool](Get-Command docker -ErrorAction SilentlyContinue)
 $isUpdate = $false
 if ($dockerCmdAvailable) {
-    docker inspect geant4-worker *> $null
-    $isUpdate = ($LASTEXITCODE -eq 0)
+    $isUpdate = ((Invoke-NativeCommand { docker inspect geant4-worker *> $null }).ExitCode -eq 0)
 }
 
 if ($isUpdate) {
     # Una imagen auto-actualizada no debe retroceder al pin de un instalador viejo.
     if (-not $PSBoundParameters.ContainsKey('WorkerImage')) {
-        $WorkerImage = docker inspect geant4-worker --format '{{.Config.Image}}'
-        if ($LASTEXITCODE -ne 0 -or -not $WorkerImage) { throw "No se pudo conservar la imagen actual." }
+        $imageResult = Invoke-NativeCommand { docker inspect geant4-worker --format '{{.Config.Image}}' }
+        $WorkerImage = $imageResult.Output
+        if ($imageResult.ExitCode -ne 0 -or -not $WorkerImage) { throw "No se pudo conservar la imagen actual." }
     }
     foreach ($entry in @{CoordinatorUrl='COORDINATOR_URL'; WorkerToken='WORKER_TOKEN'; WorkerThreads='WORKER_THREADS'; WorkerAutoUpdate='WORKER_AUTO_UPDATE'}.GetEnumerator()) {
         if (-not $PSBoundParameters.ContainsKey($entry.Key)) {
@@ -1169,9 +1193,9 @@ if ($isUpdate) {
             if ($null -ne $value) { Set-Variable -Name $entry.Key -Value $value }
         }
     }
-    $hostConfig = docker inspect geant4-worker --format '{{json .HostConfig}}'
-    if ($LASTEXITCODE -ne 0) { throw "No se pudieron leer los limites actuales." }
-    $hostConfig = $hostConfig | ConvertFrom-Json
+    $hostConfigResult = Invoke-NativeCommand { docker inspect geant4-worker --format '{{json .HostConfig}}' }
+    if ($hostConfigResult.ExitCode -ne 0) { throw "No se pudieron leer los limites actuales." }
+    $hostConfig = $hostConfigResult.Output | ConvertFrom-Json
     if (-not $PSBoundParameters.ContainsKey('Cpus') -and $hostConfig.NanoCpus) {
         $Cpus = ([double]$hostConfig.NanoCpus / 1e9).ToString([Globalization.CultureInfo]::InvariantCulture)
     }
