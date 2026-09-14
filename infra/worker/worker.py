@@ -205,6 +205,39 @@ DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 UPDATE_PROTOCOL_LABEL = "org.iac.worker-update-protocol"
 _UPDATE_RETRY_AFTER = 0.0
 
+# Un contexto por invocacion, no un Event global reutilizado. Se captura ANTES
+# de mandar cada heartbeat y se valida al recibirlo: una respuesta tardia no
+# puede cancelar otro job ni un nuevo intento del mismo job_id.
+_cancel_lock = threading.Lock()
+_active_cancel = None
+_CANCEL_GRACE_S = 2.0
+
+
+def deliver_cancellation(context, job_id):
+    with _cancel_lock:
+        if context is not None and context is _active_cancel and type(job_id) is int and job_id == context[0]:
+            context[1].set()
+
+
+def terminate_process_group(process, grace_s):
+    """Terminar tambien descendientes que conservan stdout abierto o ignoran TERM."""
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return False
+    deadline = time.monotonic() + grace_s
+    while time.monotonic() < deadline:
+        try:
+            os.killpg(process.pid, 0)
+        except ProcessLookupError:
+            return True
+        time.sleep(min(.05, max(0, deadline - time.monotonic())))
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    return True
+
 
 def image_repository(reference: str) -> str:
     # Un puerto de registro (registry:5000/repo:tag) no es un tag.
@@ -477,15 +510,27 @@ def register(worker_id: str) -> None:
     print(f"[worker] registrado como {worker_id} ({platform.node()}, {cpus} cpu, {ram_gb()} GB RAM, {score_str})")
 
 
-def heartbeat(worker_id: str) -> None:
+def heartbeat(worker_id: str) -> int | None:
+    """Devuelve el job_id que el coordinator pide cancelar (ver
+    request_job_cancel() en db.py), o None si no hay ninguno / el
+    heartbeat fallo. Un fallo de red aqui NO es motivo para cancelar nada
+    -- solo se actua sobre una respuesta explicita del coordinator, nunca
+    sobre silencio."""
+    with _cancel_lock:
+        active_job_id = _active_cancel[0] if _active_cancel is not None else None
     try:
-        SESSION.post(
+        resp = SESSION.post(
             f"{COORDINATOR_URL}/api/v1/workers/{worker_id}/heartbeat",
-            json={"ram_free_gb": ram_free_gb(), "cpu_load_pct": cpu_load_pct()},
+            json={"ram_free_gb": ram_free_gb(), "cpu_load_pct": cpu_load_pct(), "active_job_id": active_job_id},
             timeout=15,
         )
-    except requests.RequestException as exc:
+        resp.raise_for_status()
+        payload = resp.json()
+        cancel_id = payload.get("cancel_job_id") if isinstance(payload, dict) else None
+        return cancel_id if type(cancel_id) is int and cancel_id > 0 else None
+    except (requests.RequestException, ValueError) as exc:
         print(f"[worker] heartbeat fallo (no fatal): {exc}")
+        return None
 
 
 def poll_next_job(worker_id: str) -> dict | None:
@@ -606,20 +651,37 @@ def _post_result(job_id: int, data: dict, files: dict) -> dict:
 def _save_pending_result(job_id: int, data: dict, results_csv_text: str, manifest_csv_text: str) -> Path:
     PENDING_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     job_dir = PENDING_RESULTS_DIR / str(job_id)
-    job_dir.mkdir(exist_ok=True)
+    if job_dir.exists():
+        archive_pending_result(job_dir, "Entrada anterior preservada antes de guardar otra entrega del mismo job")
+    job_dir.mkdir()
     # created_at es un timestamp ABSOLUTO (epoch, time.time()) -- no un
     # contador de intentos ni un backoff relativo. Lo que decide si vale
     # la pena seguir insistiendo es cuanto tiempo de reloj real paso
-    # desde que el job dejo de tener heartbeat, comparado contra el
+    # desde que se guardo el resultado, comparado contra el
     # mismo umbral que usa el coordinator (ver get_stale_job_timeout_s())
     # -- eso vale igual si el worker sigue reintentando en el mismo
     # proceso o si se reinicio diez veces entre medio, algo que un
     # "numero de intentos" no puede expresar.
     data = dict(data, created_at=data.get("created_at", time.time()))
-    (job_dir / "data.json").write_text(json.dumps(data))
-    (job_dir / "results.csv").write_text(results_csv_text)
-    (job_dir / "manifest.csv").write_text(manifest_csv_text)
+    for name, text in (("results.csv", results_csv_text), ("manifest.csv", manifest_csv_text)):
+        temporary = job_dir / (name + ".tmp")
+        with temporary.open("w") as stream:
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.replace(job_dir / name)
+    write_update_state(job_dir / "data.json", data)
     return job_dir
+
+
+def archive_pending_result(job_dir: Path, reason: str) -> None:
+    """Conservar evidencia aunque el intento venza o el servidor lo rechace."""
+    archive = PENDING_RESULTS_DIR.parent / "unconfirmed_results"
+    archive.mkdir(parents=True, exist_ok=True)
+    destination = archive / f"{job_dir.name}-{uuid.uuid4().hex}"
+    job_dir.rename(destination)
+    (destination / "reason.txt").write_text(reason)
+    print(f"[worker] resultado conservado para revision: {destination} ({reason})")
 
 
 def report_result(worker_id: str, job_id: int, exit_code: int, duration_s: float,
@@ -641,31 +703,22 @@ def report_result(worker_id: str, job_id: int, exit_code: int, duration_s: float
             shutil.rmtree(job_dir, ignore_errors=True)
             return
         except requests.HTTPError as exc:
-            # Rechazo REAL del coordinator (ej. 409: otro worker ya
-            # reclamo este job mientras el nuestro no tenia red y lo
-            # completo primero) -- no es un problema de red, reintentar
-            # aqui mismo no lo arreglaria. Mismo tratamiento que ya tiene
-            # retry_pending_results() para este caso exacto: descartar con
-            # un log que diga la causa real, en vez de dejar que la
-            # excepcion suba sin capturar y que run_job() la trate como si
-            # la SIMULACION hubiera fallado (bug real: antes de este fix,
-            # esto producia un log confuso -- "no se pudo reportar fallo
-            # al coordinator" -- aunque la simulacion si habia terminado
-            # bien y el unico problema era que el job ya no era nuestro).
-            print(f"[worker] job {job_id} fue rechazado por el coordinator al subir ({exc}) -- probablemente "
-                  "otro worker ya lo completo mientras este no tenia conexion. Se descarta, no se reintenta.")
-            shutil.rmtree(job_dir, ignore_errors=True)
+            status = exc.response.status_code if exc.response is not None else None
+            if status in (400, 404, 409, 422):
+                archive_pending_result(job_dir, f"HTTP {status}: {exc}")
+            else:
+                print(f"[worker] entrega pendiente tras HTTP {status}; datos conservados: {exc}")
             return
-        except (requests.ConnectionError, requests.Timeout) as exc:
+        except requests.RequestException as exc:
             remaining = deadline - time.time()
             if remaining <= 0:
                 print(f"[worker] job {job_id}: paso el umbral de {get_stale_job_timeout_s():.0f}s sin poder "
-                      f"subir -- el coordinator ya reencolo este job a otro worker. El archivo queda en "
+                      f"subir; el estado remoto no se ha confirmado. El archivo queda en "
                       f"{job_dir} para inspeccion manual, retry_pending_results() ya no insistira con el.")
                 return
             sleep_s = min(_REPORT_RESULT_BACKOFF_S, remaining)
             print(f"[worker] job {job_id}: fallo de red al subir el resultado, reintentando en {sleep_s:.0f}s "
-                  f"(quedan ~{remaining/60:.0f} min antes de que el coordinator lo de por perdido): {exc}")
+                  f"(quedan ~{remaining/60:.0f} min de reintento local): {exc}")
             time.sleep(sleep_s)
 
 
@@ -698,9 +751,7 @@ def retry_pending_results() -> None:
 
         deadline = created_at + get_stale_job_timeout_s()
         if time.time() > deadline:
-            print(f"[worker] job {job_id} pendiente lleva mas de {get_stale_job_timeout_s():.0f}s sin poder "
-                  "subirse -- el coordinator ya lo reencolo a otro worker, se descarta sin reintentar mas.")
-            shutil.rmtree(job_dir, ignore_errors=True)
+            archive_pending_result(job_dir, "Plazo local vencido; estado del intento NO confirmado por el servidor")
             continue
 
         files = {
@@ -712,29 +763,43 @@ def retry_pending_results() -> None:
             print(f"[worker] job {job_id} (pendiente de una caida de red anterior) reportado: {result}")
             shutil.rmtree(job_dir, ignore_errors=True)
         except requests.HTTPError as exc:
-            # El coordinator lo rechaza de verdad (ej. otro worker ya lo
-            # completo mientras este no tenia red, o el job ya no existe
-            # en ese estado) -- no es un problema de red, reintentar no
-            # lo arreglaria. Se descarta con un aviso explicito en vez de
-            # reintentar para siempre un resultado que nunca sera aceptado.
-            print(f"[worker] job {job_id} pendiente fue rechazado por el coordinator ({exc}) -- se descarta, "
-                  "probablemente ya lo completo otro worker mientras este no tenia red.")
-            shutil.rmtree(job_dir, ignore_errors=True)
+            status = exc.response.status_code if exc.response is not None else None
+            if status in (400, 404, 409, 422):
+                archive_pending_result(job_dir, f"HTTP {status}: {exc}")
+            else:
+                print(f"[worker] HTTP {status}, conservando resultado pendiente para reintentar: {exc}")
         except requests.RequestException as exc:
             print(f"[worker] job {job_id} sigue sin poder subirse ({exc}), se reintentara en la proxima vuelta.")
 
 
+def retry_pending_failures() -> bool:
+    """No pedir otro job hasta confirmar el fallo, incluso tras reinicio/relevo."""
+    directory = WORKER_ID_FILE.parent / "pending_failures"
+    complete = True
+    for path in sorted(directory.glob("*.json")):
+        data = json.loads(path.read_text())
+        job_id = data["job_id"]
+        try:
+            resp = SESSION.post(f"{COORDINATOR_URL}/api/v1/jobs/{job_id}/fail",
+                                json=data["payload"], timeout=15)
+            if resp.status_code not in (404, 409):
+                resp.raise_for_status()
+            # 409: ya no es nuestro intento activo, incluido ACK perdido.
+            path.unlink()
+        except requests.RequestException as exc:
+            complete = False
+            print(f"[worker] fallo de job {job_id} pendiente de confirmar: {exc}")
+    return complete
+
+
 def report_failure(worker_id: str, job_id: int, error: str, duration_s: float) -> None:
-    try:
-        resp = SESSION.post(
-            f"{COORDINATOR_URL}/api/v1/jobs/{job_id}/fail",
-            json={"worker_id": worker_id, "error": error[-2000:], "duration_s": duration_s},
-            timeout=15,
-        )
-        resp.raise_for_status()
-        print(f"[worker] job {job_id} marcado como fallido: {resp.json()}")
-    except requests.RequestException as exc:
-        print(f"[worker] no se pudo reportar el fallo del job {job_id} al coordinator: {exc}")
+    directory = WORKER_ID_FILE.parent / "pending_failures"
+    directory.mkdir(parents=True, exist_ok=True)
+    write_update_state(directory / f"{job_id}.json", {
+        "job_id": job_id,
+        "payload": {"worker_id": worker_id, "error": error[-2000:], "duration_s": duration_s},
+    })
+    retry_pending_failures()
 
 
 # Cuanto esperar a que el contenedor de reemplazo este 'running' segun
@@ -858,6 +923,9 @@ def auto_update(worker_id: str) -> bool:
         print("[worker] reemplazo listo; saliendo limpiamente para liberar identidad y outbox")
         return True
     except (docker_client.DockerAPIError, OSError, ValueError, KeyError, TypeError, RuntimeError) as exc:
+        # replace(commit) puede haber tenido exito aunque falle el fsync del directorio.
+        # Una vez visible el commit, nunca borrar al sucesor autorizado.
+        committed = committed or update_path(token, "commit").exists()
         if committed:
             print(f"[worker] relevo autorizado; limpieza del padre pendiente: {exc}")
             return True
@@ -878,6 +946,19 @@ def auto_update(worker_id: str) -> bool:
 
 
 def run_job(worker_id: str, job: dict) -> None:
+    global _active_cancel
+    context = (job["job_id"], threading.Event())
+    with _cancel_lock:
+        _active_cancel = context
+    try:
+        _run_job(worker_id, job, context[1])
+    finally:
+        with _cancel_lock:
+            if _active_cancel is context:
+                _active_cancel = None
+
+
+def _run_job(worker_id: str, job: dict, cancel_event) -> None:
     job_id = job["job_id"]
     label = f"{job['species']} bin{job['bin_index']} offset_x_m={job['offset_x_m']}"
     print(f"[worker] job {job_id} ({label}) -- iniciando")
@@ -907,17 +988,37 @@ def run_job(worker_id: str, job: dict) -> None:
             # as well as its launcher. Docker kill removes the whole container.
             process = subprocess.Popen(cmd, cwd=work, stdout=subprocess.PIPE,
                                        stderr=subprocess.STDOUT, text=True, start_new_session=True)
+            cancelled = False
+            # Hilo watcher separado, mismo patron que heartbeat_loop(): solo
+            # asi se puede reaccionar al Event de ESTA ejecucion MIENTRAS
+            # process.communicate() bloquea el hilo principal. Se avisa a si
+            # mismo con stop_watching cuando el job termina solo, para no
+            # quedar corriendo de fondo despues (heartbeat_loop() sigue
+            # corriendo entre jobs, pero este watcher es solo por job).
+            stop_watching = threading.Event()
+
+            def _watch_for_cancel():
+                nonlocal cancelled
+                while not stop_watching.wait(1.0):
+                    if cancel_event.is_set():
+                        cancelled = True
+                        print(f"[worker] job {job_id} cancelado por el operador -- terminando el subprocess")
+                        cancelled = terminate_process_group(process, _CANCEL_GRACE_S)
+                        return
+
+            watcher = threading.Thread(target=_watch_for_cancel, daemon=True)
+            watcher.start()
             try:
                 output, _ = process.communicate()
             finally:
+                stop_watching.set()
+                watcher.join()  # watcher termina tras TERM + gracia acotada + KILL
                 if process.poll() is None:
-                    os.killpg(process.pid, signal.SIGTERM)
-                    try:
-                        process.wait(timeout=10)
-                    except subprocess.TimeoutExpired:
-                        os.killpg(process.pid, signal.SIGKILL)
-                        process.wait()
+                    terminate_process_group(process, _CANCEL_GRACE_S)
+                    process.wait()
             duration = time.monotonic()-start
+            if cancelled:
+                raise RuntimeError(f"cancelado por el operador (exit_code={process.returncode})")
             if process.returncode:
                 logs = list((work / "logs_organ").glob("*.log"))
                 detail = logs[-1].read_text(errors="replace")[-4000:] if logs else ""
@@ -932,7 +1033,10 @@ def run_job(worker_id: str, job: dict) -> None:
 
 def heartbeat_loop(worker_id, stop):
     while not stop.wait(HEARTBEAT_INTERVAL_S):
-        heartbeat(worker_id)
+        with _cancel_lock:
+            context = _active_cancel
+        cancel_id = heartbeat(worker_id)
+        deliver_cancellation(context, cancel_id)
 
 
 def stop_worker(signum, frame):
@@ -972,6 +1076,10 @@ def run_worker_loop() -> None:
 
         print(f"[worker] escuchando jobs en {COORDINATOR_URL} (poll cada {POLL_INTERVAL_S}s)")
         while True:
+            retry_pending_results()
+            if not retry_pending_failures():
+                time.sleep(POLL_INTERVAL_S)
+                continue
             # Siempre ANTES de pedir el siguiente job, nunca a mitad de una
             # simulacion -- ver auto_update(). Si devuelve True, el
             # reemplazo ya esta corriendo y confirmado sano: este proceso

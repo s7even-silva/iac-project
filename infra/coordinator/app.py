@@ -100,10 +100,14 @@ def register_worker(body: WorkerRegister):
 
 @app.post("/api/v1/workers/{worker_id}/heartbeat")
 def heartbeat(worker_id: str, body: HeartbeatIn = HeartbeatIn()):
-    ok = db.touch_heartbeat(worker_id, body.ram_free_gb, body.cpu_load_pct, body.image_digest)
-    if not ok:
+    result = db.touch_heartbeat(worker_id, body.ram_free_gb, body.cpu_load_pct, body.image_digest, body.active_job_id)
+    if result is None:
         raise HTTPException(404, f"worker {worker_id} no registrado")
-    return {"ok": True}
+    # cancel_job_id viaja aqui (no en un endpoint de polling aparte) porque
+    # el worker ya manda heartbeat cada 30s desde su propio hilo, en
+    # paralelo al subprocess de Geant4 -- ver heartbeat_loop()/run_job()
+    # en worker.py. None si no hay ningun job de este worker cancelado.
+    return {"ok": True, "cancel_job_id": result["cancel_job_id"]}
 
 
 @app.post("/api/v1/jobs/next", response_model=JobOut | None)
@@ -123,6 +127,22 @@ def start_job(job_id: int, body: WorkerRef):
     if not ok:
         raise HTTPException(409, f"job {job_id} no esta en estado 'claimed'")
     return {"job_id": job_id, "status": "running"}
+
+
+@app.post("/api/v1/jobs/{job_id}/cancel")
+def cancel_job(job_id: int):
+    # Accion administrativa (ver cancel_job.py) -- ningun worker llama esto,
+    # y a proposito NO se expone en dashboard.html (ver AGENTS.md). No mata
+    # el subprocess aqui mismo -- solo marca la senal, que el worker
+    # asignado recoge en su propio heartbeat (cada 30s, ya corriendo en
+    # paralelo al subprocess via heartbeat_loop()) y actua desde ahi.
+    try:
+        claimed_by = db.request_job_cancel(job_id)
+    except KeyError:
+        raise HTTPException(404, f"job {job_id} no existe")
+    if claimed_by is None:
+        raise HTTPException(409, f"job {job_id} no esta 'claimed'/'running' con un worker asignado")
+    return {"job_id": job_id, "claimed_by": claimed_by, "status": "cancel_requested"}
 
 
 @app.post("/api/v1/jobs/{job_id}/result")

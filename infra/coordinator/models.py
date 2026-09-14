@@ -19,6 +19,7 @@ class WorkerRef(BaseModel):
 
 
 class HeartbeatIn(BaseModel):
+    active_job_id: int | None = None
     ram_free_gb: float | None = None
     cpu_load_pct: float | None = None
     image_digest: str | None = None

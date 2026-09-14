@@ -534,6 +534,71 @@ def test_heartbeat_without_image_digest_keeps_previous_value():
     assert db.list_workers()[0]['image_digest'] == 'sha256:' + 'a' * 64
 
 
+def test_request_job_cancel_marks_running_job():
+    db.upsert_worker('w', 'host', 8, 16.0, '')
+    job_id = db.insert_job('GCR_He', 7, 3.0, 0, 10000)
+    db.claim_next_job('w')
+    db.mark_running(job_id, 'w')
+
+    claimed_by = db.request_job_cancel(job_id)
+    assert claimed_by == 'w'
+    job = db.get_job(job_id)
+    assert job['cancel_requested'] == 1
+    # el status del job NO cambia con solo pedir la cancelacion -- sigue
+    # 'running' hasta que el worker reporte el resultado real (ver
+    # run_job() en worker.py, que lo reporta como fallo).
+    assert job['status'] == 'running'
+
+
+def test_request_job_cancel_on_pending_job_returns_none():
+    # Nada que cancelar si ningun worker lo tiene asignado todavia.
+    job_id = db.insert_job('GCR_He', 7, 3.0, 0, 10000)
+    assert db.request_job_cancel(job_id) is None
+    assert db.get_job(job_id)['cancel_requested'] == 0
+
+
+def test_request_job_cancel_unknown_job_raises():
+    with pytest.raises(KeyError):
+        db.request_job_cancel(999999)
+
+
+def test_heartbeat_reports_cancel_job_id_for_claimed_job():
+    db.upsert_worker('w', 'host', 8, 16.0, '')
+    job_id = db.insert_job('GCR_He', 7, 3.0, 0, 10000)
+    db.claim_next_job('w')
+    db.request_job_cancel(job_id)
+
+    result = db.touch_heartbeat('w')
+    assert result == {'cancel_job_id': job_id}
+
+
+def test_heartbeat_reports_no_cancel_when_not_requested():
+    db.upsert_worker('w', 'host', 8, 16.0, '')
+    db.insert_job('GCR_He', 7, 3.0, 0, 10000)
+    db.claim_next_job('w')
+
+    result = db.touch_heartbeat('w')
+    assert result == {'cancel_job_id': None}
+
+
+def test_cancel_flag_clears_on_result_and_next_attempt_is_not_cancelled():
+    # Un job cancelado se reporta como fallo (run_job() en worker.py);
+    # record_result()/record_failure() deben limpiar cancel_requested para
+    # que el SIGUIENTE intento (mismo job_id, otro worker) no nazca ya
+    # marcado para cancelar sin que nadie lo haya pedido para ese intento.
+    db.upsert_worker('w', 'host', 8, 16.0, '')
+    job_id = db.insert_job('GCR_He', 7, 3.0, 0, 10000)
+    db.claim_next_job('w')
+    db.mark_running(job_id, 'w')
+    db.request_job_cancel(job_id)
+
+    new_status = db.record_failure(job_id, 'w', 'cancelado por el operador', 12.3)
+    assert new_status == 'pending'  # attempt < max_attempts
+    job = db.get_job(job_id)
+    assert job['cancel_requested'] == 0
+    assert job['status'] == 'pending'
+
+
 class _FakeRequest:
     def __init__(self, path, headers=None):
         self.url = type('U', (), {'path': path})()
@@ -575,3 +640,27 @@ def test_token_middleware_health_endpoint_always_public(monkeypatch):
     monkeypatch.setattr(app, 'WORKER_TOKEN', 'secret123')
     resp = asyncio.run(app.require_worker_token(_FakeRequest('/api/v1/health'), _ok))
     assert resp == 'ok'
+
+
+def test_timeout_does_not_transfer_cancel_to_next_attempt():
+    db.upsert_worker('w', 'host', 4, 8, '')
+    job_id = db.insert_job('SEP_p', 0, 0, 0, 100)
+    db.claim_next_job('w')
+    db.request_job_cancel(job_id)
+    with db.get_conn() as conn:
+        conn.execute("UPDATE workers SET last_heartbeat='2000-01-01T00:00:00+00:00' WHERE worker_id='w'")
+    assert job_id in db.requeue_stale_jobs()
+    assert db.get_job(job_id)['cancel_requested'] == 0
+    db.claim_next_job('w')
+    assert db.touch_heartbeat('w')['cancel_job_id'] is None
+
+
+def test_cancel_selects_reported_active_job_when_worker_has_multiple_claims():
+    db.upsert_worker('w', 'host', 4, 8, '')
+    first = db.insert_job('SEP_p', 0, 0, 0, 100)
+    second = db.insert_job('SEP_p', 1, 0, 0, 100)
+    assert db.force_claim_job(first, 'w')
+    assert db.force_claim_job(second, 'w')
+    db.request_job_cancel(first)
+    db.request_job_cancel(second)
+    assert db.touch_heartbeat('w', active_job_id=second)['cancel_job_id'] == second

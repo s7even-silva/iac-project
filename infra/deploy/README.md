@@ -236,3 +236,46 @@ a cadena vacía. Se confirmó la limpieza de contenedores, imágenes etiquetadas
 volúmenes de ensayo, y que el servicio previo seguía activo. No se cambió la DB
 real ni se publicó imagen externa. Quedan como condiciones del despliegue el
 canario con digest del registro real y la prueba en Windows/Docker Desktop.
+
+
+Revisión 2026-09-14: un commit de relevo ya visible se considera autorizado
+incluso si falla el fsync posterior; no se borra al sucesor en ese caso. La
+cancelación de jobs usa el heartbeat y su contexto de ejecución, no el protocolo
+Docker. `pending_failures/` también vive en el volumen: el worker confirma los
+fallos antes de reclamar más trabajo o iniciar un relevo. El mecanismo existente
+de pausa del contenedor y el nombre canónico siguen iguales.
+
+### Revisión de generaciones sucesivas y outbox (2026-09-14)
+
+El ensayo Docker se amplió a A→B→A→B y a terminaciones abruptas del proceso padre
+antes/después del commit (sin reiniciar el daemon ni la máquina compartida).
+Además introduce un resultado pendiente: la API ficticia devuelve 503 al padre
+y acepta al sucesor; se comprueba que se entrega una sola vez, conservando la
+identidad y el nombre canónico durante las siguientes actualizaciones.
+
+Se corrigió una pérdida real de outbox: HTTP 401/429/5xx ya no elimina resultados.
+Errores 400/404/409/422 y plazos locales vencidos mueven la entrega a
+`unconfirmed_results/` para revisión manual, conservando CSV, manifiesto y motivo;
+no demuestran por sí solos que el trabajo haya sido entregado a otro worker.
+Las entregas normales se eliminan solo tras respuesta exitosa. CSV/manifiesto se
+escriben mediante archivos temporales con fsync y metadata se publica al final.
+Una entrada anterior del mismo job se archiva antes de guardar otra. Los pendientes
+se reintentan también entre jobs, no únicamente cuando la cola queda ociosa.
+
+No borrar `unconfirmed_results/` automáticamente al migrar o actualizar. Al igual
+que identidad, journals y `pending_failures/`, forma parte del volumen del worker.
+Esto conserva evidencia; una escritura interrumpida antes de completar todos los
+archivos todavía puede exigir recuperación manual, no se inventa un resultado.
+
+Esta revisión no incorpora un dashboard de fases de actualización ni selección
+por grupos/canarios. Siguen siendo mejoras operativas pendientes. Tampoco sustituye
+la prueba de reinicio completo de host/daemon en una máquina dedicada, Windows /
+Docker Desktop o un canario descargado del registro con el digest de la release.
+
+Resultado: suite de 113 pruebas aprobada. Los cuatro escenarios Docker ampliados
+se repitieron con el resultado pendiente/503 y aprobaron: actualización sucesiva,
+rechazo de candidato, caída antes del commit y caída después. En los relevos
+exitosos se comprobó entrega única al sucesor, incluyendo rollback y actualización
+posterior. La prueba es de fallo de proceso y reinicio por Docker, no de corte
+eléctrico ni reinicio de daemon/host. Pruebas del worker repetidas tras el último
+ajuste: 46 aprobadas. No hubo publicación externa ni cambios en producción.

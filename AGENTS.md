@@ -3554,3 +3554,150 @@ encontrados, no un cambio de esquema que lo prevenga estructuralmente
 (ej. un `NOT NULL DEFAULT` con un valor mínimo, o una validación en
 `insert_job()` que rechace `min_cpu_score=0` para bins conocidos como
 pesados).
+
+### Remote-kill de un job en curso (2026-09-14)
+
+**Pedido directo del usuario tras el incidente de arriba:** poder
+detener un job a mitad de una corrida y reasignarlo, sin depender de
+esperar el heartbeat vencido ni tocar el worker a mano. Pidió
+explícitamente reusar el mecanismo de auto-actualización Docker "si es
+que es necesario", y que el mecanismo NO se muestre en el dashboard.
+
+**Investigado antes de diseñar: el mecanismo de auto-actualización no
+sirve para esto, y no hay nada real que "reusar" de ahí más allá del
+patrón de hilo separado.** `auto_update()` solo se revisa una vez por
+vuelta del loop principal, ANTES de pedir el siguiente job (`if
+os.environ.get("WORKER_AUTO_UPDATE"...) and auto_update(worker_id):` en
+`run_worker_loop()`) — nunca mientras un job corre. `run_job()` bloquea
+el hilo entero en `process.communicate()` hasta que el subprocess de
+Geant4 termina solo; nada revisa nada más durante ese tiempo. El propio
+protocolo de standby (candidato, `flock`, rename atómico) resuelve un
+problema distinto por completo — reemplazar el CONTENEDOR/imagen, no
+interrumpir un SUBPROCESS que ya está corriendo dentro de uno — así que
+no hay lógica de esa parte que se pudiera reusar directamente. Lo único
+genuinamente reusable es el patrón "hilo daemon separado corriendo en
+paralelo al trabajo bloqueante" que ya usa `heartbeat_loop()` — y eso es
+exactamente lo que se necesitaba de todos modos.
+
+**Diseño: la señal viaja en la respuesta del heartbeat ya existente, no
+por un endpoint de polling nuevo.** El worker ya manda heartbeat cada
+30s desde su propio hilo (`heartbeat_loop`, ya corriendo en paralelo a
+cualquier job activo desde antes de este cambio) — agregar la
+verificación ahí es gratis en tráfico de red, y el hilo ya existe
+exactamente donde hace falta (corriendo en paralelo al
+`subprocess.communicate()` bloqueante de `run_job()`).
+
+- **`jobs.cancel_requested`** (columna nueva, migración idempotente) — un
+  flag sobre el job, no un `status` nuevo: el job sigue `'running'` hasta
+  que el worker reporte el resultado real (cancelado = fallo), igual que
+  cualquier otro desenlace — evita que el dashboard, `pick_job_for_worker`,
+  `requeue_stale_jobs`, etc. tengan que aprender un valor de `status`
+  más.
+- **`request_job_cancel(job_id)`** (`db.py`) — acción administrativa,
+  exige `status IN ('claimed','running')` con `claimed_by` no vacío
+  (nada que cancelar en un job `pending`/`done`/`failed`); devuelve el
+  `worker_id` que recibirá la señal, o `None` si no aplica.
+- **`cancelled_job_for_worker(conn, worker_id)`** — job_id del job activo
+  de ese worker si tiene `cancel_requested=1`, `None` si no. Recibe una
+  conexión existente (se llama DENTRO de la transacción de
+  `touch_heartbeat()`, no abre la suya propia) — un worker nunca tiene
+  más de un job `claimed`/`running` a la vez, así que no hace falta que
+  mande su `job_id` en el heartbeat para desambiguar cuál.
+- **`touch_heartbeat()` devuelve `{"cancel_job_id": int | None}`** en vez
+  de un `bool` — cambio de contrato deliberado (verificado que ningún
+  test existente asumía el `bool` viejo, los 78 tests previos siguen
+  pasando sin tocar). `POST /api/v1/workers/{id}/heartbeat` (`app.py`)
+  expone ese campo en la respuesta JSON.
+- **`POST /api/v1/jobs/{job_id}/cancel`** (`app.py`, nuevo) — `404` si el
+  job no existe, `409` si no está `claimed`/`running` con worker
+  asignado, `200` con `{job_id, claimed_by, status: "cancel_requested"}`
+  si acepta. Fuera de `_PUBLIC_PATHS` — ya protegido por
+  `X-Worker-Token` si `WORKER_TOKEN` llega a activarse, mismo criterio
+  que cualquier otro endpoint administrativo.
+- **`_cancel_event`** (`worker.py`, nuevo, `threading.Event` a nivel de
+  módulo) — un worker corre un solo job a la vez (loop secuencial, ya
+  confirmado), así que un solo `Event` de proceso alcanza, sin indexar
+  por `job_id`. `heartbeat_loop()` lo activa si `heartbeat()` devuelve un
+  `cancel_job_id` no nulo (no ambiguo: el coordinator solo lo manda si
+  hay un job de ESE worker marcado, nunca el de otro). `run_job()` lo
+  limpia al EMPEZAR cada job nuevo (no al terminar el anterior — evita
+  una condición de carrera donde el hilo watcher todavía no terminó de
+  actuar cuando el hilo principal llega al final de `run_job()`).
+- **Hilo watcher dedicado dentro de `run_job()`** (mismo patrón que
+  `heartbeat_loop`, con su propio `stop_watching` para no seguir vivo
+  entre jobs) — sondea `_cancel_event` cada 1s mientras
+  `process.communicate()` bloquea el hilo principal; al verlo activo,
+  manda `SIGTERM` al process group directamente. El `finally` existente
+  (que ya hacía `SIGTERM`→espera→`SIGKILL` para el caso de una excepción
+  normal) queda intacto como red de seguridad si el proceso no responde
+  al primer `SIGTERM` del watcher — sin duplicar lógica de matado, solo
+  se agregó el disparador nuevo.
+- **`cancel_job.py`** (`infra/coordinator/`, nuevo) — a diferencia de
+  `seed_jobs.py`/`set_worker_image.py` (escriben directo a la SQLite del
+  servicio, pensados para correr en la VM), este pasa por la API real
+  (`requests.post` contra `--coordinator-url`, default el de
+  producción): la señal tiene que llegar al PROCESO del coordinator ya
+  corriendo, no solo a su archivo de base de datos, para que el próximo
+  heartbeat la recoja a tiempo — un `UPDATE` directo sobre una copia de
+  la DB, o incluso sobre la DB real sin pasar por el proceso, funcionaría
+  igual (SQLite se lee fresco en cada request), pero ir por la API es
+  más simple y no exige acceso SSH a la VM para usarlo.
+
+**A propósito NO en `dashboard.html`** (pedido explícito del usuario) —
+el dashboard es de solo lectura, sin autenticación; un botón de cancelar
+ahí sería una acción destructiva expuesta a cualquiera con el link.
+
+**Verificado en vivo, no solo con tests unitarios:** servidor `uvicorn`
+real — `POST /cancel` en un job `running` devuelve `200` y marca el
+flag; el heartbeat del worker asignado inmediatamente después devuelve
+`cancel_job_id` correcto; `cancel` sobre un job desconocido da `404`;
+sobre uno `pending` sin worker asignado da `409`; `cancel_job.py` mismo
+probado end-to-end contra ese servidor con los mismos tres casos.
+`run_job()` probado con un subprocess real de larga duración (`sleep
+30`, no Geant4) — el test mide tiempo de reloj real y confirma que
+termina en <10s en vez de esperar los 30s completos, prueba de que el
+`SIGTERM` del watcher efectivamente mata el proceso, no solo que la
+lógica "se ve bien" en el código. 6 tests nuevos en `test_coordinator.py`
+(53 en total) cubren `request_job_cancel`/`cancelled_job_for_worker`/el
+nuevo contrato de `touch_heartbeat` y que `cancel_requested` se limpia
+al reportar el resultado (para que el siguiente intento del mismo
+`job_id` no nazca ya marcado). 1 test nuevo en `test_worker.py` (32 en
+total) cubre el flujo completo
+worker-side.
+
+**Limitación aceptada, no resuelta aquí:** la tardanza real hasta que el
+subprocess muere es de hasta `HEARTBEAT_INTERVAL_S` (30s), no
+instantánea — aceptable para el caso de uso real (reasignar un job de
+horas, 30s de margen es irrelevante), pero no serviría para un caso que
+necesitara corte inmediato. Reducir el intervalo de heartbeat solo para
+esto no se consideró necesario — nadie pidió un corte más rápido que
+eso.
+
+
+### Revisión de cancelación y relevo Docker (2026-09-14)
+
+Sustituye la descripción anterior de `_cancel_event` global: se usa contexto
+por ejecución y comparación de job_id, capturado antes del heartbeat. Evita
+respuestas tardías que cancelaban el siguiente job/intento. `active_job_id`
+opcional en heartbeat selecciona el job correcto si hay varias asignaciones.
+TERM tiene 2s de gracia seguido de KILL para el grupo, con manejo de proceso
+ya terminado; la latencia incluye heartbeat, red y watcher, no un máximo duro
+de 30s. Se limpia cancel_requested en timeout y al reclamar el nuevo intento.
+Avisos /fail se persisten en pending_failures y bloquean nuevas asignaciones
+hasta confirmación, preservándose con el volumen en reinicios y auto-update.
+La API de cancelación comparte WORKER_TOKEN, sin rol administrativo separado;
+no poner botón en dashboard no constituye control de acceso.
+
+Revisado también el commit del relevo Docker: si replace(commit) funciona pero
+falla el fsync del directorio, el sucesor ya autorizado no se elimina durante
+rollback. El padre se retira y la recuperación del journal sigue el commit.
+Fuentes e instrucciones actuales en infra/README.md e infra/deploy/README.md.
+
+Revisión adicional de auto-update/outbox (2026-09-14): se añadieron escenarios
+Docker A→B→A→B, caída del padre antes/después del commit y entrega pendiente
+rechazada con 503 al padre y aceptada por el sucesor. Corregido borrado de outbox
+por HTTP transitorio: conservar/reintentar 401/429/5xx; archivar rechazos finales
+y vencimientos en unconfirmed_results, sin afirmar que el coordinator reasignó
+el job solo por un reloj local. Escritura de CSV/manifiesto con temporales/fsync,
+metadata final y preservación de entrada previa; reintento entre jobs. Detalles
+y límites de los ensayos en infra/deploy/README.md.
