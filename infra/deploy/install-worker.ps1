@@ -192,7 +192,7 @@ $PauseFile = Join-Path $UserStateDir "worker.paused"
 # fix relevante -- confirmado leyendo el commit senalado cada vez que se
 # actualiza este valor. Actualizar solo cuando el script cambie de forma
 # que de verdad importe para alguien reanudando tras un reinicio.
-$InstallScriptCommit = "c254762c7c2bccb295b50785a0c4e82a928c3761"
+$InstallScriptCommit = "e041a5fb719b8eaa00d0e75d704d672cbb72a6e0"
 $InstallScriptUrl = "https://raw.githubusercontent.com/s7even-silva/iac-project/$InstallScriptCommit/infra/deploy/install-worker.ps1"
 $MaxResumeAttempts = 3
 
