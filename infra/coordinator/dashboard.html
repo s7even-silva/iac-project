@@ -403,8 +403,25 @@ footer.note code{font-family:"IBM Plex Mono",monospace;background:var(--surface-
       <select id="f-species" aria-label="Filtrar por especie">
         <option value="">Especie: todas</option>
       </select>
+      <select id="f-bin" aria-label="Filtrar por bin">
+        <option value="">Bin: todos</option>
+      </select>
+      <select id="f-offset" aria-label="Filtrar por offset">
+        <option value="">Offset X: todos</option>
+      </select>
       <select id="f-rep" aria-label="Filtrar por repetición">
         <option value="">Repetición: todas</option>
+      </select>
+      <select id="f-date-field" aria-label="Campo de fecha a filtrar">
+        <option value="updated_at">Fecha: actualizado</option>
+        <option value="created_at">Fecha: creado</option>
+      </select>
+      <select id="f-date-range" aria-label="Rango de fecha">
+        <option value="">Cualquier momento</option>
+        <option value="1">Última hora</option>
+        <option value="6">Últimas 6h</option>
+        <option value="24">Último día</option>
+        <option value="168">Última semana</option>
       </select>
       <input type="search" id="f-worker" placeholder="Buscar por job_id o worker asignado…" aria-label="Buscar por job_id o worker asignado">
       <button class="clear" id="f-clear" type="button">Limpiar filtros</button>
@@ -518,14 +535,28 @@ async function fetchAll(){
 
 function populateFilterOptions(){
   const speciesSel = document.getElementById("f-species");
+  const binSel = document.getElementById("f-bin");
+  const offsetSel = document.getElementById("f-offset");
   const repSel = document.getElementById("f-rep");
   if (speciesSel.dataset.filled) return;
   const species = [...new Set(jobs.map(j => j.species))].sort();
+  const bins = [...new Set(jobs.map(j => j.bin_index))].sort((a,b) => a-b);
+  const offsets = [...new Set(jobs.map(j => j.offset_x_m))].sort((a,b) => a-b);
   const reps = [...new Set(jobs.map(j => j.repeticion))].sort((a,b) => a-b);
   for (const s of species){
     const o = document.createElement("option");
     o.value = s; o.textContent = s;
     speciesSel.appendChild(o);
+  }
+  for (const b of bins){
+    const o = document.createElement("option");
+    o.value = b; o.textContent = `bin ${b}`;
+    binSel.appendChild(o);
+  }
+  for (const off of offsets){
+    const o = document.createElement("option");
+    o.value = off; o.textContent = `${off.toFixed(1)} m`;
+    offsetSel.appendChild(o);
   }
   for (const r of reps){
     const o = document.createElement("option");
@@ -563,11 +594,23 @@ function workerLabelFor(workerId){
 function matchesFilters(j){
   const status = document.getElementById("f-status").value;
   const species = document.getElementById("f-species").value;
+  const bin = document.getElementById("f-bin").value;
+  const offset = document.getElementById("f-offset").value;
   const rep = document.getElementById("f-rep").value;
+  const dateField = document.getElementById("f-date-field").value;
+  const dateRangeH = document.getElementById("f-date-range").value;
   const workerQuery = document.getElementById("f-worker").value.trim().toLowerCase();
   if (status && j.status !== status) return false;
   if (species && j.species !== species) return false;
+  if (bin !== "" && String(j.bin_index) !== bin) return false;
+  if (offset !== "" && String(j.offset_x_m) !== offset) return false;
   if (rep !== "" && String(j.repeticion) !== rep) return false;
+  if (dateRangeH){
+    const ts = j[dateField];
+    if (!ts) return false;
+    const ageH = (Date.now() - new Date(ts).getTime()) / 3600000;
+    if (ageH > Number(dateRangeH)) return false;
+  }
   if (workerQuery){
     const label = (workerLabelFor(j.claimed_by) || "").toLowerCase();
     const matchesId = String(j.job_id) === workerQuery;
@@ -651,14 +694,14 @@ function renderJobs(){
 }
 
 document.getElementById("refresh-btn").addEventListener("click", fetchAll);
-["f-status","f-species","f-rep"].forEach(id =>
+const FILTER_SELECT_IDS = ["f-status","f-species","f-bin","f-offset","f-rep","f-date-field","f-date-range"];
+FILTER_SELECT_IDS.forEach(id =>
   document.getElementById(id).addEventListener("change", renderJobs)
 );
 document.getElementById("f-worker").addEventListener("input", renderJobs);
 document.getElementById("f-clear").addEventListener("click", () => {
-  document.getElementById("f-status").value = "";
-  document.getElementById("f-species").value = "";
-  document.getElementById("f-rep").value = "";
+  FILTER_SELECT_IDS.forEach(id => { document.getElementById(id).value = ""; });
+  document.getElementById("f-date-field").value = "updated_at";
   document.getElementById("f-worker").value = "";
   renderJobs();
 });
