@@ -241,6 +241,31 @@ def test_heartbeat_without_telemetry_keeps_previous_values():
     assert workers[0]['cpu_load_pct'] == 20.0
 
 
+def test_config_roundtrip():
+    assert db.get_config('worker_image_digest') is None
+    db.set_config('worker_image_digest', 'sha256:' + 'a' * 64)
+    assert db.get_config('worker_image_digest') == 'sha256:' + 'a' * 64
+
+
+def test_config_overwrite():
+    db.set_config('worker_image_digest', 'sha256:' + 'a' * 64)
+    db.set_config('worker_image_digest', 'sha256:' + 'b' * 64)
+    assert db.get_config('worker_image_digest') == 'sha256:' + 'b' * 64
+
+
+def test_worker_reports_image_digest_on_register_and_heartbeat():
+    db.upsert_worker('w', 'host', 8, 16.0, '', image_digest='sha256:' + 'a' * 64)
+    assert db.list_workers()[0]['image_digest'] == 'sha256:' + 'a' * 64
+    db.touch_heartbeat('w', image_digest='sha256:' + 'b' * 64)
+    assert db.list_workers()[0]['image_digest'] == 'sha256:' + 'b' * 64
+
+
+def test_heartbeat_without_image_digest_keeps_previous_value():
+    db.upsert_worker('w', 'host', 8, 16.0, '', image_digest='sha256:' + 'a' * 64)
+    db.touch_heartbeat('w')  # sin image_digest nuevo -- no debe borrar el anterior
+    assert db.list_workers()[0]['image_digest'] == 'sha256:' + 'a' * 64
+
+
 class _FakeRequest:
     def __init__(self, path, headers=None):
         self.url = type('U', (), {'path': path})()

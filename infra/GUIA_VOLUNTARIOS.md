@@ -277,3 +277,14 @@ sus datos pendientes. Añadir `-WhatIf` permite revisar sin ejecutar. También
 puede quitar Docker o WSL mediante opciones explícitas: ver
 [opciones y recuperación de datos](deploy/README.md) antes de seleccionarlas.
 `uninstall-worker.ps1` sigue disponible y delega en el instalador local.
+
+
+### Autoactualización revisada
+
+El worker Docker actualiza entre jobs, con un reemplazo en espera hasta confirmar
+su arranque y transferirle la identidad. Conserva el nombre `geant4-worker`, por
+lo que pausa/reanudación siguen usando los mismos comandos. Puedes desactivarla
+con `install-worker.ps1 -WorkerAutoUpdate 0`; las actualizaciones del instalador
+conservan esa elección y la imagen ya instalada salvo que elijas otra explícitamente.
+La primera instalación del protocolo necesita la imagen nueva instalada manualmente.
+Consulta [protocolo y publicación](deploy/README.md#auto-actualización-de-workers-docker-protocolo-revisado).
