@@ -68,6 +68,25 @@ def test_report_result_retries_then_succeeds_and_cleans_up(tmp_path, monkeypatch
     assert not (worker.PENDING_RESULTS_DIR / '5').exists()
 
 
+def test_report_result_discards_on_http_error_without_retrying(tmp_path, monkeypatch):
+    # Reproduce el caso real: el coordinator ya reasigno el job a otro
+    # worker (409) mientras el nuestro no tenia conexion -- no es un
+    # problema de red, no debe reintentar, y el resultado NO debe quedar
+    # persistido para siempre en PENDING_RESULTS_DIR (a diferencia del
+    # caso de deadline vencido, donde si se conserva para revision).
+    _reset_pending_results(tmp_path, monkeypatch)
+    monkeypatch.setattr(worker, '_REPORT_RESULT_BACKOFF_S', 0)
+    monkeypatch.setattr(worker, 'get_stale_job_timeout_s', lambda: 3600.0)
+
+    response = MagicMock()
+    response.raise_for_status.side_effect = requests.HTTPError('409 Conflict')
+
+    with patch.object(worker.SESSION, 'post', return_value=response):
+        worker.report_result('w1', 9, 0, 7.0, 'especie,bin_index\nGCR_H,0\n', 'manifest\n')
+
+    assert not (worker.PENDING_RESULTS_DIR / '9').exists()
+
+
 def test_report_result_gives_up_after_deadline_keeps_file(tmp_path, monkeypatch):
     _reset_pending_results(tmp_path, monkeypatch)
     monkeypatch.setattr(worker, '_REPORT_RESULT_BACKOFF_S', 0)

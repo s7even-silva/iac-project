@@ -640,6 +640,22 @@ def report_result(worker_id: str, job_id: int, exit_code: int, duration_s: float
             print(f"[worker] job {job_id} reportado: {result}")
             shutil.rmtree(job_dir, ignore_errors=True)
             return
+        except requests.HTTPError as exc:
+            # Rechazo REAL del coordinator (ej. 409: otro worker ya
+            # reclamo este job mientras el nuestro no tenia red y lo
+            # completo primero) -- no es un problema de red, reintentar
+            # aqui mismo no lo arreglaria. Mismo tratamiento que ya tiene
+            # retry_pending_results() para este caso exacto: descartar con
+            # un log que diga la causa real, en vez de dejar que la
+            # excepcion suba sin capturar y que run_job() la trate como si
+            # la SIMULACION hubiera fallado (bug real: antes de este fix,
+            # esto producia un log confuso -- "no se pudo reportar fallo
+            # al coordinator" -- aunque la simulacion si habia terminado
+            # bien y el unico problema era que el job ya no era nuestro).
+            print(f"[worker] job {job_id} fue rechazado por el coordinator al subir ({exc}) -- probablemente "
+                  "otro worker ya lo completo mientras este no tenia conexion. Se descarta, no se reintenta.")
+            shutil.rmtree(job_dir, ignore_errors=True)
+            return
         except (requests.ConnectionError, requests.Timeout) as exc:
             remaining = deadline - time.time()
             if remaining <= 0:

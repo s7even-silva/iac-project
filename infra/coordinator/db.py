@@ -84,8 +84,64 @@ CREATE TABLE IF NOT EXISTS results (
 # Job en 'claimed'/'running' sin heartbeat de su worker en esta ventana se
 # reencola -- generoso a proposito: una corrida legitima de bin6/7 tarda
 # horas (ver AGENTS.md), un umbral corto duplicaria computo caro por un
-# falso timeout en vez de solo esperar de mas.
+# falso timeout en vez de solo esperar de mas. Sigue siendo el PISO minimo
+# de cualquier job, incluso con la estimacion dinamica de abajo -- ver
+# requeue_stale_jobs().
 STALE_JOB_TIMEOUT_S = float(os.environ.get("STALE_JOB_TIMEOUT_S", 6 * 3600))
+
+# Tiempo real (segundos, promedio de 3 repeticiones) por (especie, bin_index),
+# medido en bryam-local -- misma maquina y mismo WORKER_THREADS que reporta
+# cpu_score, asi que estos valores son la base valida para escalar por
+# cpu_score de cualquier otro worker (ver estimate_job_duration_s() abajo).
+# Derivado de datos reales
+# (geant4/ActiveShield_Sim/resultados/organ_sweep_manifest_bryam.csv,
+# ofsets 2/3/4, promedio de 3 repeticiones por combinacion), no inventado.
+# GCR_He bin7 es la unica excepcion: bryam-local nunca lo corrio (ver
+# AGENTS.md, "bin7 de GCR_He se salta por ahora") -- extrapolado aplicando
+# el mismo factor de crecimiento bin6->bin7 medido en GCR_H (4669.7/1820.4
+# =~2.565x) sobre el bin6 real de GCR_He (7321.2s), dando ~18780s (~5.2h) --
+# coherente con la proyeccion de "5-6h por corrida" ya documentada en
+# AGENTS.md a partir del mismo patron de crecimiento. Marcado explicitamente
+# como extrapolado, no medido, para quien lea esta tabla despues.
+REFERENCE_TIMINGS_S = {
+    ("GCR_H", 0): 20.9, ("GCR_H", 1): 23.0, ("GCR_H", 2): 32.9, ("GCR_H", 3): 86.7,
+    ("GCR_H", 4): 314.7, ("GCR_H", 5): 776.4, ("GCR_H", 6): 1820.4, ("GCR_H", 7): 4669.7,
+    ("GCR_He", 0): 21.4, ("GCR_He", 1): 22.7, ("GCR_He", 2): 117.1, ("GCR_He", 3): 438.4,
+    ("GCR_He", 4): 1221.5, ("GCR_He", 5): 2694.7, ("GCR_He", 6): 7321.2,
+    ("GCR_He", 7): 18780.4,  # extrapolado, ver comentario arriba -- no medido
+    ("SEP_p", 0): 832.4, ("SEP_p", 1): 368.5, ("SEP_p", 2): 139.0, ("SEP_p", 3): 51.0,
+    ("SEP_p", 4): 27.1, ("SEP_p", 5): 23.2, ("SEP_p", 6): 21.8, ("SEP_p", 7): 36.1,
+}
+
+# cpu_score de bryam-local en el momento de medir REFERENCE_TIMINGS_S arriba
+# (confirmado via GET /api/v1/workers, 2026-09-14) -- la base de la que se
+# escala cualquier otro worker: estimacion = referencia * (este valor /
+# cpu_score_del_worker).
+REFERENCE_CPU_SCORE = 4.461
+
+# Cuanto margen extra sobre la estimacion antes de considerar un job
+# realmente perdido -- deliberadamente generoso (no 1.0x): cpu_score es un
+# benchmark corrido una sola vez al arrancar el worker, no captura
+# throttling termico sostenido, contencion real de un host compartido, ni
+# variacion entre repeticiones (la propia tabla de arriba ya tiene
+# min/max hasta ~15% de dispersion en el mismo bin/maquina). Multiplicar
+# en vez de reemplazar el timeout fijo: un job barato en un worker rapido
+# sigue con el piso de STALE_JOB_TIMEOUT_S (6h) como proteccion base; uno
+# caro en un worker lento gana MAS margen que el fijo le daria hoy, en vez
+# de arriesgarse a reencolar cuando en realidad iba a terminar bien.
+ESTIMATE_SAFETY_FACTOR = 2.5
+
+
+def estimate_job_duration_s(species: str, bin_index: int, worker_cpu_score: float | None) -> float | None:
+    """Estima cuanto deberia tardar un job en un worker dado, escalando
+    REFERENCE_TIMINGS_S por cpu_score. None si no hay referencia para esa
+    combinacion o el worker no tiene cpu_score (version vieja del worker,
+    o el benchmark fallo al arrancar) -- en ambos casos el llamador debe
+    caer al timeout fijo, nunca tratar None como cero."""
+    reference_s = REFERENCE_TIMINGS_S.get((species, bin_index))
+    if reference_s is None or not worker_cpu_score or worker_cpu_score <= 0:
+        return None
+    return reference_s * (REFERENCE_CPU_SCORE / worker_cpu_score)
 
 
 def now_iso() -> str:
@@ -340,20 +396,49 @@ def record_failure(job_id: int, worker_id: str, error: str, duration_s: float | 
 
 
 def requeue_stale_jobs() -> list[int]:
-    """Reencola jobs claimed/running cuyo worker no dio heartbeat reciente. Devuelve los job_id afectados."""
-    cutoff = time.time() - STALE_JOB_TIMEOUT_S
+    """Reencola jobs claimed/running cuyo worker no dio heartbeat en su
+    propio timeout (STALE_JOB_TIMEOUT_S como piso minimo siempre; mas
+    margen si hay una estimacion de duracion valida para ese job/worker,
+    ver estimate_job_duration_s()). Devuelve los job_id afectados.
+
+    El cutoff ya no es un solo valor para toda la query -- cada job puede
+    necesitar un margen distinto segun cuanto se estima que tarda en el
+    worker que lo tiene asignado, asi que se trae a Python el set de
+    candidatos bajo el cutoff MAS LAXO posible (el piso fijo, el mas
+    generoso de los dos) y se filtra fila por fila con su propio timeout
+    real -- mas simple y correcto que expresar un timeout dinamico por
+    fila dentro del WHERE de SQL."""
+    floor_cutoff = time.time() - STALE_JOB_TIMEOUT_S
     with get_conn() as conn:
-        rows = conn.execute(
+        candidates = conn.execute(
             """
-            SELECT j.job_id FROM jobs j
+            SELECT j.job_id, j.species, j.bin_index, j.updated_at,
+                   w.last_heartbeat, w.cpu_score
+            FROM jobs j
             LEFT JOIN workers w ON w.worker_id = j.claimed_by
             WHERE j.status IN ('claimed', 'running')
               AND (w.last_heartbeat IS NULL OR w.last_heartbeat < ?)
             """,
-            (datetime.fromtimestamp(cutoff, tz=timezone.utc).isoformat(),),
+            (datetime.fromtimestamp(floor_cutoff, tz=timezone.utc).isoformat(),),
         ).fetchall()
-        job_ids = [r["job_id"] for r in rows]
+        now = time.time()
+        job_ids = []
+        for row in candidates:
+            if row["last_heartbeat"] is None:
+                job_ids.append(row["job_id"])
+                continue
+            last_heartbeat_s = datetime.fromisoformat(row["last_heartbeat"]).timestamp()
+            age_s = now - last_heartbeat_s
+            estimated_s = estimate_job_duration_s(row["species"], row["bin_index"], row["cpu_score"])
+            timeout_s = max(STALE_JOB_TIMEOUT_S, estimated_s * ESTIMATE_SAFETY_FACTOR) \
+                if estimated_s is not None else STALE_JOB_TIMEOUT_S
+            if age_s >= timeout_s:
+                job_ids.append(row["job_id"])
         for job_id in job_ids:
+            # El mensaje sigue diciendo "heartbeat vencido" sin distinguir si
+            # el timeout que se aplico fue el piso fijo o uno mayor por
+            # estimacion -- la causa raiz es la misma (el worker dejo de dar
+            # heartbeat), solo cambia CUANTO se esperaba antes de actuar.
             conn.execute(
                 """
                 UPDATE jobs SET status=CASE WHEN attempt < max_attempts THEN 'pending' ELSE 'failed' END, claimed_by=NULL, claimed_at=NULL,

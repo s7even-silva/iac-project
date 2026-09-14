@@ -2839,3 +2839,128 @@ real (no solo lectura manual): 12 hallazgos totales antes, 11 despues,
 exactamente el `PSShouldProcess` desaparecido y ningun hallazgo nuevo.
 17 escenarios de `test_worker_lifecycle.ps1` (que ya ejercitan `-WhatIf`/
 `-Confirm:$false` sobre esta funcion) siguen pasando sin cambios.
+
+### Estimación de duración por `cpu_score`, y timeout de reencolado dinámico (2026-09-14)
+
+**Motivación, pregunta directa del usuario:** con `cpu_score` ya expuesto
+por cada worker desde antes, ¿se puede usar para estimar cuánto debería
+tardar un job en un worker dado, y usar esa estimación como base para
+los timeouts de reencolado en vez de un único `STALE_JOB_TIMEOUT_S` fijo
+de 6h para cualquier combinación especie/bin/worker? El usuario confirmó
+un dato clave antes de construirlo: la tabla de tiempos por bin ya
+documentada más arriba ("Piloto de 8 bins") se midió siempre con el
+mismo `WORKER_THREADS` en `bryam-local`, así que su `cpu_score` actual
+(4.461, confirmado vía `GET /api/v1/workers`) es una base válida para
+escalar — no hace falta corregir por número de núcleos aparte, porque
+`cpu_score` ya se mide bajo el mismo régimen de paralelismo real que
+Geant4 MT usa en producción (comentario propio de `cpu_score()` en
+`worker.py`: "bajo carga sostenida con todos los núcleos ocupados a la
+vez").
+
+**Todo esto vive en el coordinator (`infra/coordinator/db.py`/`app.py`),
+no en el worker** — no requiere publicar ninguna imagen Docker nueva; se
+despliega con el mismo procedimiento de siempre (`git reset --hard` +
+`systemctl restart geant4-coordinator`). El `cpu_score` que usa ya lo
+reportan los workers actuales sin cambios. **Nota real encontrada al
+verificar antes de implementar:** de los 7 workers registrados en
+producción hoy, solo `bryam-local` tiene `cpu_score` real — los demás
+(`laptop-juan`, `bryam-parrot`, `laptop-fabiola`, `laptop-liz`) tienen
+`cpu_score: null` (versión de imagen anterior a ese benchmark, o worker
+local sin Docker). El diseño trata esto como caso explícito de
+"sin estimación disponible", no como error — ver abajo.
+
+**`REFERENCE_TIMINGS_S`** (`db.py`, nuevo): tabla `(especie, bin_index) →
+segundos`, derivada de datos REALES —
+`geant4/ActiveShield_Sim/resultados/organ_sweep_manifest_bryam.csv`,
+promedio de 3 repeticiones por combinación (offsets 2/3/4) — no de los
+números sueltos en prosa de la sección "Piloto de 8 bins" (que solo
+cubría GCR_H, posición 0). Cubre los 8 bins de GCR_H y SEP_p, y 7 de 8
+de GCR_He. **GCR_He bin7 es la única extrapolación, marcada como tal en
+el propio código:** `bryam-local` nunca lo corrió (ver "bin7 de GCR_He
+se salta por ahora" más arriba) — se aplicó el mismo factor de
+crecimiento bin6→bin7 medido en GCR_H (×2.565) sobre el bin6 real de
+GCR_He (7321.2s), dando ~18780s (~5.2h), coherente con la proyección de
+"5-6h por corrida" ya documentada a partir del mismo patrón.
+
+**`estimate_job_duration_s(species, bin_index, worker_cpu_score)`**
+(`db.py`, nuevo): `referencia × (REFERENCE_CPU_SCORE / cpu_score_worker)`.
+Devuelve `None` explícitamente (nunca cero, nunca una excepción) si no
+hay referencia para esa combinación o el worker no tiene `cpu_score` —
+mismo patrón que `claim_next_job()` ya usa para `min_cpu_score` ausente.
+
+**`requeue_stale_jobs()` reescrito para timeout por-job, no un cutoff
+único para toda la tabla:** antes, una sola resta de tiempo (`time.time()
+- STALE_JOB_TIMEOUT_S`) se aplicaba a todos los jobs `claimed`/`running`
+en el `WHERE` de SQL. Ahora ese valor fijo sigue siendo el **piso
+mínimo** (nunca se reencola antes de eso, protección base sin cambios),
+pero si hay una estimación válida para esa combinación especie/bin en
+el worker asignado, el timeout real usado es
+`max(STALE_JOB_TIMEOUT_S, estimación × ESTIMATE_SAFETY_FACTOR)` —
+`ESTIMATE_SAFETY_FACTOR = 2.5`, deliberadamente generoso porque
+`cpu_score` es un benchmark de un solo momento al arrancar el worker, no
+captura throttling térmico sostenido ni contención real de un host
+compartido, y la propia tabla de referencia ya tiene hasta ~15% de
+dispersión entre repeticiones en la misma máquina/bin. Se trae a Python
+el set de candidatos bajo el cutoff más laxo posible (el piso fijo) y se
+filtra fila por fila con su propio timeout — más simple y correcto que
+expresar un timeout dinámico por fila dentro del `WHERE` de SQL. Un
+worker sin `cpu_score` (o una combinación sin referencia) cae
+automáticamente al piso fijo de siempre, sin ningún caso especial en el
+llamador.
+
+**`GET /api/v1/jobs` gana `estimated_duration_s`** (`app.py`): `None`
+para jobs `pending`/`done`/`failed` (no aplica) o si no hay estimación
+posible; calculado a partir del `cpu_score` del worker que tiene
+asignado el job ahora mismo. **Dashboard** (`dashboard.html`): nuevo
+campo "Tiempo estimado" en el detalle expandible de cada job, con
+tooltip explicando la base del cálculo — nuevo formateador `fmtSpan()`
+(segundos → s/min/h), distinto de `fmtAgo()`/`fmtDuration()` ya
+existentes (que formatean "hace cuánto" desde un timestamp, no una
+duración absoluta en segundos).
+
+**6 tests nuevos en `test_coordinator.py` (35 en total):** escalado
+correcto por `cpu_score` (mitad de score → el doble de tiempo estimado),
+`None` sin `cpu_score` o sin referencia para la combinación, un job caro
+(bin7) en un worker con heartbeat vencido más allá del piso fijo pero
+DENTRO del timeout estimado con margen no se reencola, un job barato
+(bin0) con heartbeat apenas vencido sigue protegido por el piso fijo
+aunque la estimación sola sea más corta, y un worker sin `cpu_score`
+cae al comportamiento de siempre (piso fijo). Verificado también en
+vivo (servidor local real, no solo a nivel de función): un worker
+registrado con el mismo `cpu_score` de referencia reclamó un job GCR_H
+bin7 y `GET /api/v1/jobs` devolvió `estimated_duration_s: 4669.7` —
+exactamente el valor de la tabla, sin escalar, como se espera cuando el
+score coincide con la referencia.
+
+**Bug de logs corregido de paso, encontrado investigando la primera
+pregunta del usuario (subida tardía tras reasignación) mientras se
+diseñaba esto:** verificado con lectura de código, no solo supuesto, que
+el flujo real para "worker A se desconecta con un job en curso, el
+coordinator lo reasigna a worker B, B termina primero, y luego A
+recupera conexión e intenta subir su resultado viejo" **no pierde datos**
+(el resultado de A se persiste en `PENDING_RESULTS_DIR` antes de
+cualquier intento de red, y `record_result()` en `db.py` ya rechaza con
+`409` una subida cuyo `claimed_by` no coincide, protegido por un test
+existente) — pero el log intermedio era confuso: `report_result()`
+(`worker.py`) solo capturaba `ConnectionError`/`Timeout`, no
+`requests.HTTPError`, así que un `409` se propagaba sin capturar hasta
+`run_job()`, que lo trataba como si la SIMULACIÓN hubiera fallado y
+llamaba a `report_failure()` — que a su vez también era rechazado (A ya
+no es dueño del job) y ese segundo fallo se tragaba en silencio con solo
+un `print`. El archivo con el resultado real de A quedaba en
+`PENDING_RESULTS_DIR` sin borrarse, y se descartaba recién en la
+siguiente vuelta ociosa del loop vía `retry_pending_results()` (que sí
+tenía el manejo correcto desde antes) — sin pérdida de datos, pero con
+un log que decía "no se pudo reportar fallo al coordinator" en vez de la
+causa real. **Corregido:** `except requests.HTTPError` agregado a
+`report_result()`, mismo tratamiento que ya tenía `retry_pending_results()`
+para este caso (descartar el pending file con un log que dice la causa
+real: "probablemente otro worker ya lo completó"). 1 test nuevo en
+`test_worker.py` (31 en total) que reproduce el `409` exacto y confirma
+que el archivo se descarta sin reintentar. **Este fix SÍ vive en
+`worker.py`, así que requiere publicar una imagen Docker nueva para que
+los workers Docker existentes lo reciban** (decisión explícita del
+usuario de incluirlo en este cambio de todos modos, sabiendo eso) — los
+workers Docker actuales no lo notan hasta que les ocurra este caso raro
+específico, y seguirán funcionando correctamente (sin pérdida de datos)
+mientras tanto, solo con el log confuso de antes.

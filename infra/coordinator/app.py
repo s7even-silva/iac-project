@@ -195,7 +195,21 @@ def fail_job(job_id: int, body: FailIn):
 @app.get("/api/v1/jobs")
 def get_jobs(status: str | None = None):
     rows = db.list_jobs(status)
-    return [row_to_dict(r) for r in rows]
+    jobs = [row_to_dict(r) for r in rows]
+    # estimated_duration_s solo tiene sentido para un job que ya tiene
+    # worker asignado (claimed/running) -- None para pending/done/failed,
+    # y tambien None si el worker asignado no tiene cpu_score (version
+    # vieja del worker, o el benchmark de arranque fallo, ver
+    # estimate_job_duration_s()) o no hay referencia para esa especie/bin.
+    worker_scores = {w["worker_id"]: w["cpu_score"] for w in db.list_workers()}
+    for job in jobs:
+        if job["status"] in ("claimed", "running") and job["claimed_by"]:
+            job["estimated_duration_s"] = db.estimate_job_duration_s(
+                job["species"], job["bin_index"], worker_scores.get(job["claimed_by"])
+            )
+        else:
+            job["estimated_duration_s"] = None
+    return jobs
 
 
 # Mismo umbral que count_workers_online() en db.py -- un worker con
