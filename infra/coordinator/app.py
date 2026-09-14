@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 import db
@@ -64,6 +65,19 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="ActiveShield_Sim compute coordinator", lifespan=lifespan)
+
+# Dashboard de solo lectura (Artifact de Claude, ver infra/DASHBOARD_PLAN.md)
+# corre en el navegador del visitante, en un origen ajeno (claudeusercontent.com) --
+# sin esto el navegador bloquea la respuesta aunque el request llegue igual.
+# allow_origins=["*"] es aceptable: los datos ya son publicos sin autenticacion
+# (ver "Sin autenticacion de workers" en AGENTS.md) y solo se exponen metodos GET,
+# sin cookies/credenciales de por medio.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET"],
+    allow_headers=["*"],
+)
 
 
 @app.middleware("http")
