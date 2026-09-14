@@ -3497,3 +3497,60 @@ también retroactivamente** (mismo criterio que el ajuste de
 `MIN_CPU_SCORE` anterior): `UPDATE` directo en la VM real sobre los 44
 jobs `pending` de SEP_p bin0/bin1 — verificado vía la API pública, sin
 cambiar `jobs_pending` total ni afectar los 3 jobs `running`.
+
+### Bug real de producción: un job pesado sin umbral terminó en el worker más lento (2026-09-14)
+
+**Reportado por el usuario con un caso real: `eddy-laptop` (`cpu_score
+1.247`, el más lento de los workers conocidos) reclamó `job_id=137`
+(GCR_He bin6, repetición 2), estimado en ~7h en esa máquina.** Verificado
+leyendo la fila real en la DB de producción: `min_ram_gb=0.0`,
+`min_cpu_count=0`, `min_cpu_score=0.0` — sin ningún umbral, así que
+`claim_next_job()` lo ofrecía a cualquier worker sin filtrar. El
+emparejamiento por `cpu_score` (`pick_job_for_worker()`, ver la entrada
+"Criterio de asignación de jobs" más arriba) solo reordena ENTRE
+candidatos ya elegibles del mismo grupo `(repeticion, priority)` — nunca
+excluye a un worker lento si de todos modos es el único que preguntó en
+ese momento, y sin ningún umbral, cualquier worker califica.
+
+**Alcance real, verificado con una consulta completa, no solo este job:**
+27 jobs en total (bin6/7 de GCR_H/GCR_He, bin0/1 de SEP_p) tenían
+`min_cpu_score=0` — 26 ya `done` (sin consecuencia práctica a esta
+altura, probablemente cayeron en máquinas capaces por casualidad) y
+`job_id=137` era el único todavía `running`. Estos son remanentes de un
+lote de siembra anterior a que `job_priority_and_requirements()`
+existiera con su forma actual — el `UPDATE` retroactivo de la ronda
+anterior (que corrigió 123 jobs `pending` sin `min_cpu_score`) no los
+alcanzó porque en ese momento estos ya estaban `done`/`running`, fuera
+del filtro `WHERE status='pending'` que se usó entonces.
+
+**Sin mecanismo para cancelar un job remoto específico — limitación de
+diseño ya documentada, confirmada de nuevo aquí.** El worker solo hace
+polling saliente, sin canal de entrada (ver "El coordinator no tiene
+ningún canal para instruir a un worker remoto..." más arriba) — no
+existe un endpoint "detener este job en esa máquina". **Decisión
+explícita del usuario, dado que el avance perdido era mínimo (38.6min
+conectados de ~7h estimadas):** no tocar el worker `eddy-laptop` en
+absoluto — sigue corriendo su copia local de Geant4 sin que el
+coordinator lo sepa. Solo se reencoló el job (`status='pending'`,
+`claimed_by=NULL`, `connected_s=0`, `attempt` preservado en 2) para que
+otro worker lo reclame de inmediato. Cuando `eddy-laptop` eventualmente
+termine su corrida local y suba el resultado, `submit_result()` lo
+rechaza con `409` (otro worker ya es dueño) — descartado limpiamente por
+el fix de manejo de `HTTPError` ya aplicado hoy mismo (ver "Bug de logs
+corregido de paso" más arriba), sin cómputo real perdido salvo esos
+38.6min y sin ningún dato corrupto.
+
+**Corregido de raíz:** `job_id=137` actualizado con
+`min_ram_gb=8.0`/`min_cpu_count=4`/`min_cpu_score=3.0` (mismos umbrales
+que sus jobs hermanos de bin6), para que la próxima asignación ya no
+pueda caer en un worker sin la capacidad mínima. Los 26 casos `done` se
+dejan tal cual — no hay nada que corregir en un job ya completado.
+Pendiente real, no resuelto en este cambio: no hay una garantía
+automática de que un futuro `seed_full_sweep.py --bins ...` con alcance
+parcial, o una `replicate_repeats.py` corrida antes de que
+`job_priority_and_requirements()` tuviera su forma actual, no vuelva a
+producir jobs sin umbral — la corrección fue puntual sobre los 27 casos
+encontrados, no un cambio de esquema que lo prevenga estructuralmente
+(ej. un `NOT NULL DEFAULT` con un valor mínimo, o una validación en
+`insert_job()` que rechace `min_cpu_score=0` para bins conocidos como
+pesados).
