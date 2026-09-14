@@ -21,13 +21,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 import db
 from models import FailIn, HeartbeatIn, JobOut, WorkerRegister, WorkerRef
 
 RESULTS_DIR = db.DB_PATH.parent / "results"
+DASHBOARD_PATH = Path(__file__).parent / "dashboard.html"
 
 # Token compartido simple: sin esto, cualquiera con la URL puede
 # registrarse como worker o leer/escribir jobs -- ver AGENTS.md, riesgo
@@ -37,7 +37,7 @@ RESULTS_DIR = db.DB_PATH.parent / "results"
 # que no lo configuran -- en produccion real se fija por variable de
 # entorno (ver infra/deploy/cloud-init-coordinator.yaml).
 WORKER_TOKEN = os.environ.get("WORKER_TOKEN", "")
-_PUBLIC_PATHS = {"/api/v1/health", "/docs", "/openapi.json", "/redoc"}
+_PUBLIC_PATHS = {"/api/v1/health", "/docs", "/openapi.json", "/redoc", "/dashboard"}
 
 # Cada cuanto corre el barrido de reencolado de jobs con heartbeat vencido.
 # No necesita ser frecuente: el timeout mismo (db.STALE_JOB_TIMEOUT_S) ya es
@@ -66,19 +66,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="ActiveShield_Sim compute coordinator", lifespan=lifespan)
 
-# Dashboard de solo lectura (Artifact de Claude, ver infra/DASHBOARD_PLAN.md)
-# corre en el navegador del visitante, en un origen ajeno (claudeusercontent.com) --
-# sin esto el navegador bloquea la respuesta aunque el request llegue igual.
-# allow_origins=["*"] es aceptable: los datos ya son publicos sin autenticacion
-# (ver "Sin autenticacion de workers" en AGENTS.md) y solo se exponen metodos GET,
-# sin cookies/credenciales de por medio.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["GET"],
-    allow_headers=["*"],
-)
-
 
 @app.middleware("http")
 async def require_worker_token(request: Request, call_next):
@@ -91,6 +78,17 @@ async def require_worker_token(request: Request, call_next):
 
 def row_to_dict(row: sqlite3.Row) -> dict:
     return dict(row) if row is not None else None
+
+
+@app.get("/dashboard")
+def dashboard():
+    # Servido desde el mismo origen a proposito: un Artifact de Claude no
+    # puede hacer fetch() cross-origin hacia este dominio (la CSP del
+    # sandbox solo admite un allowlist fijo de CDNs, ver
+    # infra/DASHBOARD_PLAN.md) -- este endpoint reemplaza ese enfoque
+    # sirviendo la misma pagina desde aqui, donde /api/v1/* es same-origin
+    # sin necesitar CORS.
+    return FileResponse(DASHBOARD_PATH, media_type="text/html")
 
 
 @app.post("/api/v1/workers/register")

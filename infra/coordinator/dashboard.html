@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Coordinator del barrido</title>
+<meta name="description" content="Estado en vivo del cómputo distribuido de ActiveShield_Sim: jobs por especie/bin/posición y qué worker corre cada uno.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --bg:#f4f6f8;
+  --surface:#ffffff;
+  --surface-2:#eaeef2;
+  --border:#d7dee4;
+  --text:#16202a;
+  --text-dim:#5b6b78;
+  --text-faint:#8695a1;
+  --accent:#0f6e8c;
+  --accent-soft:#e1f0f4;
+  --good:#1a7d4c;
+  --good-bg:#e3f5ea;
+  --warn:#a3660a;
+  --warn-bg:#fbecd4;
+  --bad:#b3372c;
+  --bad-bg:#fbe4e1;
+  --neutral:#5b6b78;
+  --neutral-bg:#e9edf1;
+  --focus:#0f6e8c;
+  --shadow: 0 1px 2px rgba(20,30,40,.06), 0 8px 24px -12px rgba(20,30,40,.12);
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0f1417;
+    --surface:#161d22;
+    --surface-2:#1e262c;
+    --border:#2b353c;
+    --text:#e7edf1;
+    --text-dim:#a3b1ba;
+    --text-faint:#71828d;
+    --accent:#5fc2e0;
+    --accent-soft:#122a32;
+    --good:#5fd394;
+    --good-bg:#12261d;
+    --warn:#e3b158;
+    --warn-bg:#2c2312;
+    --bad:#ef8377;
+    --bad-bg:#2c1714;
+    --neutral:#a3b1ba;
+    --neutral-bg:#1e262c;
+    --focus:#5fc2e0;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.5);
+  }
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:"IBM Plex Sans", -apple-system, "Segoe UI", sans-serif;
+  font-size:14px;
+  line-height:1.5;
+  padding:0 20px;
+}
+.wrap{max-width:1280px;margin:0 auto;padding-block:24px 64px}
+
+.mono, .tab-num{font-family:"IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace}
+.tab-num{font-variant-numeric:tabular-nums}
+
+header.top{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:12px 24px;
+  margin-bottom:20px;
+}
+h1{
+  font-size:1.5rem;
+  font-weight:700;
+  letter-spacing:-0.01em;
+  margin:0;
+  text-wrap:balance;
+}
+h1 .accent{color:var(--accent)}
+.subtitle{
+  color:var(--text-dim);
+  font-size:.85rem;
+  margin:2px 0 0;
+}
+.subtitle .mono{color:var(--text-faint)}
+
+.top-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.eyebrow-status{
+  display:flex;align-items:center;gap:6px;
+  font-size:.75rem;color:var(--text-faint);
+  font-family:"IBM Plex Mono", monospace;
+}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--text-faint);flex-shrink:0}
+.dot.ok{background:var(--good)}
+.dot.err{background:var(--bad)}
+
+button.refresh{
+  font:inherit;
+  font-weight:600;
+  font-size:.82rem;
+  color:var(--surface);
+  background:var(--accent);
+  border:1px solid var(--accent);
+  border-radius:7px;
+  padding:8px 14px;
+  cursor:pointer;
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  transition:filter .12s ease;
+}
+button.refresh:hover{filter:brightness(1.08)}
+button.refresh:active{filter:brightness(.94)}
+button.refresh:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+button.refresh svg{width:14px;height:14px;transition:transform .5s ease}
+button.refresh.spinning svg{animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){
+  button.refresh.spinning svg{animation:none}
+}
+
+/* stat tiles */
+.stats{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(108px,1fr));
+  gap:1px;
+  background:var(--border);
+  border:1px solid var(--border);
+  border-radius:10px;
+  overflow:hidden;
+  margin-bottom:24px;
+  box-shadow:var(--shadow);
+}
+.stat{
+  background:var(--surface);
+  padding:14px 16px;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+.stat .n{font-size:1.65rem;font-weight:700;font-family:"IBM Plex Mono",monospace;letter-spacing:-0.02em}
+.stat .l{font-size:.72rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.stat.pending .n{color:var(--neutral)}
+.stat.running .n{color:var(--warn)}
+.stat.done .n{color:var(--good)}
+.stat.failed .n{color:var(--bad)}
+.stat.workers .n{color:var(--accent)}
+
+/* section shells */
+section.panel{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:10px;
+  box-shadow:var(--shadow);
+  margin-bottom:22px;
+  overflow:hidden;
+}
+.panel-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+  padding:14px 18px;
+  border-bottom:1px solid var(--border);
+}
+.panel-head h2{
+  font-size:.95rem;
+  font-weight:700;
+  margin:0;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.panel-head .count{
+  font-family:"IBM Plex Mono",monospace;
+  font-size:.78rem;
+  color:var(--text-faint);
+  font-weight:400;
+}
+
+/* filters */
+.filters{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  padding:12px 18px;
+  border-bottom:1px solid var(--border);
+  background:var(--surface-2);
+}
+.filters select, .filters input[type="search"]{
+  font:inherit;
+  font-size:.82rem;
+  background:var(--surface);
+  color:var(--text);
+  border:1px solid var(--border);
+  border-radius:6px;
+  padding:6px 10px;
+}
+.filters select:focus-visible, .filters input:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+.filters input[type="search"]{min-width:200px;flex:1 1 200px}
+.filters .clear{
+  font-size:.78rem;
+  color:var(--accent);
+  background:none;
+  border:none;
+  cursor:pointer;
+  padding:6px 4px;
+  font-weight:600;
+}
+.filters .clear:hover{text-decoration:underline}
+
+/* table */
+.table-scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.82rem}
+thead th{
+  text-align:left;
+  padding:9px 14px;
+  font-size:.7rem;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+  color:var(--text-faint);
+  font-weight:600;
+  background:var(--surface-2);
+  border-bottom:1px solid var(--border);
+  white-space:nowrap;
+  position:sticky;
+  top:0;
+}
+tbody td{
+  padding:9px 14px;
+  border-bottom:1px solid var(--border);
+  white-space:nowrap;
+  vertical-align:middle;
+}
+tbody tr:last-child td{border-bottom:none}
+tbody tr.jobrow{cursor:pointer}
+tbody tr.jobrow:hover{background:var(--surface-2)}
+tbody tr.detail-row td{
+  background:var(--surface-2);
+  white-space:normal;
+  cursor:default;
+  padding:12px 14px 16px;
+}
+tbody tr.detail-row:hover{background:var(--surface-2)}
+
+.detail-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
+  gap:8px 20px;
+  font-size:.8rem;
+}
+.detail-grid div b{
+  display:block;
+  color:var(--text-faint);
+  font-size:.68rem;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+  font-weight:600;
+  margin-bottom:2px;
+}
+.detail-grid .err{color:var(--bad)}
+.detail-grid code{
+  font-family:"IBM Plex Mono",monospace;
+  font-size:.78rem;
+  word-break:break-all;
+}
+
+.pill{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  padding:2px 9px;
+  border-radius:999px;
+  font-size:.72rem;
+  font-weight:600;
+  text-transform:uppercase;
+  letter-spacing:.03em;
+  white-space:nowrap;
+}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+.pill.pending{background:var(--neutral-bg);color:var(--neutral)}
+.pill.claimed{background:var(--warn-bg);color:var(--warn)}
+.pill.running{background:var(--warn-bg);color:var(--warn)}
+.pill.done{background:var(--good-bg);color:var(--good)}
+.pill.failed{background:var(--bad-bg);color:var(--bad)}
+
+.pill.online{background:var(--good-bg);color:var(--good)}
+.pill.offline{background:var(--neutral-bg);color:var(--text-faint)}
+
+.species-tag{
+  font-family:"IBM Plex Mono",monospace;
+  font-size:.76rem;
+  color:var(--text-dim);
+}
+
+.worker-link{
+  color:var(--text);
+  font-weight:600;
+}
+.unassigned{color:var(--text-faint);font-style:italic}
+
+.empty-state{
+  padding:36px 18px;
+  text-align:center;
+  color:var(--text-faint);
+  font-size:.85rem;
+}
+
+.digest{
+  font-family:"IBM Plex Mono",monospace;
+  font-size:.76rem;
+  color:var(--text-dim);
+  cursor:default;
+}
+
+footer.note{
+  color:var(--text-faint);
+  font-size:.78rem;
+  padding:4px 2px;
+  line-height:1.6;
+}
+footer.note code{font-family:"IBM Plex Mono",monospace;background:var(--surface-2);padding:1px 5px;border-radius:4px}
+
+@media (max-width:640px){
+  body{font-size:13px}
+  h1{font-size:1.25rem}
+  .filters{gap:6px}
+  .filters input[type="search"]{min-width:0;flex-basis:100%}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Coordinator <span class="accent">del barrido</span></h1>
+      <p class="subtitle">ActiveShield_Sim · cómputo distribuido</p>
+    </div>
+    <div class="top-actions">
+      <span class="eyebrow-status" id="conn-status"><span class="dot" id="conn-dot"></span><span id="conn-text">cargando…</span></span>
+      <button class="refresh" id="refresh-btn" type="button">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2.5v3.6h-3.6"/></svg>
+        Actualizar
+      </button>
+    </div>
+  </header>
+
+  <div class="stats" id="stats">
+    <div class="stat pending"><span class="n tab-num" id="stat-pending">–</span><span class="l">Pendientes</span></div>
+    <div class="stat running"><span class="n tab-num" id="stat-running">–</span><span class="l">Corriendo</span></div>
+    <div class="stat done"><span class="n tab-num" id="stat-done">–</span><span class="l">Listos</span></div>
+    <div class="stat failed"><span class="n tab-num" id="stat-failed">–</span><span class="l">Fallidos</span></div>
+    <div class="stat workers"><span class="n tab-num" id="stat-workers">–</span><span class="l">Workers online</span></div>
+  </div>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Workers <span class="count" id="workers-count"></span></h2>
+    </div>
+    <div class="table-scroll">
+      <table id="workers-table">
+        <thead>
+          <tr>
+            <th>Estado</th>
+            <th>Etiqueta</th>
+            <th>Último latido</th>
+            <th>Núcleos</th>
+            <th>RAM libre</th>
+            <th>Carga CPU</th>
+            <th>cpu_score</th>
+            <th>Imagen</th>
+          </tr>
+        </thead>
+        <tbody id="workers-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Jobs <span class="count" id="jobs-count"></span></h2>
+    </div>
+    <div class="filters">
+      <select id="f-status" aria-label="Filtrar por estado">
+        <option value="">Estado: todos</option>
+        <option value="pending">pending</option>
+        <option value="claimed">claimed</option>
+        <option value="running">running</option>
+        <option value="done">done</option>
+        <option value="failed">failed</option>
+      </select>
+      <select id="f-species" aria-label="Filtrar por especie">
+        <option value="">Especie: todas</option>
+      </select>
+      <select id="f-rep" aria-label="Filtrar por repetición">
+        <option value="">Repetición: todas</option>
+      </select>
+      <input type="search" id="f-worker" placeholder="Buscar worker asignado…" aria-label="Buscar por worker asignado">
+      <button class="clear" id="f-clear" type="button">Limpiar filtros</button>
+    </div>
+    <div class="table-scroll">
+      <table id="jobs-table">
+        <thead>
+          <tr>
+            <th>Estado</th>
+            <th>Especie</th>
+            <th>Bin</th>
+            <th>Offset X</th>
+            <th>Rep.</th>
+            <th>Asignado a</th>
+            <th>Intento</th>
+            <th>Actualizado</th>
+          </tr>
+        </thead>
+        <tbody id="jobs-body"></tbody>
+      </table>
+      <div class="empty-state" id="jobs-empty" hidden>Ningún job coincide con estos filtros.</div>
+    </div>
+  </section>
+
+  <footer class="note">
+    Datos leídos directamente vía <code>fetch()</code> a <code>/api/v1/health</code>, <code>/api/v1/jobs</code> y <code>/api/v1/workers</code> del mismo origen — solo lectura, sin credenciales. <code>online</code> y el tiempo desde el último latido los calcula el propio coordinator con su reloj de servidor. Actualiza bajo demanda con el botón de arriba.
+  </footer>
+</div>
+
+<script>
+let jobs = [];
+let workers = [];
+let workerById = {};
+
+function fmtAgo(sec){
+  if (sec == null) return "—";
+  if (sec < 60) return `hace ${Math.floor(sec)}s`;
+  if (sec < 3600) return `hace ${Math.floor(sec/60)}min`;
+  if (sec < 86400) return `hace ${(sec/3600).toFixed(1)}h`;
+  return `hace ${(sec/86400).toFixed(1)}d`;
+}
+function fmtDate(iso){
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  return d.toLocaleString(undefined, {month:"short", day:"2-digit", hour:"2-digit", minute:"2-digit"});
+}
+function fmtGb(n){
+  if (n == null) return "—";
+  return n.toFixed(2) + " GB";
+}
+function esc(s){
+  return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function shortDigest(d){
+  if (!d) return null;
+  const clean = d.replace(/^sha256:/, "");
+  return clean.slice(0, 10) + "…";
+}
+
+async function fetchAll(){
+  const btn = document.getElementById("refresh-btn");
+  const dot = document.getElementById("conn-dot");
+  const text = document.getElementById("conn-text");
+  btn.classList.add("spinning");
+  btn.disabled = true;
+  try {
+    const [healthRes, jobsRes, workersRes] = await Promise.all([
+      fetch("/api/v1/health"),
+      fetch("/api/v1/jobs"),
+      fetch("/api/v1/workers"),
+    ]);
+    if (!healthRes.ok || !jobsRes.ok || !workersRes.ok) throw new Error("HTTP no-ok");
+    const health = await healthRes.json();
+    jobs = await jobsRes.json();
+    workers = await workersRes.json();
+    workerById = Object.fromEntries(workers.map(w => [w.worker_id, w]));
+
+    document.getElementById("stat-pending").textContent = health.jobs_pending;
+    document.getElementById("stat-running").textContent = health.jobs_running + health.jobs_claimed;
+    document.getElementById("stat-done").textContent = health.jobs_done;
+    document.getElementById("stat-failed").textContent = health.jobs_failed;
+    document.getElementById("stat-workers").textContent = health.workers_online;
+
+    dot.className = "dot ok";
+    text.textContent = `en vivo · ${new Date().toLocaleTimeString()}`;
+
+    populateFilterOptions();
+    renderWorkers();
+    renderJobs();
+  } catch (err) {
+    dot.className = "dot err";
+    text.textContent = "sin conexión al coordinator";
+    console.error(err);
+  } finally {
+    btn.classList.remove("spinning");
+    btn.disabled = false;
+  }
+}
+
+function populateFilterOptions(){
+  const speciesSel = document.getElementById("f-species");
+  const repSel = document.getElementById("f-rep");
+  if (speciesSel.dataset.filled) return;
+  const species = [...new Set(jobs.map(j => j.species))].sort();
+  const reps = [...new Set(jobs.map(j => j.repeticion))].sort((a,b) => a-b);
+  for (const s of species){
+    const o = document.createElement("option");
+    o.value = s; o.textContent = s;
+    speciesSel.appendChild(o);
+  }
+  for (const r of reps){
+    const o = document.createElement("option");
+    o.value = r; o.textContent = `repetición ${r}`;
+    repSel.appendChild(o);
+  }
+  speciesSel.dataset.filled = "1";
+}
+
+function renderWorkers(){
+  document.getElementById("workers-count").textContent = `(${workers.length})`;
+  const body = document.getElementById("workers-body");
+  const sorted = [...workers].sort((a,b) => (b.online - a.online) || (a.seconds_since_heartbeat - b.seconds_since_heartbeat));
+  body.innerHTML = sorted.map(w => `
+    <tr id="worker-${esc(w.worker_id)}">
+      <td><span class="pill ${w.online ? "online" : "offline"}">${w.online ? "online" : "offline"}</span></td>
+      <td><strong>${esc(w.label || w.hostname)}</strong></td>
+      <td class="tab-num">${fmtAgo(w.seconds_since_heartbeat)}</td>
+      <td class="tab-num">${w.cpu_count ?? "—"}</td>
+      <td class="tab-num">${fmtGb(w.ram_free_gb)}<span style="color:var(--text-faint)"> / ${fmtGb(w.ram_gb)}</span></td>
+      <td class="tab-num">${w.cpu_load_pct != null ? w.cpu_load_pct.toFixed(1) + "%" : "—"}</td>
+      <td class="tab-num">${w.cpu_score != null ? w.cpu_score.toFixed(2) : "—"}</td>
+      <td class="digest" title="${esc(w.image_digest || "sin dato")}">${w.image_digest ? shortDigest(w.image_digest) : "—"}</td>
+    </tr>
+  `).join("");
+}
+
+function workerLabelFor(workerId){
+  if (!workerId) return null;
+  const w = workerById[workerId];
+  return w ? (w.label || w.hostname) : workerId;
+}
+
+function matchesFilters(j){
+  const status = document.getElementById("f-status").value;
+  const species = document.getElementById("f-species").value;
+  const rep = document.getElementById("f-rep").value;
+  const workerQuery = document.getElementById("f-worker").value.trim().toLowerCase();
+  if (status && j.status !== status) return false;
+  if (species && j.species !== species) return false;
+  if (rep !== "" && String(j.repeticion) !== rep) return false;
+  if (workerQuery){
+    const label = (workerLabelFor(j.claimed_by) || "").toLowerCase();
+    if (!label.includes(workerQuery)) return false;
+  }
+  return true;
+}
+
+function jobRowHtml(j){
+  const label = workerLabelFor(j.claimed_by);
+  const assigned = label
+    ? `<span class="worker-link">${esc(label)}</span>`
+    : `<span class="unassigned">sin asignar</span>`;
+  return `
+    <tr class="jobrow" data-job="${j.job_id}">
+      <td><span class="pill ${esc(j.status)}">${esc(j.status)}</span></td>
+      <td class="species-tag">${esc(j.species)}</td>
+      <td class="tab-num">${j.bin_index}</td>
+      <td class="tab-num">${j.offset_x_m.toFixed(1)} m</td>
+      <td class="tab-num">${j.repeticion}</td>
+      <td>${assigned}</td>
+      <td class="tab-num">${j.attempt}/${j.max_attempts}</td>
+      <td class="tab-num">${fmtDate(j.updated_at)}</td>
+    </tr>
+  `;
+}
+
+function detailRowHtml(j){
+  const errBlock = j.status === "failed" && j.last_error
+    ? `<div style="grid-column:1/-1"><b>Último error</b><code class="err">${esc(j.last_error)}</code></div>`
+    : "";
+  return `
+    <tr class="detail-row" data-detail-for="${j.job_id}">
+      <td colspan="8">
+        <div class="detail-grid">
+          <div><b>job_id</b><span class="tab-num">${j.job_id}</span></div>
+          <div><b>n_events</b><span class="tab-num">${j.n_events.toLocaleString()}</span></div>
+          <div><b>priority</b><span class="tab-num">${j.priority}</span></div>
+          <div><b>min_ram_gb / min_cpu_count</b><span class="tab-num">${j.min_ram_gb} / ${j.min_cpu_count}</span></div>
+          <div><b>min_cpu_score</b><span class="tab-num">${j.min_cpu_score ?? 0}</span></div>
+          <div><b>claimed_at</b>${fmtDate(j.claimed_at)}</div>
+          <div><b>created_at</b>${fmtDate(j.created_at)}</div>
+          <div><b>worker_id</b><code>${esc(j.claimed_by) || "—"}</code></div>
+          ${errBlock}
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+let expandedJobId = null;
+
+function renderJobs(){
+  const filtered = jobs.filter(matchesFilters);
+  document.getElementById("jobs-count").textContent = `(${filtered.length} de ${jobs.length})`;
+  const body = document.getElementById("jobs-body");
+  const empty = document.getElementById("jobs-empty");
+  if (filtered.length === 0){
+    body.innerHTML = "";
+    empty.hidden = false;
+    return;
+  }
+  empty.hidden = true;
+  const statusOrder = {running:0, claimed:1, failed:2, pending:3, done:4};
+  filtered.sort((a,b) => (statusOrder[a.status]??9) - (statusOrder[b.status]??9) || b.job_id - a.job_id);
+  const rows = [];
+  for (const j of filtered){
+    rows.push(jobRowHtml(j));
+    if (j.job_id === expandedJobId) rows.push(detailRowHtml(j));
+  }
+  body.innerHTML = rows.join("");
+
+  body.querySelectorAll("tr.jobrow").forEach(tr => {
+    tr.addEventListener("click", () => {
+      const id = Number(tr.dataset.job);
+      expandedJobId = expandedJobId === id ? null : id;
+      renderJobs();
+    });
+  });
+}
+
+document.getElementById("refresh-btn").addEventListener("click", fetchAll);
+["f-status","f-species","f-rep"].forEach(id =>
+  document.getElementById(id).addEventListener("change", renderJobs)
+);
+document.getElementById("f-worker").addEventListener("input", renderJobs);
+document.getElementById("f-clear").addEventListener("click", () => {
+  document.getElementById("f-status").value = "";
+  document.getElementById("f-species").value = "";
+  document.getElementById("f-rep").value = "";
+  document.getElementById("f-worker").value = "";
+  renderJobs();
+});
+
+fetchAll();
+</script>
+</body>
+</html>
