@@ -5,7 +5,7 @@ $installer = Join-Path $repo 'deploy/install-worker.ps1'
 $tokens=$null; $errors=$null
 $ast=[System.Management.Automation.Language.Parser]::ParseFile($installer,[ref]$tokens,[ref]$errors)
 if ($errors) { throw ($errors | Out-String) }
-foreach ($name in @('Uninstall-Worker','Test-WorkerVolumeMounted','Test-DockerSockMounted','Test-DockerEngineRunning','Save-LegacyWorkerData','Get-ExistingWorkerEnvValue','Save-SelfCopy')) {
+foreach ($name in @('Uninstall-Worker','Test-WorkerVolumeMounted','Test-DockerSockMounted','Test-DockerEngineRunning','Invoke-NativeCommand','Save-LegacyWorkerData','Get-ExistingWorkerEnvValue','Save-SelfCopy')) {
     $fn=$ast.Find({param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name},$true)
     Invoke-Expression $fn.Extent.Text
 }
@@ -117,7 +117,15 @@ try {
         $global:LASTEXITCODE = 1
         $PSCmdlet.WriteError($err)
     }
-    $result = Test-DockerEngineRunning
+    # 2>$null aqui, no dentro del mock: a diferencia de un comando nativo
+    # real (donde "*> $null" DENTRO de Invoke-NativeCommand ya silencia el
+    # stderr real del proceso, verificado por separado), $PSCmdlet.WriteError()
+    # emite al stream de error de PowerShell, que via un scriptblock anidado
+    # (Invoke-NativeCommand llamando a esta funcion mock con "&") se muestra
+    # igual en consola pese a "Continue" -- ruido cosmetico del mock, no del
+    # codigo real que prueba (confirmado: con un comando nativo real que
+    # falla, sin este mock, no hay ruido alguno).
+    $result = Test-DockerEngineRunning 2>$null
     Assert ($result -eq $false) 'Test-DockerEngineRunning no debio propagar el NativeCommandError bajo Stop'
     Assert ($ErrorActionPreference -eq 'Stop') 'Test-DockerEngineRunning no restauro ErrorActionPreference tras NativeCommandError'
     Reset

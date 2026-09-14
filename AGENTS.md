@@ -2706,3 +2706,109 @@ que motivó todo el fix) y una excepción de PowerShell genuina simulada
 con `throw` (el segundo bug, el que exigía `catch`) — ambos deben
 devolver `$false` sin propagar el error ni dejar `$ErrorActionPreference`
 alterado. 17 escenarios de ciclo de vida pasan en total (antes 16).
+
+**Tercer bug encontrado por el usuario releyendo GitHub, el mismo patrón
+ya visto varias veces en esta sección — `$InstallScriptCommit` quedó
+desactualizado otra vez, en el propio commit que lo introducía la vez
+anterior.** El commit que aplicó el fix de `Test-DockerEngineRunning`
+(ver arriba) dejó el pin apuntando todavía a `38e5ee6` — una versión
+**anterior** de 874 líneas, sin `Test-DockerEngineRunning` (confirmado
+leyendo ese commit exacto). El riesgo es el mismo que motivó el pin en
+primer lugar, pero en sentido inverso: un voluntario que corra el script
+**actual** vía `irm ... | iex` (sin archivo local, así que `Save-SelfCopy`
+no tiene nada propio que preservar) y necesite reiniciar por WSL2
+continuaría tras el reboot descargando `$InstallScriptUrl` apuntando al
+commit viejo — un **downgrade involuntario** a la versión sin el fix de
+`NativeCommandError`, justo a mitad de la instalación que ese fix existe
+para no abortar. Alcance real: `Save-PauseResumeScripts` deriva su
+`$baseUrl` del mismo `$InstallScriptCommit` (línea con
+`https://raw.githubusercontent.com/.../$InstallScriptCommit/infra/deploy`),
+así que `pause-worker.ps1`/`resume-worker.ps1` quedaban expuestos al
+mismo problema, sin necesitar un fix aparte — un solo pin cubre los tres
+archivos.
+
+**Corregido:** `$InstallScriptCommit` actualizado al SHA completo del
+commit que introduce `Test-DockerEngineRunning`
+(`26507d0f175528a6e63834b69bd490abcc796669`, ya en el remoto antes de
+este cambio, así que apuntar a él no es circular). Verificado en vivo,
+no solo leído: `curl` a
+`raw.githubusercontent.com/.../26507d0f.../infra/deploy/install-worker.ps1`
+devuelve el archivo real con `Test-DockerEngineRunning` presente (2
+copias, la real y la del watchdog embebido) — confirma que el pin
+resuelve a la versión correcta antes de dejarlo así. Este archivo en sí
+todavía no puede autorreferenciarse (un commit no puede apuntar a su
+propio SHA antes de existir) — quien lea este commit y note que el pin
+ya no es el HEAD más reciente debe confirmar primero, con el mismo
+`curl`, que el commit señalado sigue conteniendo `Test-
+DockerEngineRunning` antes de asumir que hace falta otra actualización.
+
+**Cuarto bug, señalado por el usuario mientras revisaba el fix anterior:
+el mismo patrón de `NativeCommandError` bajo `Stop` no estaba aislado
+solo en `docker info`, sino repetido en ~10 funciones más.** El usuario
+preguntó puntualmente por `Invoke-DockerPullWithRetry` (`docker pull
+... 2>&1` bajo `Stop`, capturando `$LASTEXITCODE` para decidir si
+reintentar) — verificado en vivo con el mismo tipo de `ErrorRecord` que
+simula un `NativeCommandError` real: `$output = docker pull ... 2>&1`
+bajo `Stop` también aborta el script antes de que la lógica de
+reintento pueda actuar, exactamente el mismo bug. Auditando el resto del
+archivo con el mismo criterio (comando nativo + inspección posterior de
+`$LASTEXITCODE`/salida, sin `try/catch` propio, bajo el `Stop` global)
+aparecieron más de 10 sitios vulnerables: `Install-Wsl2` (`wsl
+--install`), `Test-LinuxContainersMode` (`docker info --format`),
+`Invoke-DockerPullWithRetry` (`docker pull`), `Get-ExistingWorkerEnvValue`/
+`Test-WorkerVolumeMounted`/`Test-DockerSockMounted` (`docker inspect`),
+`Save-LegacyWorkerData` (`docker stop`/`docker cp`), `Install-
+WorkerContainer` (`docker ps`/`inspect`/`rm`/`volume create`/`create`/
+`cp`/`run`/`logs`, la función con más sitios), `Uninstall-Worker` (`docker
+ps`/`stop`/`rm`/`volume ls`/`volume rm`), `Test-WorkerRegistered` (`docker
+exec`), y la detección `$isUpdate` a nivel de script junto con el bloque
+`if ($isUpdate) {...}` que preserva la config existente (dos `docker
+inspect` más). Ninguno de estos tenía su propio `try/catch` local — todos
+dependían solo de que el comando nativo terminara con un exit code
+distinto de 0, sin contar con que un stderr real bajo PS 5.1 los
+convertiría en excepción terminante primero.
+
+**Corregido con un helper único, `Invoke-NativeCommand`** (reemplaza el
+`try/finally` que antes vivía solo dentro de `Test-DockerEngineRunning`,
+ahora esa función es un one-liner que lo llama) en vez de repetir el
+mismo aislamiento de `$ErrorActionPreference` en cada función — recibe
+un scriptblock con la invocación nativa exacta (preservando la
+redirección de cada call site, `2>&1`/`2>$null`/`*> $null` según lo que
+ya tenía) y devuelve `{Output, ExitCode}` ya resueltos bajo `Continue`,
+con `catch` propio para una excepción de PowerShell genuina (mismo
+segundo bug ya corregido antes en `Test-DockerEngineRunning`). Cada uno
+de los ~15 call sites vulnerables (contando cada llamada `docker`/`wsl`
+dentro de las funciones listadas arriba) se reemplazó por una invocación
+a este helper. Los que ya estaban dentro de su propio `try/catch`
+(`Test-Wsl2Ready`, ambas llamadas a `wsl`) y los que corren en el
+watchdog embebido bajo `SilentlyContinue` (ya inmune por diseño, no por
+accidente) se dejaron sin tocar — no lo necesitan.
+
+**Test actualizado, no solo el código de producción:** `Invoke-
+NativeCommand` agregado a la lista de funciones extraídas del AST en
+`test_worker_lifecycle.ps1` (el bloque `if ($isUpdate) {...}` que el test
+ya extraía y ejecutaba vía `Invoke-Expression` ahora llama a este helper
+internamente, así que sin agregarlo el test habría fallado con "función
+no encontrada" — mismo patrón de bug ya visto antes en esta ronda con
+`Test-DockerEngineRunning`, corregido esta vez de forma preventiva antes
+de ejecutar el test, no después de que fallara). El mock de `docker`
+del test para el escenario `NativeCommandError` (`$PSCmdlet.WriteError()`)
+imprimía ruido en consola (texto rojo del `ErrorRecord`) al pasar ahora
+por la indirección adicional de `& $ScriptBlock` dentro de
+`Invoke-NativeCommand` — investigado y confirmado que es un artefacto
+cosmético exclusivo del mock (`WriteError()` emite al stream de error de
+PowerShell, que `*> $null` no intercepta de la misma forma que
+intercepta el stderr real de un proceso nativo; verificado por separado
+con un comando nativo real fallando bajo el mismo helper: cero ruido).
+Corregido silenciando ese stream solo en la línea del test que invoca el
+escenario (`2>$null` en la llamada, no dentro del mock) — no es un
+síntoma de ningún problema en el código real.
+
+**`$InstallScriptCommit` pendiente de actualizar una vez más tras este
+commit** — mismo patrón ya documentado dos veces en esta sección: el pin
+debe apuntar al commit que introduce este fix, no a uno anterior. Se
+actualiza en un commit separado inmediatamente después de este, con el
+SHA real ya confirmado (no un supuesto) antes de fijarlo, siguiendo
+exactamente el procedimiento de verificación (`curl` al raw URL del SHA
+elegido, confirmar que `Invoke-NativeCommand` aparece) ya usado las dos
+veces anteriores.
