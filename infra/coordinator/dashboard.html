@@ -268,6 +268,7 @@ tbody tr.detail-row:hover{background:var(--surface-2)}
   margin-bottom:2px;
 }
 .detail-grid .err{color:var(--bad)}
+.detail-grid .note{color:var(--text-dim)}
 .detail-grid code{
   font-family:"IBM Plex Mono",monospace;
   font-size:.78rem;
@@ -405,13 +406,14 @@ footer.note code{font-family:"IBM Plex Mono",monospace;background:var(--surface-
       <select id="f-rep" aria-label="Filtrar por repetición">
         <option value="">Repetición: todas</option>
       </select>
-      <input type="search" id="f-worker" placeholder="Buscar worker asignado…" aria-label="Buscar por worker asignado">
+      <input type="search" id="f-worker" placeholder="Buscar por job_id o worker asignado…" aria-label="Buscar por job_id o worker asignado">
       <button class="clear" id="f-clear" type="button">Limpiar filtros</button>
     </div>
     <div class="table-scroll">
       <table id="jobs-table">
         <thead>
           <tr>
+            <th>ID</th>
             <th>Estado</th>
             <th>Especie</th>
             <th>Bin</th>
@@ -568,7 +570,8 @@ function matchesFilters(j){
   if (rep !== "" && String(j.repeticion) !== rep) return false;
   if (workerQuery){
     const label = (workerLabelFor(j.claimed_by) || "").toLowerCase();
-    if (!label.includes(workerQuery)) return false;
+    const matchesId = String(j.job_id) === workerQuery;
+    if (!matchesId && !label.includes(workerQuery)) return false;
   }
   return true;
 }
@@ -580,6 +583,7 @@ function jobRowHtml(j){
     : `<span class="unassigned">sin asignar</span>`;
   return `
     <tr class="jobrow" data-job="${j.job_id}">
+      <td class="tab-num">${j.job_id}</td>
       <td><span class="pill ${esc(j.status)}">${esc(j.status)}</span></td>
       <td class="species-tag">${esc(j.species)}</td>
       <td class="tab-num">${j.bin_index}</td>
@@ -593,12 +597,12 @@ function jobRowHtml(j){
 }
 
 function detailRowHtml(j){
-  const errBlock = j.status === "failed" && j.last_error
-    ? `<div style="grid-column:1/-1"><b>Último error</b><code class="err">${esc(j.last_error)}</code></div>`
+  const errBlock = j.last_error
+    ? `<div style="grid-column:1/-1"><b>${j.status === "failed" ? "Último error" : "Nota / último evento"}</b><code class="${j.status === "failed" ? "err" : "note"}">${esc(j.last_error)}</code></div>`
     : "";
   return `
     <tr class="detail-row" data-detail-for="${j.job_id}">
-      <td colspan="8">
+      <td colspan="9">
         <div class="detail-grid">
           <div><b>job_id</b><span class="tab-num">${j.job_id}</span></div>
           <div><b>n_events</b><span class="tab-num">${j.n_events.toLocaleString()}</span></div>
