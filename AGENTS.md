@@ -3400,3 +3400,100 @@ por `cpu_score` ya existente ahora incluye el factor en su cálculo
 esperado, y uno nuevo confirma explícitamente que la estimación al
 `cpu_score` de referencia exacto ya no es igual al número crudo de
 `REFERENCE_TIMINGS_S` (47 tests en total, todos pasan).
+
+### Tres correcciones más el mismo día: estimado visible en jobs done, hora de completado, y bug real de migración (2026-09-14)
+
+**`estimated_duration_s` desaparecía justo al terminar un job — exactamente
+cuando más interesa compararlo con `actual_duration_s`.** `GET
+/api/v1/jobs` (`app.py`) solo lo calculaba para `status IN ('claimed',
+'running')`; extendido a incluir `'done'` — `claimed_by` se conserva en
+la fila después de completarse (`record_result()` nunca lo limpia), así
+que sigue disponible para recalcular con el `cpu_score` **actual** de
+ese worker (no el que tenía en el momento exacto de esa corrida en
+particular, que no se guarda por separado — una limitación aceptada, no
+resuelta). Dashboard: la celda de "Duración" para un job `done` ahora
+muestra `actual_duration_s` (etiquetado "real") junto al estimado
+(etiquetado "est."), permitiendo ver de un vistazo qué tan buena fue la
+estimación para esa corrida específica.
+
+**Campo "Completado" agregado al detalle expandible, junto a
+`claimed_at`/`created_at`** — pedido del usuario tras preguntar si la
+columna "Actualizado" (que usa `updated_at`) es la hora de completado o
+otra cosa. Verificado leyendo el código antes de asumir: para el caso
+normal (job termina bien, sin reintentos), `updated_at` SÍ es
+exactamente el momento en que `record_result()` lo marcó `'done'` — nada
+lo vuelve a tocar después. Decisión explícita del usuario: no duplicar
+como columna nueva en la tabla (ya que el valor coincide con
+"Actualizado" hoy), sino como campo adicional en el detalle expandible,
+con nombre explícito y un tooltip que aclara la equivalencia — más claro
+de un vistazo sin ensuciar la tabla principal con una columna redundante.
+Solo aparece cuando `status === "done"` (para otros estados, "Completado"
+no tiene sentido).
+
+**Bug real encontrado en producción al aplicar el deploy de la ronda
+anterior — no del mecanismo de `connected_s` en sí, sino de agregar una
+columna nueva a jobs YA en curso.** El usuario reportó "la columna
+Duración volvió a 0" tras el restart del servicio. Investigado con
+datos crudos, no asumido: `connected_s` es una columna nueva
+(`DEFAULT 0`) — dos jobs que ya llevaban horas `running` ANTES del
+deploy (job 6, GCR_He bin7, `claimed_at` ~2.6h antes; job 137, GCR_He
+bin6, ~40min antes) quedaron con `connected_s=0` por la migración, y
+solo empezaron a acumular desde el momento del restart — a los ~10-13
+minutos de haber reiniciado, mostraban solo esos ~10-13 min de progreso,
+no las horas reales que ya llevaban. El mecanismo en sí funcionaba bien
+hacia adelante (los ~760s/~817s ganados en esos minutos eran correctos)
+— el problema fue específico de la transición job-en-curso→columna
+nueva, no repetible salvo que se agregue otra columna con el mismo
+patrón a jobs activos. Efecto práctico real: esto los hacía parecer
+MENOS avanzados de lo que estaban, así que si acaso los protegía de un
+reencolado prematuro, no los ponía en riesgo — pero sí hacía el número
+mostrado incorrecto. **Corregido manualmente en la DB real** (decisión
+explícita del usuario, ya que no hay heartbeats históricos exactos que
+recuperar): `connected_s = tiempo de pared desde claimed_at` para esos
+2 jobs específicos, como mejor aproximación disponible (razonable dado
+que ninguno se había reencolado, así que probablemente estuvieron
+conectados casi todo ese tiempo). Verificado tras la corrección: job 6
+pasó a 9596s/21597s estimado (~44%), job 137 a 4261s/8666s (~49%) —
+números coherentes con lo que el usuario reportó haber visto antes del
+deploy. **Lección para futuros deploys que agreguen columnas con estado
+acumulado a `jobs`:** si hay jobs `claimed`/`running` en el momento del
+deploy, revisar si necesitan la misma corrección manual — no es
+automático, hay que acordarse de hacerlo cada vez.
+
+**Pregunta aparte del usuario, investigada y descartada como bug:** dos
+workers (`bryam-parrot`, `laptop-fabiola`) aparecían corriendo jobs de
+repetición 2 mientras repetición 0 todavía tenía 7 pending y repetición
+1 tenía 28 — parecía violar el orden `repeticion ASC` recién arreglado.
+Verificado con los datos reales: los 28 pending de repetición 1 eran
+**todos** bin6/7 o SEP_p bin0/1, todos con `min_ram_gb=8.0` exigido —
+`bryam-parrot` tenía solo 1.61GB de RAM libre en ese momento y
+`laptop-fabiola` 4.89GB, ninguno alcanzaba el mínimo. Comportamiento
+correcto, no un bug: exactamente lo que el usuario ya había pedido antes
+("si una laptop no tuviera jobs de la repetición actual adecuados,
+recién pasar a la siguiente") — sin nada elegible en repetición 1 por
+falta de RAM libre, el sistema correctamente ofreció lo mejor disponible
+en repetición 2 en vez de dejar al worker sin trabajo. El problema real,
+si lo hay, es de esas dos laptops teniendo poca RAM libre en ese
+momento — externo al coordinator, no algo que corregir ahí.
+
+**Consecuencia real de esa misma investigación: SEP_p bin0/bin1
+compartían los umbrales de GCR pese a ser mucho más baratos —
+corregido con umbrales propios.** El usuario notó, viendo por qué esos
+28 jobs de repetición 1 quedaban inaccesibles, que `SEP_p` bin0/bin1
+tenían exactamente el mismo `min_ram_gb=8.0`/`min_cpu_score=3.0` que
+`GCR_H` bin6 o `GCR_He` bin7 — pese a que `REFERENCE_TIMINGS_S` (`db.py`)
+ya mostraba que son muchísimo más livianos: SEP_p bin0 = 832.4s
+(~13.9min), bin1 = 368.5s (~6.1min), contra GCR_H bin6 = 1820.4s
+(~30min) o GCR_He bin7 = 18780.4s (~5.2h). Ambos umbrales venían del
+mismo `needs_resources`/`MIN_RAM_GB`/`MIN_CPU_COUNT`/`MIN_CPU_SCORE`
+compartidos en `job_priority_and_requirements()`, sin distinguir cuánto
+más pesado era cada caso. **Corregido con `SEP_MIN_RAM_GB=2.0`/
+`SEP_MIN_CPU_COUNT=2`/`SEP_MIN_CPU_SCORE=1.0`**, separados de
+`MIN_RAM_GB`/`MIN_CPU_COUNT`/`MIN_CPU_SCORE` (que siguen aplicando solo
+a GCR_H/GCR_He) — deja pasar a casi cualquier worker real conocido
+(incluso `eddy-laptop`, `cpu_score=1.247`), sin bajar a 0/0/0 del todo
+por si alguna máquina fuera genuinamente muy limitada. **Aplicado
+también retroactivamente** (mismo criterio que el ajuste de
+`MIN_CPU_SCORE` anterior): `UPDATE` directo en la VM real sobre los 44
+jobs `pending` de SEP_p bin0/bin1 — verificado vía la API pública, sin
+cambiar `jobs_pending` total ni afectar los 3 jobs `running`.

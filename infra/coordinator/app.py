@@ -196,14 +196,23 @@ def fail_job(job_id: int, body: FailIn):
 def get_jobs(status: str | None = None):
     rows = db.list_jobs(status)
     jobs = [row_to_dict(r) for r in rows]
-    # estimated_duration_s solo tiene sentido para un job que ya tiene
-    # worker asignado (claimed/running) -- None para pending/done/failed,
-    # y tambien None si el worker asignado no tiene cpu_score (version
-    # vieja del worker, o el benchmark de arranque fallo, ver
-    # estimate_job_duration_s()) o no hay referencia para esa especie/bin.
+    # estimated_duration_s solo tiene sentido para un job que ya tiene (o
+    # tuvo) un worker asignado -- claimed/running (para saber cuanto
+    # falta) y tambien done (para comparar contra actual_duration_s y ver
+    # que tan buena fue la estimacion, pedido explicito del usuario
+    # 2026-09-14: antes desaparecia justo al terminar el job, el momento
+    # en que mas interesa compararla). None para pending/failed (nunca
+    # tuvieron un worker real corriendolo), y tambien None si el worker
+    # asignado no tiene cpu_score (version vieja del worker, o el
+    # benchmark de arranque fallo, ver estimate_job_duration_s()) o no
+    # hay referencia para esa especie/bin. claimed_by se conserva en la
+    # fila incluso despues de 'done' (record_result() no lo limpia), asi
+    # que sigue disponible para recalcular con el cpu_score ACTUAL de ese
+    # worker -- no el que tenia en el momento exacto de la corrida, que
+    # no se guarda por separado.
     worker_scores = {w["worker_id"]: w["cpu_score"] for w in db.list_workers()}
     for job in jobs:
-        if job["status"] in ("claimed", "running") and job["claimed_by"]:
+        if job["status"] in ("claimed", "running", "done") and job["claimed_by"]:
             job["estimated_duration_s"] = db.estimate_job_duration_s(
                 job["species"], job["bin_index"], worker_scores.get(job["claimed_by"])
             )

@@ -87,19 +87,40 @@ MIN_CPU_COUNT = 4
 # claim_next_job()/pick_job_for_worker() (db.py): este umbral es un
 # filtro minimo pasa/no-pasa, el emparejamiento es lo que ademas prefiere
 # activamente el worker MAS rapido disponible para el job mas pesado.
+# Estos MIN_* aplican solo a GCR_H/GCR_He (bin_index alto) -- SEP_p tiene
+# sus propios umbrales, mucho mas bajos, ver SEP_MIN_* abajo.
 MIN_CPU_SCORE = 3.0
+
+# SEP_p bin0/bin1, umbrales SEPARADOS de GCR (2026-09-14, decision de
+# equipo) -- encontrado en produccion: SEP_p bin0/bin1 compartian los
+# mismos MIN_RAM_GB/MIN_CPU_COUNT/MIN_CPU_SCORE que GCR_H bin6 o GCR_He
+# bin7, pese a ser MUCHISIMO mas livianos por REFERENCE_TIMINGS_S (db.py)
+# -- SEP_p bin0 = 832.4s (~13.9min), bin1 = 368.5s (~6.1min), comparado
+# con GCR_H bin6 = 1820.4s (~30min) o GCR_He bin7 = 18780.4s (~5.2h). Con
+# los umbrales de GCR, workers legitimos (ej. con poca RAM libre en un
+# momento dado) quedaban bloqueados de estos bins realmente baratos,
+# saltando de largo a repeticiones mas altas en vez de tomar el trabajo
+# liviano que si podian hacer. Deliberadamente no en 0/0/0 del todo --
+# deja pasar a casi cualquier worker real conocido (incluso eddy-laptop,
+# cpu_score=1.247) sin excluir a una maquina genuinamente muy limitada.
+SEP_MIN_RAM_GB = 2.0
+SEP_MIN_CPU_COUNT = 2
+SEP_MIN_CPU_SCORE = 1.0
 
 
 def job_priority_and_requirements(species: str, bin_index: int):
     if species == "SEP_p":
         priority = N_BINS_PER_SPECIES - 1 - bin_index
         needs_resources = bin_index <= MIN_RAM_BIN_THRESHOLD_LOW_ENERGY_SEP
+        min_ram = SEP_MIN_RAM_GB if needs_resources else 0.0
+        min_cpu = SEP_MIN_CPU_COUNT if needs_resources else 0
+        min_score = SEP_MIN_CPU_SCORE if needs_resources else 0.0
     else:
         priority = bin_index
         needs_resources = bin_index >= MIN_RAM_BIN_THRESHOLD_HIGH_ENERGY
-    min_ram = MIN_RAM_GB if needs_resources else 0.0
-    min_cpu = MIN_CPU_COUNT if needs_resources else 0
-    min_score = MIN_CPU_SCORE if needs_resources else 0.0
+        min_ram = MIN_RAM_GB if needs_resources else 0.0
+        min_cpu = MIN_CPU_COUNT if needs_resources else 0
+        min_score = MIN_CPU_SCORE if needs_resources else 0.0
     return priority, min_ram, min_cpu, min_score
 
 
