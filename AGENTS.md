@@ -3188,3 +3188,215 @@ exige repetir el `Set-ExecutionPolicy` de nuevo, ya que `-Scope Process`
 no persiste entre ventanas — sin esta aclaración, alguien que cerrara la
 ventana entre el primer comando y el de personalizar el label habría
 vuelto a pegar exactamente el mismo error reportado.
+
+### Limpieza de identidades, criterio de asignación por cpu_score, y bug real de reencolado (2026-09-14)
+
+**Cinco pedidos del usuario en la misma sesión, atendidos en orden:
+identidades, criterio de asignación, `image_digest` faltante, horas
+conectadas, y el bug de reencolado que esos dos últimos puntos
+terminaron revelando.**
+
+**Limpieza de `local-bryam`/`local-joel`, no eran "workers fantasma"
+sino registros administrativos que ya cumplieron su propósito.**
+Verificado antes de tocar nada: `import_local_results.py` los crea a
+propósito (`worker_id` determinista `local-<label>`, ver "Segundo grupo
+de datos" más arriba) para atribuir trabajo corrido FUERA del
+coordinator — no es un bug, es el mecanismo de reparto de equipo. El
+usuario pidió reasignar ese trabajo a la identidad real de cada persona
+(`bryam-local` para lo de `local-bryam`, `eddy-laptop` para lo de
+`local-joel`) y borrar los registros administrativos, ya que esa
+distinción ya no aporta nada útil en el dashboard. Aplicado en la VM
+real con una migración atómica (`BEGIN IMMEDIATE`): `UPDATE jobs SET
+claimed_by=...`/`UPDATE results SET worker_id=...` para las 68 filas de
+`local-bryam` y 22 de `local-joel` (confirmado 1:1 en ambas tablas antes
+de tocar nada), **luego** `DELETE FROM workers` — en ese orden, porque
+`results.worker_id` tiene `FOREIGN KEY REFERENCES workers(worker_id)`
+con `PRAGMA foreign_keys=ON` activo: borrar primero habría fallado o
+dejado referencias rotas. Verificado post-migración: 6 workers reales
+(antes 8), `jobs_done` intacto.
+
+**Criterio de asignación de jobs: hoy no es cpu_score, es
+`repeticion ASC, priority DESC, job_id ASC`** (ver el fix de repeticiones
+en serie, más arriba) — `min_cpu_score`/`min_ram_gb`/`min_cpu_count` son
+umbrales mínimos pasa/no-pasa, nunca fueron un criterio de *orden* entre
+workers elegibles. El usuario pidió explícitamente que los bins pesados
+(6/7) se dirijan preferentemente a los mejores `cpu_score` — no solo que
+se excluya a los muy lentos.
+
+**Emparejamiento dinámico implementado (`pick_job_for_worker()`,
+`db.py`), sin romper el orden de repetición/prioridad ya decidido.** El
+modelo es *pull* (el worker pide, el coordinator ofrece), no hay forma
+de "reservar" un job pesado para un worker rápido que aún no preguntó —
+solo se puede decidir QUÉ dar cuando alguien ya está preguntando.
+`claim_next_job()` ahora hace esto en dos pasos: (1) fija primero
+`(repeticion, priority)` exactamente como antes, sin tocar ese orden —
+nunca salta a un grupo distinto solo por tener un job mejor emparejado,
+eso reintroduciría el bug de repeticiones en paralelo; (2) **dentro**
+de ese grupo, si hay más de un candidato (offsets distintos del mismo
+bin, o GCR_H/GCR_He compartiendo el mismo `bin_index`/`priority`), un
+worker con `cpu_score >= REFERENCE_CPU_SCORE` (4.461, "rápido") recibe
+el job MÁS PESADO del grupo (mayor `REFERENCE_TIMINGS_S`); uno más lento
+recibe el MÁS LIVIANO. Sin una categoría "media" a propósito — con solo
+un puñado de workers reales activos, fragmentar más no mejora el
+emparejamiento. 3 tests nuevos verifican: worker rápido prefiere GCR_He
+sobre GCR_H al mismo bin (más pesado), worker lento prefiere GCR_H
+(más liviano), y el emparejamiento nunca cruza a otra repetición aunque
+ahí hubiera un job "mejor" para ese worker.
+
+**`MIN_CPU_SCORE` subido de 0.5 a 3.0** (`seed_full_sweep.py`) — el
+valor anterior era deliberadamente bajo/prudente por falta de datos
+reales al calibrarlo (ver la entrada original de `cpu_score`, más
+arriba); con mediciones reales ya observadas (`bryam-local` 4.461,
+`bryam-parrot` 4.334, `eddy-laptop` 1.247), 0.5 resultaba demasiado
+permisivo — excluía solo máquinas extremadamente lentas, no protegía
+bin6/7 de terminar en workers mediocres. 3.0 deja pasar a las dos
+máquinas más rápidas conocidas y excluye explícitamente a `eddy-laptop`
+de esos bins. **Aplicado también retroactivamente en la DB real**
+(decisión explícita del usuario, no solo el código para sembrados
+futuros): verificado que los 388 jobs `pending` en producción tenían
+`min_cpu_score=0.0` en TODOS los casos — incluidos bin6/7, que sí
+tenían `min_ram_gb`/`min_cpu_count` correctos pero nunca recibieron el
+`min_cpu_score` del código, sembrados con una versión anterior del
+script antes de que ese campo existiera. `UPDATE` directo en la VM
+(mismo criterio que `job_priority_and_requirements()`: GCR_H/GCR_He
+`bin_index>=6`, SEP_p `bin_index<=1`) — 123 jobs actualizados (79 GCR +
+44 SEP_p), verificado vía la API pública sin cambiar `jobs_pending`.
+
+**`image_digest` sigue en `null` para TODOS los workers, incluido
+`eddy-laptop` (que sí corre la imagen nueva, confirmado por su
+`cpu_score` real) — investigado, causa real identificada, decisión
+explícita de NO arreglarlo esta sesión.** Confirmado que `null` es
+CORRECTO para `bryam-local`/`bryam-parrot` (ambos workers locales sin
+Docker — `hostname` es un nombre de máquina real tipo `bryam-VirtualBox`/
+`parrot`, no un ID de contenedor corto; `DOCKER.available()` da `False`
+sin socket que consultar, por diseño). Para `eddy-laptop`
+(`hostname=DESKTOP-NNMBV76`, sí corre Docker, `cpu_score=1.247` confirma
+que sí ejecuta `register()` completo) es un bug real: `self_container_id()`
+(`worker.py`) intenta tres métodos para encontrar su propio container ID
+desde dentro (mountinfo de `/etc/hostname`/`/etc/hosts`/`/etc/resolv.conf`,
+luego `/proc/self/cgroup`, luego el fallback de asumir que `hostname` ES
+el ID si matchea el patrón hex de 12/64 caracteres) — los tres fallan en
+el entorno real de Docker Desktop/WSL2 de esa máquina específica (el
+tercer fallback nunca puede funcionar ahí porque `DESKTOP-NNMBV76` no es
+hexadecimal). Sin `container_id`, `self_image_digest()` devuelve `None`
+sin error, silenciosamente. **Decisión explícita del usuario: documentar
+como bug conocido y no arreglarlo ahora** — sin acceso a esa máquina
+específica para verificar en vivo cuál de los tres métodos falla y por
+qué (el layout de filesystem que Docker Desktop expone dentro del
+contenedor en Windows/WSL2 puede diferir del Linux nativo que estos
+regex asumen), un fix sin poder probarlo en la máquina real es
+arriesgado. No bloquea nada — el resto de la telemetría (`cpu_score`,
+`cpu_count`, heartbeat) funciona normalmente para ese worker.
+
+**Bug real encontrado investigando el pedido de "horas conectadas":
+`STALE_JOB_TIMEOUT_S` (el piso fijo) dominaba casi siempre sobre la
+estimación, dejando el timeout real en 5-6h sin importar qué tan barato
+fuera el job.** Caso real reportado por el usuario: `laptop-eddy` se
+conectó ~1h anoche con un job estimado en ~2h, se desconectó, y el
+dashboard siguió mostrando el job como `running` con "7.3h/2h est."
+durante horas — `max(STALE_JOB_TIMEOUT_S, estimación×2.5)` con
+`STALE_JOB_TIMEOUT_S=6h` y estimación=2h da `max(6h, 5h)=6h`: el piso
+fijo gana casi siempre, porque `estimación×2.5` rara vez supera 6h salvo
+para los bins más caros del barrido. El mecanismo de "no contar tiempo
+offline dos veces" en sí SÍ funcionaba bien (`age_s = ahora -
+last_heartbeat`, sin doble conteo) — el problema real era el valor del
+piso, no la fórmula de edad.
+
+**Rediseño completo con dos condiciones independientes para reencolar,
+en vez de un único timeout mezclando dos propósitos distintos:**
+
+1. **Progreso agotado**: `jobs.connected_s` (columna nueva — tiempo
+   REAL conectado acumulado mientras el job está activo, no tiempo de
+   pared) supera `estimación × ESTIMATE_SAFETY_FACTOR (2.5, sin
+   cambios)`. Comparar contra `connected_s` en vez de tiempo de pared es
+   justamente lo que resuelve el pedido del usuario: un worker que se
+   apaga no gasta presupuesto de progreso mientras está apagado — antes,
+   el `age_s` de la fórmula anterior técnicamente tampoco lo hacía mal
+   (medía desde el último heartbeat, no acumulaba doble), pero mezclaba
+   "cuánto ha avanzado" con "cuánto tiempo de pared pasó", dos preguntas
+   distintas.
+2. **Abandono**: tiempo de pared SIN heartbeat (`age_s`, la métrica
+   correcta para ESTA pregunta específica) supera
+   `_abandon_timeout_s()` = `clamp(estimación × ABANDON_FACTOR, 
+   ABANDON_FLOOR_S, ABANDON_CEILING_S)`. Tres rondas de ajuste con el
+   usuario antes de fijar los números: factor `×4` se descartó por
+   exagerado (bin7 ~5.2h → ~21h de espera); `×2` con techo de 10h
+   quedó como decisión final, con el propio usuario dando el
+   razonamiento del techo ("8h de dormir + 2h de buffer para
+   reconectar"). `ABANDON_FLOOR_S=1h` protege un job barato de
+   reencolarse por un simple lag de red breve. Sin estimación disponible
+   (worker sin `cpu_score`, o combinación sin referencia), cae
+   directo a `STALE_JOB_TIMEOUT_S` — única red de seguridad para ese
+   caso, sin cambios de comportamiento ahí.
+
+Se reencola si CUALQUIERA de las dos se cumple — son preguntas
+independientes ("¿ya debería haber terminado?" vs. "¿alguien sigue ahí
+en absoluto?"), no una sola fórmula intentando responder ambas a la vez.
+`STALE_JOB_TIMEOUT_S` bajado de 6h a 5h (pedido explícito del usuario al
+revisar el nuevo diseño) — sigue siendo la red de seguridad para
+combinaciones sin estimación, ya no el valor que domina el caso común.
+
+**`jobs.connected_s`, cómo se acumula:** `touch_heartbeat()` ahora lee
+el `last_heartbeat` ANTERIOR del worker antes de sobreescribirlo, calcula
+el intervalo transcurrido, y lo suma (recortado a
+`MAX_HEARTBEAT_ACCRUAL_S=120s`, 4× el intervalo real de heartbeat de
+30s) al job `claimed`/`running` de ese worker — un gap mayor a eso
+indica una desconexión real en el medio (red caída, PC suspendida), y
+ese hueco no debe contar como tiempo conectado. Se resetea a 0 cada vez
+que un job vuelve a `pending` (`record_result`/`record_failure` con
+reintentos restantes, o `requeue_stale_jobs()`) — el siguiente intento
+empieza su propio progreso desde cero, no arrastra el de un intento
+fallido anterior. Migración `ALTER TABLE jobs ADD COLUMN connected_s
+REAL NOT NULL DEFAULT 0` (idempotente, mismo patrón que las anteriores).
+
+**Bug real encontrado por el primer test que reproducía el caso real
+(no por revisión de código): el cutoff del `WHERE` de SQL en
+`requeue_stale_jobs()` usaba `max()` en vez de `min()` de los dos pisos
+posibles, excluyendo de entrada candidatos que el criterio fino en
+Python sí debía evaluar.** Con `STALE_JOB_TIMEOUT_S=5h` (mucho mayor que
+`ABANDON_FLOOR_S=1h` en el caso típico), el filtro SQL exigía heartbeat
+vencido por 5h completas antes de traer la fila a Python — así que un
+job cuyo umbral de abandono REAL era de solo ~1h (bin barato) nunca
+llegaba a evaluarse, porque el filtro grueso ya lo había descartado.
+Corregido a `min(STALE_JOB_TIMEOUT_S, ABANDON_FLOOR_S)` — el cutoff SQL
+debe ser el MÁS CORTO posible entre los criterios, no el más largo, para
+no excluir de más. 9 tests nuevos cubren el diseño completo (37→46 en
+total): escalado de `_abandon_timeout_s()` entre piso/techo, el
+escenario real reproducido explícitamente (bin6 con heartbeat vencido
+2h se reencola sin esperar las 5h fijas), acumulación de `connected_s`
+por heartbeat con y sin tope, reset a 0 al volver a `pending`, y que
+`connected_s` alto por sí solo NO reencola sin que también haya vencido
+el heartbeat (las dos condiciones son sobre timestamps distintos, no
+intercambiables).
+
+**Dashboard actualizado para mostrar tiempo conectado, no tiempo de
+pared, como métrica principal de un job en curso** — la columna
+"Duración" (antes solo `elapsedSinceClaim`) ahora usa `connected_s`
+como número principal, con el tiempo de pared disponible en el tooltip
+para quien lo quiera ver. Mismo criterio de color (`near-estimate`/
+`over-estimate`) pero comparado contra `connected_s`, no contra tiempo
+desde `claimed_at`. Detalle expandible gana "Tiempo conectado" y
+renombra el campo de pared a "Asignado desde (pared)" para dejar
+explícita la distinción entre ambos. `connected_s` ya viaja en
+`GET /api/v1/jobs` sin tocar `app.py` — mismo patrón que
+`actual_duration_s`, `SELECT j.*` en `list_jobs()` ya lo incluye
+automáticamente al agregarse la columna.
+
+**Sexto pedido, mismo día: las runs reales tardan un poco más que la
+estimación mostrada — margen de sobreestimación aplicado directamente
+sobre el número, no sobre el timeout de reencolado.** Ejemplo real del
+usuario: GCR_He bin7 estimado en ~5.2h tomó ~5.7h reales, ~10% más.
+Distinto de `ESTIMATE_SAFETY_FACTOR` (tolerancia antes de reencolar,
+nunca cambiaba el número mostrado) y de `ABANDON_FACTOR` (margen para
+que alguien reconecte, no de cómputo) — ninguno de los dos resolvía
+"quiero que el número que veo ya venga con colchón". Nuevo
+`DISPLAY_OVERESTIMATE_FACTOR = 1.15` aplicado directamente dentro de
+`estimate_job_duration_s()` (después de escalar por `cpu_score`) — como
+tanto el dashboard como `requeue_stale_jobs()` llaman a esa misma
+función, el margen se propaga a ambos automáticamente sin tocarlos por
+separado. Con esto, GCR_He bin7 al `cpu_score` de referencia pasa de
+mostrar 5.22h a 6.00h. 2 tests actualizados/nuevos: el test de escalado
+por `cpu_score` ya existente ahora incluye el factor en su cálculo
+esperado, y uno nuevo confirma explícitamente que la estimación al
+`cpu_score` de referencia exacto ya no es igual al número crudo de
+`REFERENCE_TIMINGS_S` (47 tests en total, todos pasan).
