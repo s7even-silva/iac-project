@@ -154,11 +154,26 @@ $ResumeScriptPath = Join-Path $LogDir "resume-worker.ps1"
 # que si necesitan privilegios de administrador y se quedan en ProgramData.
 $UserStateDir = Join-Path $env:LOCALAPPDATA "Geant4Worker"
 $PauseFile = Join-Path $UserStateDir "worker.paused"
-# Fijado a un commit concreto (no a la rama, que es mutable) -- asi el
-# codigo que corre despues de un reinicio es exactamente el mismo que
-# arranco la instalacion, no una version distinta si alguien pusheo
-# cambios entre medio. Actualizar este hash cuando el script cambie de
-# verdad y se quiera que los voluntarios reciban la version nueva.
+# Fallback SOLAMENTE para quien corra este script via "irm ... | iex"
+# (ejecucion directa en memoria, sin archivo en disco) en vez del metodo
+# documentado en GUIA_VOLUNTARIOS.md (descargar con Invoke-WebRequest y
+# despues ejecutar el .ps1 ya guardado) -- con el metodo documentado,
+# $SourceScriptPath (ver mas abajo) siempre esta poblado y este pin ni
+# siquiera se usa. Fijado a un commit concreto (no a la rama, que es
+# mutable) para que si de verdad hace falta usarlo, el codigo que corre
+# despues de un reinicio sea el mismo que arranco la instalacion.
+#
+# Limitacion real, senalada por un usuario revisando el codigo (no un
+# bug, una propiedad inevitable del enfoque): un archivo no puede
+# contener el SHA del commit que lo contiene a si mismo (cambiar el hash
+# cambia el contenido, lo que cambia el commit, lo que invalida el hash
+# que se acababa de poner). Por eso, en la practica, este pin siempre
+# apunta al commit ANTERIOR al que lo actualiza, nunca al propio. Esto
+# es aceptable para el proposito real (que el reinicio no continue con
+# una version vieja/rota) porque ese commit anterior YA tiene cualquier
+# fix relevante -- confirmado leyendo el commit senalado cada vez que se
+# actualiza este valor. Actualizar solo cuando el script cambie de forma
+# que de verdad importe para alguien reanudando tras un reinicio.
 $InstallScriptCommit = "23ab311b1dca8a4c892ba6ed392846a1c6c5bf77"
 $InstallScriptUrl = "https://raw.githubusercontent.com/s7even-silva/iac-project/$InstallScriptCommit/infra/deploy/install-worker.ps1"
 $MaxResumeAttempts = 3
@@ -171,12 +186,14 @@ if ($Action -eq "Install") { New-Item -ItemType Directory -Force -Path $LogDir |
 # correcto sin tener que calcular la ruta del perfil aparte.
 if ($Action -eq "Install") { New-Item -ItemType Directory -Force -Path $UserStateDir | Out-Null }
 
-# $MyInvocation.MyCommand.Path es $null cuando el script corre via
-# "irm ... | iex" (sin archivo en disco, el metodo de instalacion de un
-# solo comando que se documenta en la guia) -- en ese caso no hay nada
-# que copiar con Copy-Item, hay que volver a descargarlo de GitHub para
-# poder registrarlo en las Scheduled Tasks (que si necesitan un .ps1 real
-# en disco, no pueden apuntar a un bloque de codigo en memoria).
+# $MyInvocation.MyCommand.Path es $null solo si alguien corre este
+# script via "irm ... | iex" pese a que GUIA_VOLUNTARIOS.md ya no lo
+# recomienda (ver el comentario de $InstallScriptCommit mas arriba) --
+# en ese caso no hay nada que copiar con Copy-Item, hay que volver a
+# descargarlo de GitHub (al commit fijo, con la limitacion ya explicada)
+# para poder registrarlo en las Scheduled Tasks (que si necesitan un
+# .ps1 real en disco, no pueden apuntar a un bloque de codigo en
+# memoria).
 function Save-SelfCopy {
     $invokedPath = $SourceScriptPath
     if ($invokedPath -and (Test-Path $invokedPath)) {
@@ -222,6 +239,22 @@ function Write-InstallLog {
     $line = "[{0}] [{1}] {2}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Level, $Message
     Write-Host $line
     if (Test-Path $LogDir) { Add-Content -Path $LogFile -Value $line }
+}
+
+# Progreso TOTAL de la instalacion, no solo de la descarga de la imagen
+# (ver Invoke-DockerPullWithRetry para el progreso en vivo de esa parte
+# especifica) -- una instalacion desde cero tiene varios pasos que
+# pueden tardar minutos cada uno (WSL2, Docker Desktop, la imagen), y
+# antes no habia ninguna senal de "en que paso vamos" mas alla de leer
+# el mensaje de log de cada uno por separado. $script:TotalInstallSteps
+# se fija una sola vez, al principio del flujo de instalacion nueva (ver
+# mas abajo) -- la reanudacion post-reinicio y la actualizacion tienen
+# menos pasos, asi que cada flujo cuenta los suyos.
+$script:InstallStepCount = 0
+function Write-InstallStep {
+    param([string]$Message)
+    $script:InstallStepCount++
+    Write-InstallLog "[Paso $($script:InstallStepCount)/$($script:TotalInstallSteps)] $Message"
 }
 
 function Test-VirtualizationEnabled {
@@ -656,10 +689,25 @@ function Invoke-DockerPullWithRetry {
         throw "Espacio en disco insuficiente para descargar la imagen del worker. Libera espacio e intenta de nuevo."
     }
     for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
-        Write-InstallLog "Descargando la imagen del worker ($WorkerImage), intento $attempt de $MaxAttempts..."
-        $pullResult = Invoke-NativeCommand { docker pull $WorkerImage 2>&1 }
+        Write-InstallLog "Descargando la imagen del worker ($WorkerImage, ~5GB la primera vez), intento $attempt de $MaxAttempts..."
+        # "docker pull" ya genera su propio progreso en vivo por capa
+        # (bytes descargados/total, actualizado en la misma linea) --
+        # antes se capturaba en $output sin mostrar nada hasta terminar
+        # la descarga completa, dejando al voluntario sin ninguna senal
+        # de avance durante los minutos que tarda la imagen de ~5GB (lo
+        # que mas demora de toda la instalacion, y lo que mas depende de
+        # su conexion). Corregido con Tee-Object: la salida real de
+        # Docker se imprime en vivo en la consola (visible en una
+        # PowerShell interactiva real) Y se sigue capturando en $output
+        # para la deteccion de auth-error/reintento de mas abajo, sin
+        # perder ninguna de las dos cosas.
+        $pullResult = Invoke-NativeCommand {
+            docker pull $WorkerImage 2>&1 | ForEach-Object {
+                Write-InstallLog "  $_"
+                $_
+            }
+        }
         $output = $pullResult.Output
-        $output | ForEach-Object { Write-InstallLog "  $_" }
         if ($pullResult.ExitCode -eq 0) { return }
 
         $outputText = $output -join "`n"
@@ -1248,29 +1296,40 @@ if ($isResume) {
 Unregister-ScheduledTask -TaskName $ResumeTaskName -Confirm:$false -ErrorAction SilentlyContinue
 
 if (-not $isUpdate) {
+    # 8 pasos en una instalacion nueva -- ver Write-InstallStep. La
+    # actualizacion (rama $isUpdate de abajo) tiene su propio conteo,
+    # mucho mas corto, porque se salta WSL2/Docker Desktop.
+    $script:TotalInstallSteps = 8
+    Write-InstallStep "Verificando requisitos (arquitectura, version de Windows, virtualizacion, RAM)..."
     if (-not (Test-ArchitectureSupported)) { exit 1 }
     if (-not (Test-WindowsVersionSupported)) { exit 1 }
     if (-not (Test-VirtualizationEnabled)) { exit 1 }
     if (-not (Test-EnoughRam)) { exit 1 }
 
+    Write-InstallStep "Instalando/verificando WSL2 (puede tardar varios minutos, o pedir un reinicio)..."
     Install-Wsl2
     # Si Install-Wsl2 registro un reinicio, Register-ResumeTask ya llamo
     # a Restart-Computer y el script no continua mas alla de este punto.
 
+    Write-InstallStep "Instalando/verificando Docker Desktop..."
     Install-DockerDesktop
     Set-DockerAutoStart
     Start-DockerAndWait
 
+    Write-InstallStep "Verificando el modo de contenedores de Docker..."
     if (-not (Test-LinuxContainersMode)) { exit 1 }
 } else {
+    $script:TotalInstallSteps = 3
     # Ya sabemos que Docker responde (es como se detecto $isUpdate) --
     # solo falta refrescar el PATH de esta sesion de PowerShell por si
     # se abrio antes de que Docker Desktop terminara de instalarse.
     Sync-PathWithDockerCli
 }
 
+Write-InstallStep "Verificando que el Coordinator responda..."
 if (-not (Test-CoordinatorReachable)) { exit 1 }
 
+Write-InstallStep "Descargando la imagen del worker y creando el contenedor (el paso que mas tarda, sobre todo la primera vez)..."
 Install-WorkerContainer
 
 if (Test-WorkerPaused) {
@@ -1281,10 +1340,14 @@ if (Test-WorkerPaused) {
     Write-InstallLog "=== Listo (worker pausado, sin cambios). ==="
     Write-InstallLog "Para reanudarlo: $ResumeScriptPath"
 } else {
+    Write-InstallStep "Confirmando que el worker se registro en el Coordinator..."
     if (-not (Test-WorkerRegistered)) {
         throw "El worker se creo pero no se confirmo conectado al Coordinator -- no se reporta exito. Revisa 'docker logs geant4-worker' y vuelve a correr este script."
     }
 
+    if (-not $isUpdate) {
+        Write-InstallStep "Registrando el watchdog que revisa el worker en cada inicio de sesion..."
+    }
     Register-WatchdogTask
 
     Write-InstallLog "=== Listo. El worker esta corriendo y conectado. ==="

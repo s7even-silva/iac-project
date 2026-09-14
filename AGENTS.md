@@ -3019,3 +3019,97 @@ manifiesto de `bryam-local` usado para `REFERENCE_TIMINGS_S`),
 múltiples workers en vez de una sola máquina — no es parte de este
 cambio, solo queda anotado como posibilidad habilitada por este mismo
 dato.
+
+### Progreso en vivo de `docker pull` y pasos numerados de la instalación (2026-09-14)
+
+**Pedido del usuario: la descarga de la imagen (~5GB, lo que más tarda
+de toda la instalación y lo que más depende de la conexión del
+voluntario) no mostraba ninguna señal de avance hasta terminar del
+todo.** `Invoke-DockerPullWithRetry` capturaba toda la salida de `docker
+pull` en una variable y solo la volcaba al log línea por línea DESPUÉS
+de que el comando completo terminara — un voluntario con internet lento
+veía el instalador "colgado" varios minutos sin ninguna pista de que
+seguía trabajando.
+
+**Investigado antes de implementar: `docker pull` no tiene una bandera
+de progreso estructurado (`--format json` no existe para este
+subcomando)** — confirmado leyendo `docker pull --help`. La barra de
+porcentaje que se ve en una terminal interactiva normal viene de que
+Docker reescribe la misma línea con retornos de carro (`\r`), algo que
+no sobrevive intacto al pasar por el pipeline de objetos de PowerShell.
+La alternativa de leer el stream JSON crudo del Docker Engine API
+(confirmado por separado que sí trae `progressDetail.current/total` por
+capa, vía `curl --unix-socket`) se descartó para este script porque
+exigiría un cliente HTTP contra el socket/named pipe en PowerShell —
+mucho más complejo que lo que amerita esta mejora, y sin ganancia real
+sobre la opción elegida.
+
+**Corregido con `Invoke-NativeCommand { docker pull ... 2>&1 |
+ForEach-Object { Write-InstallLog "  $_"; $_ } }`**: cada línea que
+Docker emite (una por evento real: "Pulling fs layer", "Downloading",
+"Download complete", "Pull complete" por capa) se loguea EN VIVO al
+llegar, no se acumula para el final — verificado en vivo con una imagen
+real (`node:20-slim`, ~190MB) que las líneas efectivamente llegan
+escalonadas en el tiempo (t=2.8s, t=4.3s, ... t=20.8s), no todas de
+golpe al terminar. No es una barra de porcentaje agregada (decisión
+explícita, ver pregunta al usuario) — es el progreso real y ya
+estructurado que Docker genera por capa, sin inventar un parser de texto
+frágil propio. `$output` se sigue poblando igual que antes (el
+`ForEach-Object` re-emite cada línea con `$_` al final del bloque)
+para que la detección de `unauticated`/`denied` y la lógica de
+reintento de más abajo no cambien. Verificado end-to-end con las tres
+rutas reales de la función (éxito, reintento transitorio con imagen
+inexistente, error de permisos con `docker` mockeado): las tres siguen
+funcionando igual que antes de este cambio, solo que ahora con log en
+vivo en vez de solo al final.
+
+**Progreso TOTAL de la instalación, no solo de la descarga:** nuevo
+`Write-InstallStep` (junto a `Write-InstallLog`) antepone `[Paso N/M]`
+a los hitos principales del flujo — 8 pasos en una instalación nueva
+(verificar requisitos, WSL2, Docker Desktop, modo Linux containers,
+Coordinator alcanzable, imagen+contenedor, worker registrado, watchdog),
+3 en una actualización (Coordinator alcanzable, imagen+contenedor,
+worker registrado — se salta WSL2/Docker Desktop porque `$isUpdate` ya
+implica que funcionan). `$script:TotalInstallSteps` se fija una vez al
+principio de cada rama (`if (-not $isUpdate) {...} else {...}`) porque
+tienen conteos distintos; `Register-WatchdogTask` corre en ambos flujos
+pero solo se anuncia como paso numerado en la instalación nueva (no
+cuenta para el total de 3 de la actualización).
+
+**Segundo tema, no relacionado con progreso — corregido a partir de una
+revisión externa detallada del propio `$InstallScriptCommit`:** un
+usuario señaló con precisión el problema real de fondo: un archivo no
+puede contener el SHA del commit que lo contiene a sí mismo (cambiar el
+hash cambia el contenido → cambia el commit → invalida el hash recién
+puesto — ciclo sin punto fijo). Confirmado exactamente como lo describió:
+el pin del commit `23ab311...` en sí mismo decía `InstallScriptCommit =
+"1e38a334..."` (el commit ANTERIOR, no el propio) — inevitable con este
+diseño, no un descuido corregible con más cuidado. El propio usuario
+notó que esto ya no era grave para el caso real que importa (reinicio
+inmediato durante una instalación en curso): el commit anterior señalado
+YA contenía el fix relevante en cada caso verificado hasta ahora, así
+que un voluntario reanudando tras un reinicio nunca terminó recibiendo
+código roto — el diseño cumple su propósito práctico pese a la
+imposibilidad matemática de la autorreferencia exacta.
+
+**Solución de raíz aplicada, tal como la propuso el usuario:** el
+problema real no es el pin en sí, es que dependía de él en el camino
+NORMAL de instalación. `GUIA_VOLUNTARIOS.md` recomendaba `irm ... | iex`
+(ejecución directa en memoria, sin archivo en disco) como método
+principal — con eso, `$PSCommandPath` es `$null`, `Save-SelfCopy` no
+tiene ningún archivo propio que copiar, y cae a redescargar del pin fijo
+(el único lugar donde el problema de la autorreferencia importa de
+verdad). Cambiado a **descargar primero con `Invoke-WebRequest`, ejecutar
+después** (`.\install-worker.ps1`) en los tres comandos de la guía
+(instalar/actualizar, desinstalar) — con esto, `$PSCommandPath` siempre
+apunta al archivo real ya en disco, `Save-SelfCopy` simplemente lo copia
+tal cual, y el pin deja de usarse en el camino normal. `$InstallScriptCommit`
+se conserva como red de seguridad SOLO para quien decida usar `irm | iex`
+de todos modos (documentado explícitamente en el comentario del propio
+código, con la limitación matemática explicada para que quede claro por
+qué en ese caso excepcional el pin puede señalar al commit anterior, no
+al propio, y por qué eso sigue siendo aceptable). El costo de esta
+solución es un paso extra en el comando documentado (`Invoke-WebRequest`
++ `.\install-worker.ps1` en vez de una sola línea `irm | iex`) — aceptado
+a cambio de eliminar la circularidad del camino normal por completo, tal
+como lo pidió el usuario.
