@@ -2551,3 +2551,30 @@ aprobados. Docker Engine 29.8.0 reveló dos fallos adicionales ya corregidos:
 identidad con red host y defaults ausentes/vacíos (`User`). Recursos de ensayo
 retirados, sin jobs/API/DB de producción. Canario con digest publicado y pruebas
 Windows/Docker Desktop siguen siendo requisitos antes del despliegue general.
+
+### Dashboard de solo lectura del barrido (2026-09-14)
+
+`infra/coordinator/dashboard.html` — página HTML+CSS+JS vanilla que
+consulta `/api/v1/health`, `/api/v1/jobs` y `/api/v1/workers` para mostrar
+el estado del barrido: tarjetas de resumen, tabla de workers (online,
+RAM/CPU, `cpu_score`, digest de imagen) y tabla de jobs con filtros
+(status/especie/repetición/worker asignado) y detalle expandible por fila.
+Solo lectura, sin ningún botón de escritura. Servida por el propio
+coordinator en `GET /dashboard` (`app.py`, agregada a `_PUBLIC_PATHS`).
+
+**Diseño original descartado tras probarlo en vivo:** se planeó como
+Artifact de Claude Code con `fetch()` directo al coordinator desde el
+navegador del visitante, con `CORSMiddleware` como único cambio de
+backend — así se implementó primero, pero la CSP del sandbox donde corre
+un Artifact bloquea `fetch()`/XHR hacia cualquier host fuera de un
+allowlist fijo de CDNs (cdnjs, jsdelivr, fonts.googleapis); un dominio
+propio como `coordinator.vlaboratory.org` nunca pasa esa lista sin
+importar las cabeceras CORS del servidor — error real en consola:
+"Refused to connect because it violates the document's Content Security
+Policy", no un fallo de CORS (que sí funcionaba, verificado). Esa
+restricción no se había verificado antes de diseñar sobre esa base.
+Corregido sirviendo la página desde el propio coordinator (mismo origen
+que la API, sin CORS ni CSP cross-origin de por medio) — el
+`CORSMiddleware` ya no cumple ningún propósito así que se quitó (menos
+superficie expuesta, dado el riesgo ya aceptado de "sin autenticación de
+workers"). Detalle completo en [infra/DASHBOARD_PLAN.md](infra/DASHBOARD_PLAN.md).

@@ -1,168 +1,96 @@
-# Plan: dashboard del barrido distribuido (Artifact de Claude)
+# Dashboard del barrido distribuido — implementado (2026-09-14)
 
-Contexto para quien retome esto: el coordinator (`https://coordinator.vlaboratory.org`,
-FastAPI + SQLite, ver AGENTS.md "Cómputo distribuido") ya expone todo el dato
-crudo necesario por HTTP. Este plan es solo para **visualizarlo** — no cambia
-el diseño del coordinator/worker, salvo un middleware de CORS.
+Contexto: el coordinator (`https://coordinator.vlaboratory.org`, FastAPI +
+SQLite, ver AGENTS.md "Cómputo distribuido") ya exponía todo el dato crudo
+necesario por HTTP (`/api/v1/health`, `/api/v1/jobs`, `/api/v1/workers`).
+Este documento describe el dashboard de solo lectura ya construido sobre
+esos endpoints, y por qué terminó sirviéndose desde el propio coordinator
+en vez de como Artifact de Claude (plan original, descartado — ver abajo).
 
-Decisiones ya tomadas (no volver a preguntar):
-- **Hosting: Artifact de Claude Code**, no Cloudflare Pages. Más rápido de
-  armar y actualizar; se puede migrar a Cloudflare Pages después si hace
-  falta el dominio propio, pero no es parte de este plan.
-- **Rama: `infra/distributed-sweep` misma**, no una rama nueva. El único
-  cambio al coordinator (CORS) es chico y aislado.
-- **Solo lectura.** El dashboard nunca escribe al coordinator (no hay botón
-  de "pausar worker" ni similar) — evita cualquier necesidad de autenticación
-  del lado del dashboard.
+## Cambio de diseño: por qué no es un Artifact
 
-## 1. Qué datos ya existen (verificado, no asumido)
+El plan original proponía un Artifact de Claude Code haciendo `fetch()`
+directo desde el navegador del visitante hacia
+`coordinator.vlaboratory.org`, con CORS agregado en el coordinator como
+único cambio de backend. **Se implementó así y no funcionó**: el sandbox
+donde corre un Artifact aplica una Content-Security-Policy que solo admite
+conexiones (`fetch`/XHR) hacia un allowlist fijo de CDNs (cdnjs, jsdelivr,
+fonts.googleapis) — un dominio propio como `coordinator.vlaboratory.org`
+nunca pasa esa lista, sin importar qué cabeceras CORS mande el servidor.
+El error real en consola: `Refused to connect because it violates the
+document's Content Security Policy` — no es un error de CORS (que sí se
+había verificado y funcionaba), es la CSP del sandbox bloqueando la
+conexión antes de que la petición salga del navegador.
 
-`GET /api/v1/jobs` — lista completa (ahora mismo ~600 filas), cada una con:
-```
-job_id, species, bin_index, offset_x_m, repeticion, n_events, priority,
-min_ram_gb, min_cpu_count, min_cpu_score, status, claimed_by, claimed_at,
-attempt, max_attempts, last_error, created_at, updated_at
-```
-`status` es uno de `pending|claimed|running|done|failed`. `claimed_by` es el
-`worker_id` (o `null`) — es la clave para saber "qué máquina corre qué job".
+**Esto no se verificó antes de diseñar sobre esa base** — la suposición de
+que un Artifact podía hacer `fetch()` cross-origin libre, como cualquier
+página web servida normalmente, resultó incorrecta para este entorno
+específico. Ninguna combinación de cabeceras del lado del servidor lo
+arregla.
 
-`GET /api/v1/workers` — cada worker con:
-```
-worker_id, hostname, cpu_count, ram_gb, ram_free_gb, cpu_load_pct, label,
-registered_at, last_heartbeat, status, cpu_score, image_digest,
-seconds_since_heartbeat, online
-```
-`online` y `seconds_since_heartbeat` ya vienen calculados por el servidor
-(ver `app.py`, quinta ronda de revisión) — el dashboard no debe recalcular
-esto con su propio reloj, solo leer estos dos campos.
+**Solución adoptada:** el propio coordinator sirve el dashboard como
+página estática en `GET /dashboard` (mismo origen que `/api/v1/*`, sin
+CORS ni CSP cross-origin de por medio). El middleware `CORSMiddleware`
+agregado en el primer intento se quitó — no cumple ningún propósito una
+vez que el dashboard es same-origin, y menos superficie expuesta es mejor
+dado el riesgo ya aceptado de "sin autenticación de workers" (ver
+AGENTS.md). `/dashboard` se agregó a `_PUBLIC_PATHS` (mismo criterio que
+`/api/v1/health`) para que siga siendo accesible aunque `WORKER_TOKEN` se
+active más adelante.
 
-`GET /api/v1/health` — contadores agregados (`jobs_pending`, `jobs_running`,
-`jobs_done`, `jobs_failed`, `workers_online`, `stale_job_timeout_s`,
-`worker_image_digest`).
+## Qué se conserva del plan original
 
-Ningún endpoint pagina todavía — `GET /jobs` devuelve todo de una vez. Con
-~600 filas hoy esto es aceptable para cargarlo entero en el navegador y
-filtrar/ordenar en JS; si el barrido crece mucho más (miles de filas), vale
-la pena revisar paginación del lado del servidor antes de que el payload se
-vuelva pesado — no es necesario para la primera versión.
+- **Solo lectura**, sin ningún botón de escritura (pausar worker,
+  reencolar job, etc.) — el dashboard nunca llama a ningún endpoint
+  `POST`/`PATCH` del coordinator.
+- **Rama `infra/distributed-sweep`** misma, sin rama nueva.
+- **Filtros de cliente** (status/species/repetición/worker asignado), sin
+  ida y vuelta al servidor — con ~600 jobs esto sigue siendo viable
+  cargando todo de una vez.
+- **Actualización bajo demanda** (botón "Actualizar"), no `setInterval` —
+  sigue siendo una mejora opcional posterior, no parte de este corte.
 
-## 2. Cambio necesario en el coordinator: CORS
+## Dónde vive
 
-Hoy `GET /api/v1/health` responde bien por `curl` pero **sin** cabecera
-`Access-Control-Allow-Origin` (verificado explícitamente: `curl -H "Origin:
-https://example.pages.dev" .../health` da `200` pero sin esa cabecera) — un
-Artifact corriendo en el navegador del visitante (dominio de claude.ai/
-claudeusercontent.com) no podrá leer la API sin esto, aunque `curl` sí pueda.
+- `infra/coordinator/dashboard.html` — la página completa (HTML+CSS+JS
+  vanilla, sin build, sin dependencias de npm; solo Google Fonts vía
+  `<link>`, dentro del allowlist normal de un navegador — esto ya no
+  corre en un sandbox de Artifact, así que esa restricción no aplica
+  aquí).
+- `infra/coordinator/app.py`, ruta `GET /dashboard` — sirve ese archivo
+  con `FileResponse`.
 
-En `infra/coordinator/app.py`, agregar (después de crear `app = FastAPI(...)`,
-antes del middleware de token ya existente):
-```python
-from fastapi.middleware.cors import CORSMiddleware
+Acceso: `https://coordinator.vlaboratory.org/dashboard` una vez
+desplegado el cambio a la VM (mismo procedimiento de siempre: `git
+fetch`+`reset --hard` en `/opt/iac-project` corriendo como el usuario
+`coordinator`, `systemctl restart geant4-coordinator`).
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # solo lectura, sin cookies/credenciales -- ver nota abajo
-    allow_methods=["GET"],
-    allow_headers=["*"],
-)
-```
-`allow_origins=["*"]` es aceptable aquí porque (a) todos los endpoints que el
-dashboard toca son `GET` de solo lectura, sin datos sensibles más allá de lo
-que ya es público sin autenticación (ver "Sin autenticación de workers" en
-AGENTS.md, riesgo ya aceptado), y (b) no hay cookies ni credenciales de por
-medio. Si más adelante se activa `WORKER_TOKEN`, revisar si el dashboard
-necesita seguir funcionando sin él (probablemente sí, para no exponer el
-token en el navegador de cualquier visitante — en ese caso, un endpoint de
-solo lectura separado sin el middleware de token sería la vía correcta, no
-bypasear el token existente).
+## Qué muestra
 
-Verificar tras el cambio: reiniciar el servicio en la VM
-(`sudo systemctl restart geant4-coordinator`, mismo procedimiento ya usado
-para las migraciones anteriores) y confirmar con:
-```bash
-curl -sI https://coordinator.vlaboratory.org/api/v1/health -H "Origin: https://claudeusercontent.com" | grep -i access-control
-```
+1. Tarjetas de resumen (`pending`/`running`/`done`/`failed`, workers
+   online) desde `/api/v1/health`.
+2. Tabla de **workers**: estado online/offline (calculado por el
+   coordinator con su propio reloj, ver `seconds_since_heartbeat`/`online`
+   en `app.py`), núcleos, RAM libre/total, carga de CPU, `cpu_score`,
+   digest de imagen truncado.
+3. Tabla de **jobs** con filtros por estado, especie, repetición, y
+   búsqueda de texto libre sobre el worker asignado (cruza `claimed_by`
+   contra la tabla de workers para mostrar el label, no el UUID crudo).
+   Click en una fila expande el detalle (bin, offset, intentos,
+   `last_error` si `failed`, timestamps).
 
-## 3. Diseño del Artifact
+## Fuera de alcance (sin cambios respecto al plan original)
 
-Una sola página HTML con JS vanilla (sin build, sin dependencias de npm) que:
+- Cualquier acción de escritura desde el dashboard.
+- Gráficas históricas/series de tiempo — el coordinator no trackea eso
+  hoy.
+- Autenticación del dashboard en sí — es de solo lectura sobre datos ya
+  públicos sin auth (mismo riesgo aceptado que el resto de la API, ver
+  AGENTS.md).
 
-1. Al cargar, hace `fetch()` a los 3 endpoints (`/health`, `/jobs`, `/workers`)
-   directo desde el navegador del visitante hacia
-   `https://coordinator.vlaboratory.org` — sin backend propio del Artifact,
-   sin proxy.
-2. Muestra un resumen arriba (tarjetas: pending/running/done/failed,
-   workers online) — datos de `/health`.
-3. Una tabla de **workers**: label, `online` (con color: verde si `true`),
-   `seconds_since_heartbeat` (formateado legible, ej. "hace 12s"), `cpu_count`,
-   `ram_free_gb`/`ram_gb`, `cpu_load_pct`, `cpu_score`, `image_digest`
-   (truncado, con tooltip del hash completo) — responde directamente "qué
-   máquina corre qué" al cruzarla con la tabla de jobs por `worker_id`.
-4. Una tabla de **jobs**, con filtros de cliente (sin ida y vuelta al
-   servidor, ya que los datos completos ya están en memoria del navegador):
-   - Por `status` (pending/running/done/failed) — probablemente el filtro
-     más usado.
-   - Por `species` (GCR_H/GCR_He/SEP_p).
-   - Por `repeticion` (0-4 hoy).
-   - Buscador de texto libre sobre `claimed_by`/label del worker asignado
-     (cruzando con la tabla de workers para mostrar el label, no el
-     `worker_id` crudo, en la columna "asignado a").
-5. Click en una fila de job para expandir detalle (bin_index, offset_x_m,
-   n_events, attempt/max_attempts, last_error si `status=failed`,
-   created_at/updated_at) — evita saturar la tabla principal con columnas
-   que no todos necesitan ver siempre.
+## Mejora opcional futura
 
-### Actualización en vivo
-
-El usuario dijo que no es estrictamente necesario, así que la primera
-versión puede ser **solo bajo demanda** (un botón "Actualizar" que repite
-los 3 `fetch()`) — más simple, cero costo de mantenimiento, y evita
-sorpresas de un `setInterval` corriendo indefinidamente en la pestaña de
-cualquiera que la deje abierta.
-
-Si más adelante se quiere ese "en vivo": un `setInterval` cada 30-60s
-llamando a los mismos 3 endpoints y re-renderizando (mismo patrón que ya
-usa el propio worker para el heartbeat, no hace falta WebSockets ni SSE —
-el volumen de datos y la frecuencia no lo justifican). Dejar esto como
-mejora opcional posterior, no parte del primer corte.
-
-## 4. Pasos concretos para la sesión que implemente esto
-
-1. Leer `AGENTS.md`, sección "Cómputo distribuido para el barrido de
-   ActiveShield_Sim", para el contexto completo del diseño del coordinator
-   (por qué el job es una combinación `species/bin_index/offset_x_m/
-   repeticion`, qué es `cpu_score`, qué es `image_digest`/auto-actualización).
-2. Confirmar el estado real de la cola antes de diseñar contra datos
-   viejos: `curl -s https://coordinator.vlaboratory.org/api/v1/health`.
-3. Agregar el `CORSMiddleware` en `infra/coordinator/app.py` (sección 2
-   arriba). Correr los tests existentes (`infra/coordinator/
-   test_coordinator.py`) para confirmar que nada se rompe — un middleware
-   de CORS no debería afectar ninguna lógica de negocio, pero verificar.
-4. Aplicar el cambio en la VM real (mismo procedimiento ya usado varias
-   veces en esta sesión: `git fetch`+`reset --hard` en `/opt/iac-project`,
-   `systemctl restart geant4-coordinator`) y verificar la cabecera CORS
-   como se indica en la sección 2.
-5. Construir el Artifact (HTML+JS+CSS en un solo archivo, sin dependencias
-   externas más allá de quizás una fuente de Google Fonts si se quiere,
-   ver reglas de diseño de Artifacts) que consuma la API real.
-6. Probar en vivo contra el coordinator real antes de dar por terminado —
-   confirmar que los filtros funcionan, que las tablas muestran datos
-   coherentes con lo que da `curl` directo, y que el botón de actualizar
-   funciona.
-7. Publicar el Artifact y compartir el link — decidir en esa sesión si
-   conviene pin/compartir con el equipo.
-
-## 5. Fuera de alcance de este plan (no implementar salvo que se pida)
-
-- Autenticación del dashboard en sí (es de solo lectura sobre datos ya
-  públicos sin auth, ver riesgos aceptados en AGENTS.md).
-- Cualquier acción de escritura desde el dashboard (pausar/reencolar un
-  job a mano, cambiar `worker_image_digest`, etc.) — eso seguiría
-  haciéndose por SSH + los scripts ya existentes (`set_worker_image.py`,
-  updates directos a la DB), no desde una UI pública.
-- Gráficas históricas/series de tiempo (ej. "jobs completados por hora") —
-  el coordinator no guarda ese historial hoy (solo el estado actual de cada
-  fila), haría falta agregar tracking de eventos aparte si se quiere esto.
-- Migrar a Cloudflare Pages / dominio propio — mencionado por el usuario
-  como intención pero explícitamente pospuesto en favor del Artifact para
-  la primera versión.
+Actualización en vivo: un `setInterval` cada 30-60s repitiendo los mismos
+3 `fetch()` y re-renderizando — mismo patrón que ya usa el propio worker
+para su heartbeat, no amerita WebSockets/SSE dado el volumen y frecuencia
+de datos. No implementado a propósito en este corte.
