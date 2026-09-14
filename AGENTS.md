@@ -2578,3 +2578,54 @@ que la API, sin CORS ni CSP cross-origin de por medio) — el
 `CORSMiddleware` ya no cumple ningún propósito así que se quitó (menos
 superficie expuesta, dado el riesgo ya aceptado de "sin autenticación de
 workers"). Detalle completo en [infra/DASHBOARD_PLAN.md](infra/DASHBOARD_PLAN.md).
+
+### Bug real corregido: repeticiones corriendo en paralelo, no en serie (2026-09-14)
+
+**Encontrado en producción, no en revisión de código:** verificando el
+estado real de la cola tras un pedido explícito del usuario ("las
+repeticiones deben correr en serie, no en paralelo"), se confirmó que
+`claim_next_job()` (`db.py`) nunca había considerado `repeticion` al
+elegir el siguiente job — ordenaba solo por `priority DESC, job_id ASC`.
+Con las 600 combinaciones ya sembradas (`seed_full_sweep.py` +
+`replicate_repeats.py`, 5 repeticiones de 120 cada una), esto significaba
+que un worker libre podía tomar cualquier job pendiente de cualquier
+repetición, sin importar si las anteriores ya habían terminado. Estado
+real confirmado antes del fix: la repetición 0 todavía tenía 8 jobs
+`pending`, mientras las repeticiones 1, 2, 3 y 4 ya tenían un job cada
+una en `running` — exactamente el comportamiento que no se quería.
+
+**Corregido:** `ORDER BY repeticion ASC, priority DESC, job_id ASC` en
+`claim_next_job()` — un worker libre siempre recibe primero un job de la
+repetición más baja que todavía tenga trabajo `pending`, sin importar la
+prioridad de especie/bin de una repetición más alta. Dentro de la misma
+repetición, el orden por prioridad se conserva igual que antes (bin7
+antes que bin0, etc., ver la tabla de costos reales más arriba). 2 tests
+nuevos en `test_coordinator.py` (29 en total): uno reproduce el bug real
+(repetición baja con prioridad baja gana sobre repetición alta con
+prioridad alta) y otro confirma que el desempate por prioridad dentro de
+una misma repetición sigue funcionando.
+
+**Los 4 jobs que ya estaban `running` fuera de orden se dejan terminar**
+(decisión explícita del usuario) — ya llevaban avance real de cómputo;
+reencolarlos habría perdido ese trabajo sin necesidad. El fix aplica
+hacia adelante: ningún job nuevo se asigna fuera de secuencia desde este
+cambio. No se tocó `replicate_repeats.py`/`seed_full_sweep.py` — ninguno
+de los dos asume nada sobre el orden de asignación, solo siembran filas.
+
+### Dashboard: columna de antigüedad del worker (2026-09-14)
+
+A pedido del usuario, `infra/coordinator/dashboard.html` gana una columna
+"Antigüedad" en la tabla de workers, junto a "Último latido" — usa
+`registered_at` (ya devuelto por `GET /api/v1/workers`, sin cambios de
+backend) formateado como duración relativa (min/h/d). **Nota real sobre
+qué mide este campo, no solo cosmética:** `registered_at` se fija en el
+primer `INSERT` de esa identidad de worker y el `ON CONFLICT ... DO
+UPDATE` de `upsert_worker()` nunca lo sobrescribe — como `worker_id` vive
+en el volumen Docker persistente (ver "Worker, endurecido..." más arriba),
+sobrevive a reinicios del contenedor. Por eso "Antigüedad" es tiempo desde
+el primer registro de esa identidad, **no** tiempo conectado sin
+interrupciones — un worker offline hace horas sigue acumulando
+antigüedad. Aclarado con un tooltip en la celda (`title="registrado el
+... · no descuenta tiempo offline"`) en vez de una columna separada de
+"tiempo online acumulado", que exigiría trackear sesiones de
+conexión/desconexión — dato que el coordinator no guarda hoy.

@@ -68,6 +68,30 @@ def test_full_cycle_pending_to_done():
     assert jobs_done[0]["job_id"] == job_id
 
 
+def test_claim_prefers_lower_repetition_over_higher_priority():
+    # Repeticiones en serie (decision de equipo, 2026-09-14): un job de
+    # repeticion 1 con prioridad alta NO debe ganarle a uno de repeticion
+    # 0 con prioridad baja -- la serie completa. Reproduce el bug real
+    # encontrado en produccion: repeticiones 1-4 arrancaban en paralelo
+    # mientras la 0 seguia con trabajo pendiente.
+    db.upsert_worker("w1", "h1", 8, 16.0, "")
+    low_rep_low_priority = db.insert_job("GCR_H", 0, 0.0, 0, 10000, priority=0)
+    db.insert_job("GCR_He", 7, 0.0, 1, 10000, priority=20)
+
+    job = db.claim_next_job("w1")
+    assert job["job_id"] == low_rep_low_priority
+    assert job["repeticion"] == 0
+
+
+def test_claim_still_orders_by_priority_within_same_repetition():
+    db.upsert_worker("w1", "h1", 8, 16.0, "")
+    db.insert_job("GCR_H", 0, 0.0, 0, 10000, priority=0)
+    high_priority_same_rep = db.insert_job("GCR_He", 7, 0.0, 0, 10000, priority=20)
+
+    job = db.claim_next_job("w1")
+    assert job["job_id"] == high_priority_same_rep
+
+
 def test_failed_result_requeues_until_max_attempts():
     db.upsert_worker("w1", "h1", 8, 16.0, "")
     job_id = db.insert_job("SEP_p", 0, 0.0, 0, 100)

@@ -372,6 +372,7 @@ footer.note code{font-family:"IBM Plex Mono",monospace;background:var(--surface-
           <tr>
             <th>Estado</th>
             <th>Etiqueta</th>
+            <th>Antigüedad</th>
             <th>Último latido</th>
             <th>Núcleos</th>
             <th>RAM libre</th>
@@ -454,6 +455,16 @@ function fmtGb(n){
   if (n == null) return "—";
   return n.toFixed(2) + " GB";
 }
+function fmtDuration(sinceIso){
+  if (!sinceIso) return "—";
+  const since = new Date(sinceIso);
+  if (isNaN(since)) return "—";
+  const totalMin = Math.floor((Date.now() - since.getTime()) / 60000);
+  if (totalMin < 60) return `${totalMin}min`;
+  const totalH = totalMin / 60;
+  if (totalH < 48) return `${totalH.toFixed(1)}h`;
+  return `${(totalH / 24).toFixed(1)}d`;
+}
 function esc(s){
   return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
@@ -530,6 +541,7 @@ function renderWorkers(){
     <tr id="worker-${esc(w.worker_id)}">
       <td><span class="pill ${w.online ? "online" : "offline"}">${w.online ? "online" : "offline"}</span></td>
       <td><strong>${esc(w.label || w.hostname)}</strong></td>
+      <td class="tab-num" title="registrado el ${esc(w.registered_at || "—")} · no descuenta tiempo offline">${fmtDuration(w.registered_at)}</td>
       <td class="tab-num">${fmtAgo(w.seconds_since_heartbeat)}</td>
       <td class="tab-num">${w.cpu_count ?? "—"}</td>
       <td class="tab-num">${fmtGb(w.ram_free_gb)}<span style="color:var(--text-faint)"> / ${fmtGb(w.ram_gb)}</span></td>
