@@ -3701,3 +3701,118 @@ y vencimientos en unconfirmed_results, sin afirmar que el coordinator reasignó
 el job solo por un reloj local. Escritura de CSV/manifiesto con temporales/fsync,
 metadata final y preservación de entrada previa; reintento entre jobs. Detalles
 y límites de los ensayos en infra/deploy/README.md.
+
+### Bug real de producción: `install-worker.ps1` colgado antes de `[Paso 1/3]` -- Task Scheduler sacado del camino crítico (2026-09-14)
+
+**Reportado con captura de pantalla real, diagnóstico externo preciso
+verificado antes de aplicar nada.** Un voluntario corrió el instalador
+para actualizar y la ventana quedó congelada antes de imprimir
+`[Paso 1/3]` -- justo entre el banner inicial y el primer paso numerado.
+Verificado leyendo el código exacto de esa región: `Unregister-
+ScheduledTask -TaskName $ResumeTaskName -Confirm:$false -ErrorAction
+SilentlyContinue` corría **incondicionalmente** ahí, sin importar si
+`$isResume` era `true` o `false` -- en una actualización normal (el caso
+real reportado) esa tarea nunca existió, así que no había nada que
+desregistrar, pero la llamada se hacía de todos modos. `-ErrorAction
+SilentlyContinue` no protege contra un cuelgue real del cmdlet (solo
+suprime el error normal de "la tarea no existe") -- causa exacta en esa
+PC específica sin confirmar (Task Scheduler local en estado raro,
+WMI/CIM lento, antivirus interceptando la llamada), pero irrelevante
+para el fix: cualquier causa queda cubierta.
+
+**Primer intento, descartado explícitamente por el usuario: aislar la
+llamada con un timeout (`Start-Job`+`Wait-Job`) sin cambiar CUÁNDO se
+llama.** Funciona, pero dejaba `Get-ScheduledTask -TaskName
+$ResumeTaskName` como la forma de detectar `$isResume` -- **ese mismo
+cmdlet, con el mismo riesgo de cuelgue, seguía corriendo en cada
+ejecución normal** para decidir si era una reanudación. El usuario pidió
+explícitamente un fix permanente que sacara Task Scheduler del camino
+crítico por completo, no solo mitigar el síntoma con un timeout.
+
+**Rediseño completo aplicado, en 5 piezas, tal como las especificó el
+usuario:**
+
+1. **`-ResumeAfterWsl` (switch, parámetro interno no documentado en
+   `.PARAMETER`)** reemplaza `Get-ScheduledTask -TaskName
+   $ResumeTaskName -ErrorAction SilentlyContinue` para detectar
+   `$isResume` -- la propia Scheduled Task de resume (`Register-
+   ResumeTask`) pasa este flag como argumento al invocar el script tras
+   el reinicio. Una ejecución normal (instalación nueva sin reinicio, o
+   actualización) ya **no consulta Task Scheduler en absoluto** para
+   decidir esto.
+2. **`Unregister-ScheduledTaskSafe -TaskName $ResumeTaskName` tras el
+   banner, ahora condicional a `$isResume`** (antes incondicional, la
+   causa directa del cuelgue reportado) -- solo se intenta desregistrar
+   cuando de verdad hay algo que limpiar.
+3. **`Register-WatchdogTask` separada en dos funciones**:
+   `Update-WatchdogScript` (escribe/actualiza `watchdog.ps1` en su ruta
+   estable dentro de `$LogDir`, se llama SIEMPRE) y `Register-
+   WatchdogTask` (registra la Scheduled Task en sí, solo en instalación
+   nueva). Una actualización ya **no vuelve a tocar Task Scheduler para
+   el watchdog** -- la tarea de la instalación original ya apunta a esa
+   misma ruta estable, así que recoge el contenido nuevo de
+   `watchdog.ps1` en su próximo disparo (login o el intervalo de 30 min)
+   sin necesitar registrarse de nuevo. A diferencia del primer intento
+   descartado (que sacrificaba refrescar el watchdog en cada
+   actualización como tradeoff permanente), esta vía SÍ sigue
+   actualizando el contenido del watchdog en cada actualización -- solo
+   deja de tocar la Scheduled Task, que es la parte que puede colgarse.
+4. **`Register-ScheduledTask -Force` sin `Unregister-ScheduledTask`
+   previo**, tanto para la tarea de resume como para el watchdog --
+   `-Force` ya reemplaza una tarea existente del mismo nombre, el
+   desregistro previo nunca fue necesario.
+5. **`$ResumePendingFile` (`resume.pending` en `$LogDir`)** hace
+   tolerante la reanudación a una tarea huérfana -- si Windows llegara a
+   fallar al desregistrar `$ResumeTaskName` (paso 2, todavía protegido
+   con `Unregister-ScheduledTaskSafe` con timeout, ya no crítico si
+   tarda), esa tarea podría disparar el script de nuevo en un login
+   FUTURO sin relación con el reinicio original. `Register-ResumeTask`
+   crea el marcador antes de reiniciar; el flujo principal lo exige
+   ADEMÁS de `-ResumeAfterWsl` para aceptar la reanudación como real, y
+   lo borra al consumirla -- una tarea huérfana que dispare después
+   encuentra el marcador ausente y sale de inmediato sin instalar ni
+   actualizar nada.
+
+**`Unregister-ScheduledTaskSafe` (el helper con timeout del primer
+intento) se conserva**, no se descarta -- sigue siendo la forma correcta
+de hacer la limpieza real que aún hace falta (`Uninstall-Worker`
+desregistrando ambas tareas; el paso 2 de arriba) — esos puntos ya no
+son críticos para completar la instalación si Task Scheduler tarda,
+así que el timeout ahí es una mejora de robustez adicional, no la
+defensa principal.
+
+**Bug de testing real encontrado y corregido en el proceso, no solo el
+fix de producción:** `Start-Job` arranca un runspace/proceso completamente
+nuevo -- un mock de `Unregister-ScheduledTask` definido en el scope del
+test **nunca era visible dentro del Job**, confirmado verificándolo de
+forma aislada (`$global:events` dentro del job daba `$null`). El test
+existente pasaba igual porque no había ningún assert verificando que la
+desregistración *ocurriera* de verdad, solo que el escenario completo no
+lanzara una excepción -- un test que pasaba sin probar nada real.
+Corregido reemplazando `Unregister-ScheduledTaskSafe` completa (no solo
+el cmdlet) por una versión síncrona sin `Start-Job` dentro del test, y
+agregando asserts nuevos que sí verifican `task:watchdog`/`task:resume`
+en los eventos capturados.
+
+**Segundo bug de testing encontrado al escribir el test nuevo para
+`-ResumeAfterWsl`/`$ResumePendingFile`:** un `return` dentro de
+`Invoke-Expression` **no sale de la función que la invoca** -- solo
+termina la evaluación de esa cadena, el resto del cuerpo de la función
+sigue normal (confirmado con un experimento aislado mínimo). El primer
+diseño del test asumía que `return` cortaría camino igual que en el
+flujo real de nivel superior (donde sí termina el script completo) --
+corregido verificando en cambio que el código que va DESPUÉS del
+`return` (`$isResume = ...`) nunca llegó a ejecutarse
+(`Test-Path variable:isResume`), que es la forma correcta de observar el
+mismo efecto sin depender de una semántica de `return` que
+`Invoke-Expression` no reproduce.
+
+**3 tests nuevos/reforzados en `test_worker_lifecycle.ps1` (20 en
+total, antes 17):** dos asserts nuevos en el escenario ya existente de
+`Uninstall-Worker` exitoso (`task:watchdog`/`task:resume` genuinamente
+invocados); un escenario nuevo completo para `-ResumeAfterWsl` con tres
+casos -- tarea huérfana (`-ResumeAfterWsl` sin marcador, `$isResume`
+nunca se fija), reanudación real (`-ResumeAfterWsl` con marcador,
+`$isResume=true`, marcador se borra), y ejecución normal (sin el flag,
+`$isResume=false`). Sintaxis validada de punta a punta tras el
+rediseño completo.

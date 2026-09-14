@@ -17,6 +17,14 @@ $WatchdogTaskName='watchdog'; $ResumeTaskName='resume'
 function Write-InstallLog { param($Message,$Level) }
 function Get-ScheduledTask { param($TaskName) return $TaskName }
 function Unregister-ScheduledTask { param($TaskName,[switch]$Confirm) $global:events.Add("task:$TaskName") }
+# Reemplaza la funcion real completa, NO solo el cmdlet Unregister-
+# ScheduledTask -- la real usa Start-Job, que arranca un runspace/proceso
+# nuevo sin visibilidad del mock de arriba (confirmado: un mock ahi nunca
+# se invocaba de verdad, ver el comentario en install-worker.ps1). Esta
+# version sincronica prueba que Uninstall-Worker sigue pidiendo la
+# eliminacion de las tareas correctas, sin poder ejercitar el mecanismo
+# de timeout en si (eso exige Windows/Task Scheduler real).
+function Unregister-ScheduledTaskSafe { param($TaskName,[int]$TimeoutSeconds) Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false }
 function Save-PauseResumeScripts {}
 function docker {
     $global:events.Add(($args -join ' '))
@@ -59,6 +67,12 @@ try {
     Assert ($events -contains 'rm geant4-worker') 'No elimino worker'
     Assert (-not ($events -match '^volume rm')) 'Borro datos por defecto'
     Assert (-not (Test-Path $PauseFile)) 'Quedo pausa obsoleta'
+    # Verifica que Uninstall-Worker realmente pide desregistrar AMBAS
+    # tareas via Unregister-ScheduledTaskSafe -- no solo que el escenario
+    # completo no truena (ver el mock sincronico de esa funcion mas
+    # arriba, y por que Start-Job real no es mockeable aqui).
+    Assert ($events -contains 'task:watchdog') 'No desregistro la tarea del watchdog'
+    Assert ($events -contains 'task:resume') 'No desregistro la tarea de resume'
     Reset
     $RemoveWorkerData=$true
     Invoke-UninstallTest -Confirm:$false
@@ -165,5 +179,58 @@ try {
     Assert ($resolved.AutoUpdate -eq '0') 'Instalador reactiva auto-update deshabilitado'
     $resolved=Resolve-UpdateFixture -WorkerImage 'explicit-pin' -WorkerAutoUpdate '1'
     Assert ($resolved.Image -eq 'explicit-pin' -and $resolved.AutoUpdate -eq '1') 'Ignora opciones explicitas'
-    Write-Host 'PASS: 17 escenarios de ciclo de vida (mocks; no certifican Windows).'
+
+    # Bloque real de tolerancia a tarea huerfana (2026-09-14, fix
+    # permanente): -ResumeAfterWsl ya no consulta Task Scheduler para
+    # decidir $isResume -- exige ADEMAS que $ResumePendingFile exista.
+    # El nodo IfStatementAst solo cubre el "if {...}" en si -- se extrae
+    # tambien la asignacion de $isResume y su limpieza del marcador
+    # (las 2 lineas que le siguen en el flujo real) buscando el texto
+    # completo entre el inicio del if y el cierre del segundo bloque,
+    # para probar el mecanismo completo, no solo la mitad del if.
+    $global:resumeIfNode = $ast.Find({param($node)
+        $node -is [System.Management.Automation.Language.IfStatementAst] -and
+        $node.Extent.Text.StartsWith('if ($ResumeAfterWsl -and -not (Test-Path $ResumePendingFile)) {')
+    }, $true)
+    $global:resumeAssignNode = $ast.Find({param($node)
+        $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+        $node.Extent.Text -eq '$isResume = [bool]$ResumeAfterWsl'
+    }, $true)
+    $global:resumeCleanupNode = $ast.Find({param($node)
+        $node -is [System.Management.Automation.Language.IfStatementAst] -and
+        $node.Extent.Text -eq 'if ($isResume) { Remove-Item $ResumePendingFile -ErrorAction SilentlyContinue }'
+    }, $true)
+    $global:resumeBlock = $resumeIfNode.Extent.Text + "`n" + $resumeAssignNode.Extent.Text + "`n" + $resumeCleanupNode.Extent.Text
+    function Resolve-ResumeFixture {
+        [CmdletBinding()]param([switch]$ResumeAfterWsl, [switch]$MarkerExists)
+        $ResumePendingFile = Join-Path $temp 'resume.pending'
+        Remove-Item $ResumePendingFile -ErrorAction SilentlyContinue
+        if ($MarkerExists) { Set-Content -Path $ResumePendingFile -Value 'x' }
+        Remove-Variable -Name isResume -ErrorAction SilentlyContinue
+        # Nota real de PowerShell, confirmada aparte antes de escribir
+        # esto: un 'return' dentro de un Invoke-Expression NO sale de la
+        # funcion que lo invoca -- solo termina la evaluacion de esa
+        # cadena, y el resto del CUERPO DE LA FUNCION (aqui, nada mas)
+        # sigue normal. Por eso la forma correcta de verificar el caso
+        # huerfano no es "la funcion corto camino", es "el codigo despues
+        # del return (fijar $isResume) nunca se ejecuto" -- que es
+        # exactamente lo que SI iguala al comportamiento real de nivel
+        # superior (ahi 'return' termina el script completo antes de
+        # llegar a $isResume = ...).
+        Invoke-Expression $global:resumeBlock
+        return @{
+            IsResumeWasSet = (Test-Path variable:isResume)
+            IsResume = $isResume
+            MarkerStillExists = Test-Path $ResumePendingFile
+        }
+    }
+    $orphan = Resolve-ResumeFixture -ResumeAfterWsl -MarkerExists:$false
+    Assert (-not $orphan.IsResumeWasSet) 'Tarea huerfana (-ResumeAfterWsl sin marcador) no debio llegar a fijar $isResume'
+    $real = Resolve-ResumeFixture -ResumeAfterWsl -MarkerExists
+    Assert ($real.IsResume -eq $true) 'Reanudacion real (-ResumeAfterWsl con marcador) no fijo $isResume=true'
+    Assert (-not $real.MarkerStillExists) 'Reanudacion real no borro el marcador tras consumirlo'
+    $fresh = Resolve-ResumeFixture -MarkerExists:$false
+    Assert ($fresh.IsResume -eq $false) 'Instalacion/actualizacion normal (sin -ResumeAfterWsl) no debio marcarse como reanudacion'
+
+    Write-Host 'PASS: 20 escenarios de ciclo de vida (mocks; no certifican Windows).'
 } finally { Remove-Item $temp -Recurse -Force }
