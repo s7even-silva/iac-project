@@ -3113,3 +3113,39 @@ solución es un paso extra en el comando documentado (`Invoke-WebRequest`
 + `.\install-worker.ps1` en vez de una sola línea `irm | iex`) — aceptado
 a cambio de eliminar la circularidad del camino normal por completo, tal
 como lo pidió el usuario.
+
+**Tres detalles menores corregidos tras revisión externa del cambio
+anterior, ninguno funcional:**
+
+- **Comentario desactualizado en `Invoke-DockerPullWithRetry`:** decía
+  "corregido con Tee-Object", pero el código final usa `ForEach-Object`
+  + `Write-InstallLog` + `$_` (un primer intento sí usó `Tee-Object`,
+  descartado antes del commit porque no aportaba nada sobre el patrón
+  actual). Corregido el texto para que coincida con el código real.
+- **Progreso "retrocede" visualmente tras un reinicio por WSL2:**
+  `$isResume` entra por la misma rama de 8 pasos que una instalación
+  nueva (el proceso que se reinició no llegó más allá del paso de WSL2,
+  y el proceso nuevo — una Scheduled Task en una sesión de PowerShell
+  distinta — no tiene forma de heredar en qué paso iba el anterior). Ver
+  `[Paso 1/8]` de nuevo después de un reinicio parece que la instalación
+  "retrocedió", aunque no rompe nada (las verificaciones son
+  idempotentes y rápidas la segunda vez). **No se intentó fabricar un
+  número de paso heredado** (sería peor: un número inventado sin
+  relación real con el trabajo restante) — se aclaró en texto, con un
+  mensaje explícito antes de reiniciar el conteo explicando que los
+  pasos se repiten pero deberían ser rápidos porque WSL2/Docker Desktop
+  ya quedaron listos la vez anterior.
+- **El contador no llega al total cuando el worker está pausado:**
+  `Test-WorkerPaused` corta el flujo en el paso 2 de 8 (o 2 de 3 en
+  actualización) — nunca llega a "confirmar registro"/"watchdog" porque
+  no aplican mientras está pausado. El denominador representa el flujo
+  normal, no todas las salidas alternativas — aclarado con una línea
+  explícita en el mensaje final ("Listo (worker pausado)") en vez de
+  intentar ajustar el total a posteriori (los pasos ya logueados con el
+  total original no se pueden reescribir, y cambiar el denominador solo
+  para el mensaje final habría sido inconsistente con lo ya impreso
+  arriba).
+
+17 escenarios de `test_worker_lifecycle.ps1` siguen pasando; verificado
+con `Invoke-ScriptAnalyzer` que el conteo de hallazgos no cambió (11
+antes y después).

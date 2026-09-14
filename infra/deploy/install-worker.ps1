@@ -696,11 +696,14 @@ function Invoke-DockerPullWithRetry {
         # la descarga completa, dejando al voluntario sin ninguna senal
         # de avance durante los minutos que tarda la imagen de ~5GB (lo
         # que mas demora de toda la instalacion, y lo que mas depende de
-        # su conexion). Corregido con Tee-Object: la salida real de
-        # Docker se imprime en vivo en la consola (visible en una
-        # PowerShell interactiva real) Y se sigue capturando en $output
-        # para la deteccion de auth-error/reintento de mas abajo, sin
-        # perder ninguna de las dos cosas.
+        # su conexion). Corregido logueando cada linea con Write-InstallLog
+        # AL LLEGAR (dentro del ForEach-Object, no despues) y re-emitiendola
+        # con "$_" para que $output (mas abajo) se siga poblando igual que
+        # antes -- verificado en vivo que las lineas llegan escalonadas en
+        # el tiempo, no todas de golpe al terminar (ver AGENTS.md). Un
+        # primer intento uso Tee-Object -Variable, descartado: no aportaba
+        # nada sobre el patron actual y complicaba mezclar el log con
+        # Write-InstallLog en vez de Write-Host crudo.
         $pullResult = Invoke-NativeCommand {
             docker pull $WorkerImage 2>&1 | ForEach-Object {
                 Write-InstallLog "  $_"
@@ -1299,7 +1302,26 @@ if (-not $isUpdate) {
     # 8 pasos en una instalacion nueva -- ver Write-InstallStep. La
     # actualizacion (rama $isUpdate de abajo) tiene su propio conteo,
     # mucho mas corto, porque se salta WSL2/Docker Desktop.
+    #
+    # $isResume (reanudacion tras el reinicio por WSL2) entra por esta
+    # MISMA rama con el MISMO conteo de 8 -- el proceso anterior a este
+    # reinicio no llego mas alla del paso de WSL2, y este proceso nuevo
+    # (Scheduled Task en una sesion de PowerShell distinta) no tiene
+    # forma de heredar en que numero de paso iba el proceso que se
+    # reinicio, asi que no se intenta fingir un numero de paso heredado
+    # -- eso seria peor (un numero inventado sin relacion con el trabajo
+    # real restante). Bug real de UX senalado en revision: sin la
+    # aclaracion de abajo, ver "[Paso 1/8]" de nuevo despues de un
+    # reinicio parece que la instalacion "retrocedio", cuando en
+    # realidad las verificaciones que restan son identicas (idempotentes,
+    # rapidas porque WSL2/Docker Desktop ya quedaron listos la vez
+    # anterior) -- se aclara explicitamente en el primer mensaje que ya
+    # se vio mas arriba (ver "Reanudando la instalacion..."), asi que el
+    # conteo en si no necesita cambiar, solo dejar de ser ambiguo.
     $script:TotalInstallSteps = 8
+    if ($isResume) {
+        Write-InstallLog "Los pasos de abajo se repiten desde el principio, pero deberian ser rapidos: WSL2/Docker Desktop ya quedaron instalados en el intento anterior, solo se vuelve a verificar (idempotente)."
+    }
     Write-InstallStep "Verificando requisitos (arquitectura, version de Windows, virtualizacion, RAM)..."
     if (-not (Test-ArchitectureSupported)) { exit 1 }
     if (-not (Test-WindowsVersionSupported)) { exit 1 }
@@ -1336,8 +1358,15 @@ if (Test-WorkerPaused) {
     # El worker esta pausado a proposito -- Install-WorkerContainer ya
     # no creo/arranco nada (ver arriba), asi que comprobar que este
     # registrado y corriendo ahora mismo no aplica ni tendria sentido.
+    # Nota de UX: el ultimo "[Paso N/$TotalInstallSteps]" visto arriba
+    # (2 de 8, o 2 de 3 en actualizacion) no llega al total -- este caso
+    # nunca ejecuta los pasos de confirmar registro/watchdog, asi que el
+    # denominador representa el flujo normal, no todas las salidas
+    # alternativas. Aclarado en texto en vez de intentar "completar" el
+    # contador con pasos que de verdad no corrieron.
     Write-InstallLog ""
     Write-InstallLog "=== Listo (worker pausado, sin cambios). ==="
+    Write-InstallLog "(Los pasos de confirmar registro y watchdog no aplican mientras el worker este pausado -- por eso el contador de arriba no llega al total.)"
     Write-InstallLog "Para reanudarlo: $ResumeScriptPath"
 } else {
     Write-InstallStep "Confirmando que el worker se registro en el Coordinator..."
