@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     created_at      TEXT NOT NULL,
     updated_at      TEXT NOT NULL,
     connected_s     REAL NOT NULL DEFAULT 0,
+    cancel_requested INTEGER NOT NULL DEFAULT 0,
     UNIQUE(species, bin_index, offset_x_m, repeticion)
 );
 
@@ -212,6 +213,7 @@ _MIGRATIONS = [
     "ALTER TABLE jobs ADD COLUMN min_cpu_score REAL NOT NULL DEFAULT 0",
     "ALTER TABLE workers ADD COLUMN image_digest TEXT",
     "ALTER TABLE jobs ADD COLUMN connected_s REAL NOT NULL DEFAULT 0",
+    "ALTER TABLE jobs ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0",
 ]
 
 
@@ -284,12 +286,18 @@ def _accrue_connected_time(conn, worker_id: str, previous_heartbeat_iso: str | N
 
 
 def touch_heartbeat(worker_id: str, ram_free_gb: float = None, cpu_load_pct: float = None,
-                     image_digest: str = None) -> bool:
+                     image_digest: str = None, active_job_id: int | None = None) -> dict | None:
+    """None si el worker no esta registrado (llamador responde 404).
+    Si esta registrado: {"cancel_job_id": int | None} -- job_id del job
+    activo de este worker si fue marcado para cancelar (ver
+    request_job_cancel()/cancelled_job_for_worker()), calculado en la
+    MISMA transaccion para no pagar un segundo round-trip a la DB desde
+    app.py en cada heartbeat (cada 30s, por diseno)."""
     with get_conn() as conn:
         conn.execute("BEGIN IMMEDIATE")
         previous = conn.execute("SELECT last_heartbeat FROM workers WHERE worker_id=?", (worker_id,)).fetchone()
         if previous is None:
-            return False
+            return None
         _accrue_connected_time(conn, worker_id, previous["last_heartbeat"])
         cur = conn.execute(
             """
@@ -300,7 +308,9 @@ def touch_heartbeat(worker_id: str, ram_free_gb: float = None, cpu_load_pct: flo
             """,
             (now_iso(), ram_free_gb, cpu_load_pct, image_digest, worker_id),
         )
-        return cur.rowcount > 0
+        if cur.rowcount == 0:
+            return None
+        return {"cancel_job_id": cancelled_job_for_worker(conn, worker_id, active_job_id)}
 
 
 def get_config(key: str) -> str | None:
@@ -420,7 +430,7 @@ def claim_next_job(worker_id: str) -> sqlite3.Row | None:
         job_id = pick_job_for_worker(candidates, worker_cpu_score)
         conn.execute(
             """
-            UPDATE jobs SET status='claimed', claimed_by=?, claimed_at=?, attempt=attempt+1, updated_at=?
+            UPDATE jobs SET status='claimed', cancel_requested=0, claimed_by=?, claimed_at=?, attempt=attempt+1, updated_at=?
             WHERE job_id=? AND status='pending'
             """,
             (worker_id, now_iso(), now_iso(), job_id),
@@ -445,7 +455,7 @@ def force_claim_job(job_id: int, worker_id: str) -> bool:
     job a un worker real que ya lo tenga en 'claimed'/'running'."""
     with get_conn() as conn:
         cur = conn.execute(
-            "UPDATE jobs SET status='claimed', claimed_by=?, claimed_at=?, attempt=attempt+1, updated_at=? "
+            "UPDATE jobs SET status='claimed', cancel_requested=0, claimed_by=?, claimed_at=?, attempt=attempt+1, updated_at=? "
             "WHERE job_id=? AND status='pending'",
             (worker_id, now_iso(), now_iso(), job_id),
         )
@@ -512,8 +522,11 @@ def record_result(job_id: int, worker_id: str, duration_s: float, exit_code: int
         # connected_s se resetea a 0 al volver a 'pending' -- el proximo
         # intento (mismo u otro worker) empieza su propio progreso desde
         # cero, no arrastra el tiempo conectado del intento fallido.
+        # cancel_requested tambien se limpia siempre aqui: el resultado ya
+        # llego (cancelado o no), asi que la senal no debe seguir viva para
+        # un futuro intento de este mismo job_id.
         conn.execute(
-            "UPDATE jobs SET status=?, last_error=?, updated_at=?, "
+            "UPDATE jobs SET status=?, last_error=?, updated_at=?, cancel_requested=0, "
             "connected_s=CASE WHEN ?='pending' THEN 0 ELSE connected_s END WHERE job_id=?",
             (new_status, None if new_status == "done" else f"exit_code={exit_code} n_rows={n_rows}",
              now_iso(), new_status, job_id),
@@ -530,12 +543,53 @@ def record_failure(job_id: int, worker_id: str, error: str, duration_s: float | 
         if job["claimed_by"] != worker_id or job["status"] not in ("claimed", "running"):
             raise PermissionError(f"job {job_id} no esta asignado a {worker_id} en un estado aceptable")
         new_status = "pending" if job["attempt"] < job["max_attempts"] else "failed"
+        # cancel_requested se limpia aqui tambien -- un job cancelado
+        # reportado como fallo (ver run_job() en worker.py) no debe seguir
+        # con la senal encendida para el proximo intento.
         conn.execute(
-            "UPDATE jobs SET status=?, last_error=?, updated_at=?, "
+            "UPDATE jobs SET status=?, last_error=?, updated_at=?, cancel_requested=0, "
             "connected_s=CASE WHEN ?='pending' THEN 0 ELSE connected_s END WHERE job_id=?",
             (new_status, error, now_iso(), new_status, job_id),
         )
         return new_status
+
+
+def request_job_cancel(job_id: int) -> str | None:
+    """Marca un job para que el worker que lo tiene lo cancele a mitad de
+    la corrida (ver auto_update()/heartbeat_loop() en worker.py -- la senal
+    viaja en la respuesta del heartbeat, no por polling aparte). Accion
+    administrativa (ver cancel_job.py), no algo que un worker llame.
+
+    Devuelve el worker_id que va a recibir la senal, o None si el job no
+    esta en un estado cancelable (no asignado, o ya resuelto)."""
+    with get_conn() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        job = conn.execute("SELECT status, claimed_by FROM jobs WHERE job_id=?", (job_id,)).fetchone()
+        if job is None:
+            raise KeyError(f"job {job_id} no existe")
+        if job["status"] not in ("claimed", "running") or not job["claimed_by"]:
+            return None
+        conn.execute("UPDATE jobs SET cancel_requested=1 WHERE job_id=?", (job_id,))
+        return job["claimed_by"]
+
+
+def cancelled_job_for_worker(conn, worker_id: str, active_job_id: int | None = None) -> int | None:
+    """job_id si el job ACTUAL de ese worker (el que tiene
+    'claimed'/'running' con claimed_by=worker_id) fue marcado para
+    cancelar, None si no. Recibe una conexion existente -- se llama desde
+    dentro de la transaccion de touch_heartbeat(), no abre la suya propia
+    (evita un segundo round-trip a la DB en cada heartbeat, cada 30s por
+    diseno). No limpia el flag (eso lo hace record_result()/
+    record_failure() cuando el worker reporta el resultado real de
+    haberlo cancelado) -- solo informa, para que heartbeat_loop() en el
+    worker pueda avisar al hilo que corre el subprocess. active_job_id permite seleccionar la ejecucion local real aunque la DB
+    conserve otra asignacion antigua. Sin el campo se conserva compatibilidad
+    con clientes anteriores."""
+    row = conn.execute(
+        "SELECT job_id FROM jobs WHERE claimed_by=? AND status IN ('claimed','running') AND cancel_requested=1 AND (? IS NULL OR job_id=?) ORDER BY job_id",
+        (worker_id, active_job_id, active_job_id),
+    ).fetchone()
+    return row["job_id"] if row else None
 
 
 def _abandon_timeout_s(estimated_s: float | None) -> float:
@@ -612,7 +666,7 @@ def requeue_stale_jobs() -> list[int]:
             conn.execute(
                 """
                 UPDATE jobs SET status=CASE WHEN attempt < max_attempts THEN 'pending' ELSE 'failed' END,
-                       claimed_by=NULL, claimed_at=NULL, connected_s=0,
+                       claimed_by=NULL, claimed_at=NULL, connected_s=0, cancel_requested=0,
                        last_error='requeued: heartbeat vencido', updated_at=?
                 WHERE job_id=?
                 """,

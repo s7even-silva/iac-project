@@ -113,6 +113,60 @@ de ejecución exactamente una vez.
 python -m pytest infra/coordinator/test_coordinator.py infra/worker/test_worker.py
 ```
 
+## Cancelar un job en curso (remote-kill)
+
+`python3 infra/coordinator/cancel_job.py <job_id>` termina el subprocess
+de Geant4 de un job `claimed`/`running`, sin esperar a que el worker se
+desconecte o el heartbeat venza. Útil para reasignar un job pesado que
+cayó en un worker más lento de lo que convenía (ver AGENTS.md, "Bug real
+de producción: un job pesado sin umbral..."), sin tener que apagar esa
+máquina a mano ni esperar horas.
+
+Mecanismo (no un endpoint que mate el proceso directo, el coordinator no
+tiene ningún canal de entrada al worker): el comando marca
+`jobs.cancel_requested=1` vía `POST /api/v1/jobs/{id}/cancel`; el próximo
+heartbeat de ese worker (hilo separado, corriendo en paralelo al
+subprocess — ya existía para esto, ver arriba) trae la señal en su
+respuesta; un hilo watcher dedicado dentro de `run_job()` la ve y mata el
+process group del subprocess. La recepción espera el próximo heartbeat
+(`HEARTBEAT_INTERVAL_S`, 30s por defecto), más latencia de red, hasta 1s
+del watcher y hasta 2s de gracia antes de SIGKILL. No hay un límite de
+30s garantizado si la red falla. El job se reporta como fallo
+("cancelado por el operador") y se reencola solo si le quedan intentos —
+mismo mecanismo que cualquier otro fallo, sin lógica especial de
+reencolado.
+
+**Se pierde TODO el avance de esa corrida** — no hay checkpointing en
+Geant4/`run_organ_sweep.py`, así que solo tiene sentido cancelar cuando
+el tiempo conectado real ya invertido es bajo frente al estimado (columna
+"Duración"/"Tiempo conectado" del dashboard, o `GET /api/v1/jobs`, antes
+de decidir).
+
+**A propósito no está en `dashboard.html`**. Esto no es una barrera de
+autorización: el endpoint usa el mismo `WORKER_TOKEN` del resto de la API;
+si está desactivado, también puede invocarse por HTTP sin token. No se
+añadió un rol de administrador separado en esta revisión. El script acepta
+el token desde `WORKER_TOKEN` o `--worker-token`.
+
+Revisión de concurrencia (2026-09-14): cada ejecución tiene su propio Event y
+contexto; el heartbeat captura ese contexto antes del HTTP y compara `job_id`
+al regresar. Una respuesta tardía no cancela otra ejecución, ni siquiera otra
+del mismo job. `active_job_id` opcional selecciona la señal correcta si hay
+asignaciones antiguas con el mismo worker; los clientes anteriores siguen siendo
+compatibles. Timeout y nueva asignación limpian `cancel_requested`.
+
+Los avisos `/fail` se escriben atómicamente en `pending_failures/`, dentro del
+volumen persistente. Se reintentan tras reinicio y antes de pedir otro job o
+iniciar una actualización Docker. Un fallo de red/401/5xx conserva el aviso;
+404/409 confirma que ya no corresponde a un intento activo. Esto evita dejar
+un job cancelado huérfano mientras el worker toma otro. No borrar ese directorio
+al actualizar. Cancelar consume un intento, no garantiza asignación a otra PC,
+y el último intento termina en `failed`, no en `pending`.
+
+La cancelación puede competir con la finalización normal: si el proceso ya
+terminó, su resultado completo puede aceptarse. No se publica CSV parcial como
+resultado exitoso de un proceso cancelado. No se añadieron checkpoints.
+
 ## Qué ve el coordinator de cada worker (y qué no)
 
 El coordinator solo sabe lo que el worker le reporta explícitamente al
@@ -142,3 +196,10 @@ cae a comparar contra `ram_gb` total.
 Pendiente después del primer corte: despliegue protegido, publicación en
 GHCR, versionado de imágenes por digest en jobs, medición de ancho de
 banda si se necesita filtrar por eso, y jobs Elmer.
+
+Validación de la revisión (2026-09-14): 106 pruebas Python aprobadas, incluidas
+API uvicorn local con subprocess resistente a SIGTERM y dos escenarios Docker
+reales aislados. También aprobaron 17 escenarios PowerShell con mocks y 4 Bash.
+Se verificó la limpieza de los recursos Docker de ensayo. No se publicó imagen,
+no se hizo push ni se modificaron jobs/DB de producción. Sigue pendiente validar
+Windows/Docker Desktop y un canario con digest publicado antes del despliegue.

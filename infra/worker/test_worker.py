@@ -1,3 +1,5 @@
+import pytest
+import sys
 import importlib.util
 import csv
 import io
@@ -26,6 +28,48 @@ def test_header_only_is_not_result(tmp_path):
     (tmp_path/'resultados_organo_sweep.csv').write_text(','.join(worker.RESULTS_FIELDNAMES)+'\n')
     job = dict(species='SEP_p', bin_index=1, offset_x_m=1., repeticion=0)
     assert worker.filter_results_csv(job, tmp_path) == ''
+
+
+@pytest.mark.parametrize("ignore_term", [False, True])
+def test_run_job_kills_subprocess_when_cancel_event_set(tmp_path, monkeypatch, ignore_term):
+    # Reproduce el mecanismo de remote-kill de punta a punta: un
+    # subprocess real de larga duracion (sleep, no Geant4) que
+    # run_job() debe matar en cuanto _cancel_event se activa -- no una
+    # simulacion de la logica, el subprocess de verdad corre y se mata.
+    monkeypatch.setattr(worker, 'BUILD_DIR', tmp_path)
+    monkeypatch.setattr(worker, 'REPO_ROOT', tmp_path)
+    (tmp_path / 'geant4/ActiveShield_Sim/data/sources/oltaris').mkdir(parents=True)
+    command = [sys.executable, '-c', 'import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(30)'] if ignore_term else ['sleep', '30']
+    monkeypatch.setattr(worker, 'build_command', lambda job, work=None: command)
+
+    start_response = MagicMock()
+    start_response.raise_for_status.return_value = None
+    with patch.object(worker.SESSION, 'post', return_value=start_response):
+        failure = {}
+
+        def fake_report_failure(worker_id, job_id, error, duration_s):
+            failure.update(worker_id=worker_id, job_id=job_id, error=error, duration_s=duration_s)
+
+        monkeypatch.setattr(worker, 'report_failure', fake_report_failure)
+        result_called = []
+        monkeypatch.setattr(worker, 'report_result', lambda *a, **k: result_called.append(a))
+
+        timer = worker.threading.Timer(0.3, lambda: worker.deliver_cancellation(worker._active_cancel, 42))
+        timer.start()
+        try:
+            started = time.monotonic()
+            worker.run_job('w1', dict(job_id=42, species='GCR_He', bin_index=7, offset_x_m=3.0))
+            elapsed = time.monotonic() - started
+        finally:
+            timer.cancel()
+
+    # Si el subprocess de verdad se hubiera dejado correr, esto tardaria
+    # ~30s (el sleep completo) -- matarlo bien debe terminar en segundos.
+    assert elapsed < 10, f"el subprocess no se mato a tiempo (tardo {elapsed:.1f}s)"
+    assert not result_called, "un job cancelado no debe reportarse como exitoso"
+    assert failure.get('job_id') == 42
+    assert 'cancelado' in failure.get('error', '')
+    assert worker._active_cancel is None
 
 
 def test_filter_excludes_other_repetitions(tmp_path):
@@ -79,7 +123,8 @@ def test_report_result_discards_on_http_error_without_retrying(tmp_path, monkeyp
     monkeypatch.setattr(worker, 'get_stale_job_timeout_s', lambda: 3600.0)
 
     response = MagicMock()
-    response.raise_for_status.side_effect = requests.HTTPError('409 Conflict')
+    response.status_code = 409
+    response.raise_for_status.side_effect = requests.HTTPError('409 Conflict', response=response)
 
     with patch.object(worker.SESSION, 'post', return_value=response):
         worker.report_result('w1', 9, 0, 7.0, 'especie,bin_index\nGCR_H,0\n', 'manifest\n')
@@ -404,3 +449,78 @@ def test_empty_user_and_missing_image_user_are_same_default(update_case):
     info['Config']['User'] = ''
     acknowledge_candidate(docker)
     assert worker.auto_update('w1') is True
+
+
+def test_late_heartbeat_cannot_cancel_another_attempt(monkeypatch):
+    old = (42, worker.threading.Event())
+    current = (42, worker.threading.Event())
+    monkeypatch.setattr(worker, '_active_cancel', current)
+    worker.deliver_cancellation(old, 42)
+    worker.deliver_cancellation(current, 43)
+    assert not current[1].is_set()
+    worker.deliver_cancellation(current, 42)
+    assert current[1].is_set()
+
+
+@pytest.mark.parametrize('payload', [[], None, {'cancel_job_id': '42'}, {'cancel_job_id': True}])
+def test_malformed_heartbeat_does_not_cancel(payload):
+    with patch.object(worker.SESSION, 'post') as post:
+        post.return_value.json.return_value = payload
+        assert worker.heartbeat('w') is None
+
+
+def test_process_already_exited_is_not_a_cancellation():
+    with patch.object(worker.os, 'killpg', side_effect=ProcessLookupError):
+        assert worker.terminate_process_group(MagicMock(pid=123), .01) is False
+
+
+def test_commit_visible_after_fsync_error_keeps_successor(update_case, monkeypatch):
+    docker, _ = update_case
+    acknowledge_candidate(docker)
+    original = worker.write_update_state
+    def write(path, state):
+        original(path, state)
+        if path.suffix == '.commit':
+            raise OSError('directory fsync failed after rename')
+    monkeypatch.setattr(worker, 'write_update_state', write)
+    assert worker.auto_update('w1') is True
+    docker.remove_container.assert_not_called()
+
+
+def test_failure_survives_network_outage_and_is_retried(tmp_path, monkeypatch):
+    monkeypatch.setattr(worker, 'WORKER_ID_FILE', tmp_path / 'worker_id')
+    with patch.object(worker.SESSION, 'post', side_effect=requests.ConnectionError('offline')):
+        worker.report_failure('w', 42, 'cancelado', 1)
+        assert worker.retry_pending_failures() is False
+    assert (tmp_path / 'pending_failures/42.json').is_file()
+    with patch.object(worker.SESSION, 'post') as post:
+        post.return_value.status_code = 200
+        assert worker.retry_pending_failures() is True
+        assert post.call_args.kwargs['json']['worker_id'] == 'w'
+    assert not (tmp_path / 'pending_failures/42.json').exists()
+
+
+@pytest.mark.parametrize('status', [401, 429, 500, 503])
+def test_transient_http_preserves_outbox_for_restart(tmp_path, monkeypatch, status):
+    _reset_pending_results(tmp_path, monkeypatch)
+    monkeypatch.setattr(worker, 'get_stale_job_timeout_s', lambda: 3600)
+    response = requests.Response()
+    response.status_code = status
+    error = requests.HTTPError('retry later', response=response)
+    with patch.object(worker, '_post_result', side_effect=error):
+        worker.report_result('w', 5, 0, 1, 'results', 'manifest')
+        worker.retry_pending_results()
+    assert (worker.PENDING_RESULTS_DIR / '5/results.csv').read_text() == 'results'
+    with patch.object(worker, '_post_result', return_value={'status': 'done'}):
+        worker.retry_pending_results()
+    assert not (worker.PENDING_RESULTS_DIR / '5').exists()
+
+
+def test_expired_result_is_archived_not_lost(tmp_path, monkeypatch):
+    _reset_pending_results(tmp_path, monkeypatch)
+    monkeypatch.setattr(worker, 'get_stale_job_timeout_s', lambda: 1)
+    worker._save_pending_result(5, {'worker_id':'w', 'created_at':0}, 'valuable-result', 'manifest')
+    worker.retry_pending_results()
+    archived = list((tmp_path / 'unconfirmed_results').glob('*/results.csv'))
+    assert len(archived) == 1
+    assert archived[0].read_text() == 'valuable-result'
