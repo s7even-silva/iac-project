@@ -25,8 +25,16 @@ con el aviso normal de UAC).
 Abre **PowerShell como administrador** (clic derecho → "Ejecutar como
 administrador") y corre:
 ```powershell
-irm https://raw.githubusercontent.com/s7even-silva/iac-project/infra/distributed-sweep/infra/deploy/install-worker.ps1 | iex
+Invoke-WebRequest https://raw.githubusercontent.com/s7even-silva/iac-project/infra/distributed-sweep/infra/deploy/install-worker.ps1 -OutFile install-worker.ps1
+.\install-worker.ps1
 ```
+
+(Antes se recomendaba `irm ... | iex`, que ejecuta el script directo
+desde la memoria sin guardarlo en disco primero. Se cambió a descargar y
+luego ejecutar: así el script sabe siempre desde qué archivo corrió —
+necesario para que, si hace falta reiniciar por WSL2, se copie a sí
+mismo correctamente sin depender de volver a descargarse de GitHub. El
+resultado final es el mismo, solo es un paso extra.)
 
 Si tu PC necesita instalar WSL2 por primera vez, Windows va a pedir
 **reiniciar una vez** — el script te avisa antes de hacerlo, y al
@@ -35,9 +43,7 @@ mostrando el progreso, no hace falta que corras nada de nuevo).
 
 El script te va a **preguntar** con qué nombre identificarte en el
 coordinator (Enter usa tu usuario de Windows). Si prefieres saltarte la
-pregunta, pásalo directo — para eso hace falta descargar el script
-primero (`Guardar como` desde ese mismo link) en vez de correrlo directo
-del `irm | iex`:
+pregunta, pásalo directo:
 ```powershell
 .\install-worker.ps1 -WorkerLabel "laptop-juan"
 ```
@@ -49,21 +55,24 @@ contenedor (límite duro, más estricto que `WORKER_THREADS`):
 ```
 
 **Para actualizar** (hay una imagen nueva del worker, o simplemente
-quieres asegurarte de tener la última): corre exactamente el mismo
-comando de arriba de nuevo — el script detecta solo que ya tienes un
-worker instalado (con este mismo instalador **o** con el `docker run`
-manual de la sección de abajo, no importa cuál usaste la primera vez),
-conserva tu nombre actual sin volver a preguntarlo, y salta directo a
-descargar la imagen nueva sin repetir las verificaciones de WSL2/Docker
-Desktop (ya sabe que funcionan porque tu worker ya está corriendo):
+quieres asegurarte de tener la última): descarga el script de nuevo
+(por si cambió) y corre el mismo comando — el script detecta solo que ya
+tienes un worker instalado (con este mismo instalador **o** con el
+`docker run` manual de la sección de abajo, no importa cuál usaste la
+primera vez), conserva tu nombre actual sin volver a preguntarlo, y
+salta directo a descargar la imagen nueva sin repetir las verificaciones
+de WSL2/Docker Desktop (ya sabe que funcionan porque tu worker ya está
+corriendo):
 ```powershell
-irm https://raw.githubusercontent.com/s7even-silva/iac-project/infra/distributed-sweep/infra/deploy/install-worker.ps1 | iex
+Invoke-WebRequest https://raw.githubusercontent.com/s7even-silva/iac-project/infra/distributed-sweep/infra/deploy/install-worker.ps1 -OutFile install-worker.ps1
+.\install-worker.ps1
 ```
 
 **Para quitar todo después** (contenedor + las tareas automáticas que
 el instalador programó — Docker Desktop en sí no se desinstala):
 ```powershell
-irm https://raw.githubusercontent.com/s7even-silva/iac-project/infra/distributed-sweep/infra/deploy/uninstall-worker.ps1 | iex
+Invoke-WebRequest https://raw.githubusercontent.com/s7even-silva/iac-project/infra/distributed-sweep/infra/deploy/uninstall-worker.ps1 -OutFile uninstall-worker.ps1
+.\uninstall-worker.ps1
 ```
 
 Si prefieres los pasos manuales (o estás en Linux/Mac), sigue leyendo.
