@@ -637,14 +637,21 @@ function elapsedSinceClaim(j){
 }
 
 function runningCellHtml(j){
-  // Job en curso: tiempo transcurrido desde claimed_at, comparado contra
-  // la estimacion si hay una disponible.
-  const elapsedSec = elapsedSinceClaim(j);
-  if (elapsedSec != null){
+  // Job en curso: se muestra TIEMPO CONECTADO acumulado (connected_s,
+  // ver touch_heartbeat()/db.py) como metrica principal, no tiempo de
+  // pared desde claimed_at -- pedido explicito del usuario (2026-09-14):
+  // cuando un worker deja de dar heartbeat usualmente es porque la PC se
+  // apago, no porque se le fue el internet, asi que ese tiempo offline
+  // no deberia contar como "corriendo". El tiempo de pared (elapsed)
+  // queda como dato secundario en el tooltip para quien quiera verlo.
+  const isActive = j.status === "claimed" || j.status === "running";
+  if (isActive && j.connected_s != null){
+    const connectedSec = j.connected_s;
+    const elapsedSec = elapsedSinceClaim(j);
     const estimated = j.estimated_duration_s;
     let cls = "";
     if (estimated){
-      const ratio = elapsedSec / estimated;
+      const ratio = connectedSec / estimated;
       // >100% del estimado: puede seguir siendo normal (el margen real es
       // 2.5x, ver ESTIMATE_SAFETY_FACTOR en db.py) pero vale la pena
       // llamar la atencion visualmente antes de llegar al timeout real.
@@ -652,7 +659,10 @@ function runningCellHtml(j){
       else if (ratio >= 0.8) cls = "near-estimate";
     }
     const estimateText = estimated ? ` <span class="text-faint">/ ~${fmtSpan(estimated)} est.</span>` : "";
-    return `<span class="tab-num ${cls}">${fmtSpan(elapsedSec)}</span>${estimateText}`;
+    const tooltip = elapsedSec != null
+      ? `title="tiempo conectado (heartbeats reales) -- tiempo de pared desde asignado: ${fmtSpan(elapsedSec)}"`
+      : "";
+    return `<span class="tab-num ${cls}" ${tooltip}>${fmtSpan(connectedSec)}</span>${estimateText}`;
   }
   // Job ya terminado (done): duracion REAL reportada por el worker al
   // subir el resultado (tabla results, expuesta como actual_duration_s
@@ -700,7 +710,8 @@ function detailRowHtml(j){
           <div><b>claimed_at</b>${fmtDate(j.claimed_at)}</div>
           <div><b>created_at</b>${fmtDate(j.created_at)}</div>
           <div><b>worker_id</b><code>${esc(j.claimed_by) || "—"}</code></div>
-          <div><b>Corriendo desde</b><span class="tab-num">${fmtSpan(elapsedSinceClaim(j))}</span></div>
+          <div><b>Tiempo conectado</b><span class="tab-num" title="segundos reales de heartbeat recibido mientras este job esta activo -- no cuenta el tiempo que la PC estuvo apagada/desconectada">${fmtSpan(j.connected_s)}</span></div>
+          <div><b>Asignado desde (pared)</b><span class="tab-num" title="tiempo de reloj desde claimed_at, incluye tiempo desconectado">${fmtSpan(elapsedSinceClaim(j))}</span></div>
           <div><b>Tiempo estimado</b><span class="tab-num" title="basado en cpu_score del worker asignado, escalado contra la tabla de referencia medida en bryam-local">${fmtSpan(j.estimated_duration_s)}</span></div>
           <div><b>Duración real</b><span class="tab-num" title="duration_s reportado por el worker al subir el resultado exitoso">${fmtSpan(j.actual_duration_s)}</span></div>
           ${errBlock}

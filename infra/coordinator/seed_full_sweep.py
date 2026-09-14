@@ -74,15 +74,20 @@ MIN_RAM_BIN_THRESHOLD_HIGH_ENERGY = 6   # GCR_H/GCR_He: caro a bin_index alto
 MIN_RAM_BIN_THRESHOLD_LOW_ENERGY_SEP = 1  # SEP_p: caro a bin_index bajo
 MIN_RAM_GB = 8.0
 MIN_CPU_COUNT = 4
-# cpu_score() (worker.py) dio ~5,7 en una maquina de 8 cores usada como
-# referencia al calibrar el benchmark -- 0.5 aqui es deliberadamente
-# BAJO/prudente frente a eso, no la mitad exacta de nada. Sin mediciones
-# reales todavia de que score reportan las maquinas del equipo (el
-# benchmark es nuevo, ver AGENTS.md), un umbral mas alto podria excluir
-# de mas a workers legitimos por una calibracion sin datos reales de
-# respaldo. Ajustar una vez que se observen cpu_score reales via
-# GET /api/v1/workers.
-MIN_CPU_SCORE = 0.5
+# Subido de 0.5 a 3.0 (2026-09-14, decision de equipo) -- el valor
+# anterior era deliberadamente bajo/prudente por falta de datos reales al
+# calibrar el benchmark; con cpu_score reales ya observados via
+# GET /api/v1/workers (bryam-local 4.461, bryam-parrot 4.334, eddy-laptop
+# 1.247), 0.5 resultaba demasiado permisivo -- excluia solo a maquinas
+# extremadamente lentas, no protegia a los bins caros de terminar en
+# workers mediocres. 3.0 deja pasar a las dos maquinas mas rapidas
+# conocidas (bryam-local/bryam-parrot) y excluye explicitamente a
+# eddy-laptop (1.247) de bin6/7 -- ajustar de nuevo cuando se observen
+# mas maquinas reales. Ver tambien el emparejamiento dinamico en
+# claim_next_job()/pick_job_for_worker() (db.py): este umbral es un
+# filtro minimo pasa/no-pasa, el emparejamiento es lo que ademas prefiere
+# activamente el worker MAS rapido disponible para el job mas pesado.
+MIN_CPU_SCORE = 3.0
 
 
 def job_priority_and_requirements(species: str, bin_index: int):

@@ -121,6 +121,45 @@ def test_claim_still_orders_by_priority_within_same_repetition():
     assert job["job_id"] == high_priority_same_rep
 
 
+def test_claim_fast_worker_prefers_heaviest_job_in_same_group():
+    # Emparejamiento por cpu_score (2026-09-14): dentro del mismo
+    # (repeticion, priority) -- aqui, GCR_H y GCR_He bin7 comparten
+    # priority=7 en produccion real -- un worker rapido debe recibir el
+    # mas pesado del grupo (GCR_He bin7, referencia ~18780s) en vez del
+    # primero por job_id (GCR_H bin7, referencia ~4669.7s).
+    db.upsert_worker("fast", "h1", 8, 16.0, "", cpu_score=db.REFERENCE_CPU_SCORE)
+    light_job = db.insert_job("GCR_H", 7, 0.0, 0, 10000, priority=7)
+    heavy_job = db.insert_job("GCR_He", 7, 0.0, 0, 10000, priority=7)
+
+    job = db.claim_next_job("fast")
+    assert job["job_id"] == heavy_job
+    assert light_job != heavy_job  # sanity: son jobs distintos
+
+
+def test_claim_slow_worker_prefers_lightest_job_in_same_group():
+    db.upsert_worker("slow", "h1", 8, 16.0, "", cpu_score=1.0)
+    light_job = db.insert_job("GCR_H", 7, 0.0, 0, 10000, priority=7)
+    db.insert_job("GCR_He", 7, 0.0, 0, 10000, priority=7)
+
+    job = db.claim_next_job("slow")
+    assert job["job_id"] == light_job
+
+
+def test_claim_pairing_never_crosses_repetition_or_priority_group():
+    # El emparejamiento por cpu_score no debe poder saltar a un
+    # (repeticion, priority) distinto solo porque tenga un job mejor
+    # emparejado -- eso reintroduciria el bug de repeticiones en
+    # paralelo. Un worker muy rapido con un job pesado disponible en
+    # repeticion 1 igual debe recibir el (unico) job de repeticion 0,
+    # aunque sea liviano.
+    db.upsert_worker("fast", "h1", 8, 16.0, "", cpu_score=db.REFERENCE_CPU_SCORE)
+    light_rep0 = db.insert_job("GCR_H", 0, 0.0, 0, 10000, priority=0)
+    db.insert_job("GCR_He", 7, 0.0, 1, 10000, priority=20)
+
+    job = db.claim_next_job("fast")
+    assert job["job_id"] == light_rep0
+
+
 def test_failed_result_requeues_until_max_attempts():
     db.upsert_worker("w1", "h1", 8, 16.0, "")
     job_id = db.insert_job("SEP_p", 0, 0.0, 0, 100)
@@ -148,10 +187,21 @@ def test_result_rejected_if_not_claimed_by_that_worker():
 
 def test_estimate_job_duration_scales_by_cpu_score():
     reference_s = db.REFERENCE_TIMINGS_S[("GCR_H", 3)]
-    # Worker con la mitad de cpu_score que la referencia -> tarda el doble.
+    # Worker con la mitad de cpu_score que la referencia -> tarda el doble,
+    # mas DISPLAY_OVERESTIMATE_FACTOR (las runs reales tienden a tardar
+    # mas que la referencia pura, ver comentario en db.py).
     half_score = db.REFERENCE_CPU_SCORE / 2
     estimated = db.estimate_job_duration_s("GCR_H", 3, half_score)
-    assert estimated == pytest.approx(reference_s * 2, rel=1e-6)
+    assert estimated == pytest.approx(reference_s * 2 * db.DISPLAY_OVERESTIMATE_FACTOR, rel=1e-6)
+
+
+def test_estimate_job_duration_applies_overestimate_factor_at_reference_score():
+    # Al cpu_score de referencia exacto, la estimacion no es igual al
+    # numero crudo de la tabla -- ya lleva el margen aplicado.
+    reference_s = db.REFERENCE_TIMINGS_S[("SEP_p", 2)]
+    estimated = db.estimate_job_duration_s("SEP_p", 2, db.REFERENCE_CPU_SCORE)
+    assert estimated == pytest.approx(reference_s * db.DISPLAY_OVERESTIMATE_FACTOR, rel=1e-6)
+    assert estimated > reference_s
 
 
 def test_estimate_job_duration_none_without_cpu_score():
@@ -164,17 +214,15 @@ def test_estimate_job_duration_none_for_unknown_combo():
 
 
 def test_requeue_respects_estimated_duration_beyond_fixed_timeout(monkeypatch):
-    # Timeout fijo corto a proposito para poder probar sin esperar horas
-    # reales -- la estimacion (bin7, referencia ~4669.7s) con margen de
-    # seguridad debe seguir protegiendo al job aunque ya haya pasado el
-    # piso fijo de 100s.
+    # STALE_JOB_TIMEOUT_S (usado solo sin estimacion) corto a proposito --
+    # con estimacion disponible (bin7, referencia ~4669.7s), el umbral de
+    # abandono real (_abandon_timeout_s, ~9339s aqui) sigue protegiendo al
+    # job pese a que STALE_JOB_TIMEOUT_S ya haya vencido.
     monkeypatch.setattr(db, "STALE_JOB_TIMEOUT_S", 100.0)
     db.upsert_worker("fast", "h1", 8, 16.0, "", cpu_score=db.REFERENCE_CPU_SCORE)
     job_id = db.insert_job("GCR_H", 7, 0.0, 0, 10000)
     db.claim_next_job("fast")
 
-    # Heartbeat vencido hace 200s -- ya paso el piso fijo (100s) pero no el
-    # timeout estimado (referencia ~4669.7s * ESTIMATE_SAFETY_FACTOR).
     stale_at = datetime.fromtimestamp(time.time() - 200, tz=timezone.utc).isoformat()
     with db.get_conn() as conn:
         conn.execute("UPDATE workers SET last_heartbeat=? WHERE worker_id='fast'", (stale_at,))
@@ -184,12 +232,11 @@ def test_requeue_respects_estimated_duration_beyond_fixed_timeout(monkeypatch):
     assert db.get_job(job_id)["status"] == "claimed"
 
 
-def test_requeue_still_uses_fixed_floor_when_estimate_is_short(monkeypatch):
-    # Job barato (bin0) en un worker rapido -- la estimacion con margen es
-    # mucho menor que el piso fijo, asi que el piso fijo debe seguir
-    # aplicando (no reencolar antes de tiempo solo porque la estimacion es
-    # corta).
-    monkeypatch.setattr(db, "STALE_JOB_TIMEOUT_S", 5.0)
+def test_requeue_still_uses_abandon_floor_when_estimate_is_short():
+    # Job barato (bin0) en un worker rapido -- el umbral de abandono tiene
+    # un PISO (ABANDON_FLOOR_S, 1h) que protege de reencolar por un simple
+    # lag de red breve, aunque la estimacion*ABANDON_FACTOR sola diera un
+    # numero mas chico.
     db.upsert_worker("fast", "h1", 8, 16.0, "", cpu_score=db.REFERENCE_CPU_SCORE)
     job_id = db.insert_job("GCR_H", 0, 0.0, 0, 10000)
     db.claim_next_job("fast")
@@ -199,7 +246,7 @@ def test_requeue_still_uses_fixed_floor_when_estimate_is_short(monkeypatch):
         conn.execute("UPDATE workers SET last_heartbeat=? WHERE worker_id='fast'", (stale_at,))
 
     requeued = db.requeue_stale_jobs()
-    assert job_id not in requeued  # 2s de heartbeat vencido < piso fijo de 5s
+    assert job_id not in requeued  # 2s de heartbeat vencido << piso de abandono (1h)
 
 
 def test_requeue_falls_back_to_fixed_timeout_without_cpu_score():
@@ -212,6 +259,40 @@ def test_requeue_falls_back_to_fixed_timeout_without_cpu_score():
 
     requeued = db.requeue_stale_jobs()
     assert job_id in requeued  # sin cpu_score, cae al timeout fijo (ya vencido)
+
+
+def test_abandon_timeout_clamped_between_floor_and_ceiling():
+    # ABANDON_FLOOR_S=1h, ABANDON_CEILING_S=10h -- un bin muy barato no
+    # cae por debajo del piso, un bin/worker que daria un numero enorme no
+    # supera el techo.
+    assert db._abandon_timeout_s(1.0) == db.ABANDON_FLOOR_S  # 1s*2 << piso
+    assert db._abandon_timeout_s(100000.0) == db.ABANDON_CEILING_S  # 100000s*2 >> techo
+    mid = db._abandon_timeout_s(3600.0)  # 1h*2=2h, entre piso y techo
+    assert mid == pytest.approx(3600.0 * db.ABANDON_FACTOR)
+
+
+def test_requeue_bug_repro_short_estimate_no_longer_waits_fixed_floor():
+    # Reproduce el bug real reportado en produccion (2026-09-14): un job
+    # de referencia ~2h esperaba las STALE_JOB_TIMEOUT_S completas (antes
+    # 6h) antes de reencolarse, porque el piso fijo dominaba casi siempre
+    # sobre la estimacion (2h*2.5=5h < 6h). Con el diseno nuevo, el
+    # criterio de abandono ya no depende de STALE_JOB_TIMEOUT_S cuando hay
+    # estimacion -- bin6 (referencia 1820.4s=~0.5h) debe reencolarse por
+    # abandono mucho antes de que STALE_JOB_TIMEOUT_S (5h) venza.
+    db.upsert_worker("fast", "h1", 8, 16.0, "", cpu_score=db.REFERENCE_CPU_SCORE)
+    job_id = db.insert_job("GCR_H", 6, 0.0, 0, 10000)
+    db.claim_next_job("fast")
+
+    # Umbral de abandono real: clamp(1820.4*2, 3600, 36000) = 3640.8s (~1h).
+    # Heartbeat vencido 2h -- mucho mas que el umbral de abandono, pero
+    # bastante MENOS que STALE_JOB_TIMEOUT_S (5h, el comportamiento viejo
+    # habria seguido esperando).
+    stale_at = datetime.fromtimestamp(time.time() - 2 * 3600, tz=timezone.utc).isoformat()
+    with db.get_conn() as conn:
+        conn.execute("UPDATE workers SET last_heartbeat=? WHERE worker_id='fast'", (stale_at,))
+
+    requeued = db.requeue_stale_jobs()
+    assert job_id in requeued  # ya se reencolo, sin esperar las 5h fijas
 
 
 def test_requeue_stale_jobs_without_heartbeat():
@@ -360,6 +441,72 @@ def test_heartbeat_without_telemetry_keeps_previous_values():
     workers = db.list_workers()
     assert workers[0]['ram_free_gb'] == 10.0
     assert workers[0]['cpu_load_pct'] == 20.0
+
+
+def test_heartbeat_accrues_connected_s_to_claimed_job():
+    db.upsert_worker('w', 'host', 8, 16.0, '')
+    job_id = db.insert_job("SEP_p", 0, 0.0, 0, 100)
+    db.claim_next_job('w')  # primer heartbeat implicito, sin heartbeat previo que acumular
+
+    # Simula que el heartbeat anterior fue hace 10s -- el proximo touch_heartbeat
+    # debe sumar ~10s a connected_s del job claimed.
+    ten_s_ago = datetime.fromtimestamp(time.time() - 10, tz=timezone.utc).isoformat()
+    with db.get_conn() as conn:
+        conn.execute("UPDATE workers SET last_heartbeat=? WHERE worker_id='w'", (ten_s_ago,))
+
+    db.touch_heartbeat('w')
+    job = db.get_job(job_id)
+    assert job["connected_s"] == pytest.approx(10.0, abs=1.0)
+
+
+def test_heartbeat_accrual_capped_at_max_interval():
+    # Un gap MUY largo desde el heartbeat anterior (ej. worker apagado
+    # varias horas) no debe sumarse completo a connected_s -- solo hasta
+    # MAX_HEARTBEAT_ACCRUAL_S, porque ese hueco es una desconexion real,
+    # no tiempo conectado.
+    db.upsert_worker('w', 'host', 8, 16.0, '')
+    job_id = db.insert_job("SEP_p", 0, 0.0, 0, 100)
+    db.claim_next_job('w')
+
+    long_ago = datetime.fromtimestamp(time.time() - 5 * 3600, tz=timezone.utc).isoformat()
+    with db.get_conn() as conn:
+        conn.execute("UPDATE workers SET last_heartbeat=? WHERE worker_id='w'", (long_ago,))
+
+    db.touch_heartbeat('w')
+    job = db.get_job(job_id)
+    assert job["connected_s"] == pytest.approx(db.MAX_HEARTBEAT_ACCRUAL_S, abs=1.0)
+
+
+def test_connected_s_resets_when_job_returns_to_pending():
+    db.upsert_worker('w', 'host', 8, 16.0, '', cpu_score=db.REFERENCE_CPU_SCORE)
+    job_id = db.insert_job("SEP_p", 7, 0.0, 0, 100)  # max_attempts=3 default
+    db.claim_next_job('w')
+
+    with db.get_conn() as conn:
+        conn.execute("UPDATE jobs SET connected_s=999 WHERE job_id=?", (job_id,))
+
+    db.record_failure(job_id, 'w', "boom", 1.0)
+    job = db.get_job(job_id)
+    assert job["status"] == "pending"
+    assert job["connected_s"] == 0
+
+
+def test_requeue_by_progress_exhausted_even_with_recent_heartbeat_is_not_triggered():
+    # progress_exhausted por si solo no reencola sin que TAMBIEN haya
+    # vencido el heartbeat -- el WHERE de SQL exige heartbeat vencido
+    # antes de evaluar cualquiera de las dos condiciones (un worker con
+    # heartbeat reciente sigue vivo, no tiene sentido reencolarle nada
+    # aunque su connected_s ya sea alto).
+    db.upsert_worker("fast", "h1", 8, 16.0, "", cpu_score=db.REFERENCE_CPU_SCORE)
+    job_id = db.insert_job("GCR_H", 0, 0.0, 0, 10000)  # referencia ~20.9s
+    db.claim_next_job("fast")
+
+    with db.get_conn() as conn:
+        conn.execute("UPDATE jobs SET connected_s=999999 WHERE job_id=?", (job_id,))
+        # last_heartbeat sigue reciente (touch_heartbeat_in_conn del propio claim)
+
+    requeued = db.requeue_stale_jobs()
+    assert job_id not in requeued
 
 
 def test_config_roundtrip():
