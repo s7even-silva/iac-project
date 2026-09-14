@@ -25,6 +25,7 @@ con el aviso normal de UAC).
 Abre **PowerShell como administrador** (clic derecho → "Ejecutar como
 administrador") y corre:
 ```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 Invoke-WebRequest https://raw.githubusercontent.com/s7even-silva/iac-project/infra/distributed-sweep/infra/deploy/install-worker.ps1 -OutFile install-worker.ps1
 .\install-worker.ps1
 ```
@@ -34,7 +35,14 @@ desde la memoria sin guardarlo en disco primero. Se cambió a descargar y
 luego ejecutar: así el script sabe siempre desde qué archivo corrió —
 necesario para que, si hace falta reiniciar por WSL2, se copie a sí
 mismo correctamente sin depender de volver a descargarse de GitHub. El
-resultado final es el mismo, solo es un paso extra.)
+resultado final es el mismo, solo son dos pasos extra: `Set-ExecutionPolicy`
+hace falta porque, a diferencia de `irm | iex` (que corre el código
+directo, sin pasar por ningún archivo), un `.ps1` real en disco sí queda
+sujeto a la política de ejecución de Windows — `Restricted` por defecto
+en la mayoría de PCs, que bloquea CUALQUIER script sin firmar con
+`UnauthorizedAccess`, no solo este. El `-Scope Process` limita el cambio
+a esta ventana de PowerShell nada más: se pierde sola al cerrarla, no
+queda un cambio de política permanente en la PC.)
 
 Si tu PC necesita instalar WSL2 por primera vez, Windows va a pedir
 **reiniciar una vez** — el script te avisa antes de hacerlo, y al
@@ -43,7 +51,9 @@ mostrando el progreso, no hace falta que corras nada de nuevo).
 
 El script te va a **preguntar** con qué nombre identificarte en el
 coordinator (Enter usa tu usuario de Windows). Si prefieres saltarte la
-pregunta, pásalo directo:
+pregunta, pásalo directo (misma ventana de PowerShell de arriba —
+`-Scope Process` no persiste si la cierras y abres una nueva, tendrías
+que repetir el `Set-ExecutionPolicy` de arriba primero):
 ```powershell
 .\install-worker.ps1 -WorkerLabel "laptop-juan"
 ```
@@ -64,6 +74,7 @@ salta directo a descargar la imagen nueva sin repetir las verificaciones
 de WSL2/Docker Desktop (ya sabe que funcionan porque tu worker ya está
 corriendo):
 ```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 Invoke-WebRequest https://raw.githubusercontent.com/s7even-silva/iac-project/infra/distributed-sweep/infra/deploy/install-worker.ps1 -OutFile install-worker.ps1
 .\install-worker.ps1
 ```
@@ -71,6 +82,7 @@ Invoke-WebRequest https://raw.githubusercontent.com/s7even-silva/iac-project/inf
 **Para quitar todo después** (contenedor + las tareas automáticas que
 el instalador programó — Docker Desktop en sí no se desinstala):
 ```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 Invoke-WebRequest https://raw.githubusercontent.com/s7even-silva/iac-project/infra/distributed-sweep/infra/deploy/uninstall-worker.ps1 -OutFile uninstall-worker.ps1
 .\uninstall-worker.ps1
 ```

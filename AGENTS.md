@@ -3149,3 +3149,42 @@ anterior, ninguno funcional:**
 17 escenarios de `test_worker_lifecycle.ps1` siguen pasando; verificado
 con `Invoke-ScriptAnalyzer` que el conteo de hallazgos no cambió (11
 antes y después).
+
+### Bug real de producción: `UnauthorizedAccess` en dos máquinas tras el cambio a descargar-y-ejecutar (2026-09-14)
+
+**Reportado con captura de pantalla real**: dos voluntarios corrieron el
+comando nuevo de `GUIA_VOLUNTARIOS.md` (`Invoke-WebRequest ... -OutFile
+install-worker.ps1` seguido de `.\install-worker.ps1`, ver la entrada
+anterior sobre eliminar `irm | iex`) y ambos recibieron `No se puede
+cargar el archivo ... porque la ejecucion de scripts esta deshabilitada
+en este sistema` / `PSSecurityException: UnauthorizedAccess`.
+
+**Causa raíz, consecuencia directa no anticipada del cambio anterior:**
+`irm ... | iex` nunca pasa por la política de ejecución de scripts de
+Windows en absoluto — evalúa el código directo en la sesión actual, no
+"ejecuta un archivo .ps1". Un `.ps1` real guardado en disco sí queda
+sujeto a esa política, y `Restricted` (el default de fábrica en la
+mayoría de instalaciones de Windows, incluyendo ambas máquinas
+reportadas) bloquea la ejecución de **cualquier** script sin firmar, no
+solo este — el mismo síntoma ocurriría con cualquier `.ps1` de
+cualquier origen en esas PCs. Este riesgo no se había considerado al
+diseñar el cambio a descargar-y-ejecutar (motivado por resolver la
+autorreferencia circular de `$InstallScriptCommit`, ver la entrada
+anterior) — se evaluó la ganancia (elimina la circularidad) sin
+verificar el costo real de abandonar `iex`.
+
+**Corregido:** `Set-ExecutionPolicy -Scope Process -ExecutionPolicy
+Bypass -Force` agregado como primera línea de los tres bloques de
+comando de la guía (instalar, actualizar, desinstalar) — patrón oficial
+de Microsoft para correr un script puntual sin firmar sin cambiar la
+política de la PC de forma permanente. `-Scope Process` es deliberado,
+no `-Scope CurrentUser`/`LocalMachine`: el cambio de política vive solo
+en el proceso de PowerShell actual (una variable de entorno interna),
+se pierde solo al cerrar esa ventana, sin dejar la PC del voluntario con
+una política más permisiva de forma indefinida para cualquier otro
+script futuro. Aclarado también en el texto que reabrir una ventana
+nueva de PowerShell para pasar `-WorkerLabel`/`-Cpus`/`-MemoryLimit`
+exige repetir el `Set-ExecutionPolicy` de nuevo, ya que `-Scope Process`
+no persiste entre ventanas — sin esta aclaración, alguien que cerrara la
+ventana entre el primer comando y el de personalizar el label habría
+vuelto a pegar exactamente el mismo error reportado.
