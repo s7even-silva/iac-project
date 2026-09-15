@@ -38,6 +38,7 @@
 #include "ICRP110UserScoreWriter.hh"
 #include "ICRP110PhantomVisAction.hh"
 #include "G4PhysListFactory.hh"
+#include "G4StepLimiterPhysics.hh"
 #include "G4RunManagerFactory.hh"
 
 int main(int argc,char** argv)
@@ -64,7 +65,15 @@ int main(int argc,char** argv)
   // AGENTS.md) -- factory en vez de "new Shielding()" directo, mismo
   // patron ya usado ahi.
   G4PhysListFactory physListFactory;
-  runManager -> SetUserInitialization(physListFactory.GetReferencePhysList("Shielding"));
+  auto* physicsList = physListFactory.GetReferencePhysList("Shielding");
+  // Bug found 2026-09-13: a low-energy charged primary (SEP_p, ~19 keV) ran
+  // for 10+ hours instead of seconds -- trapped in the magnetic field inside
+  // vacuum MagnetEnvelope (tiny gyroradius, no material to lose energy to).
+  // Same fix GCR_SEP_Sim/main.cc already applies for its own trapped-particle
+  // risk: register G4StepLimiterPhysics so G4UserLimits::SetUserMaxTrackLength()
+  // on MagnetEnvelope (see ICRP110PhantomConstruction.cc) is actually honored.
+  physicsList->RegisterPhysics(new G4StepLimiterPhysics());
+  runManager -> SetUserInitialization(physicsList);
 
  // runManager -> SetUserInitialization(new ICRP110PhantomPhysicsList);
 
