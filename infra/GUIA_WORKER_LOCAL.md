@@ -21,18 +21,18 @@ No hace falta instalar nada nuevo más allá de eso.
 
 ## 1. Traer el código del worker
 
-El worker (`infra/worker/worker.py`) vive en la rama `infra/distributed-sweep`,
-no en `main` todavía. Traerla no toca tu `main` ni requiere mergear nada:
+El worker (`infra/worker/worker.py`) ya vive en `main` (fusionado el
+2026-09-15 desde `infra/distributed-sweep`, donde se construyó y probó en
+producción real) — solo necesitas tener tu clon al día:
 
 ```bash
 cd iac-project   # tu clon existente
-git fetch origin
-git checkout -b infra/distributed-sweep origin/infra/distributed-sweep
+git checkout main
+git pull origin main
 ```
 
-(Si ya tenías esa rama localmente, `git checkout infra/distributed-sweep &&
-git pull` alcanza.) Tu `build/` de `ActiveShield_Sim` no está versionado en
-git, así que cambiar de rama no lo toca ni lo invalida.
+Tu `build/` de `ActiveShield_Sim` no está versionado en git, así que
+actualizar el código no lo toca ni lo invalida.
 
 ## 2. Activar el entorno y lanzar el worker
 

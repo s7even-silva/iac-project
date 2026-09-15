@@ -26,7 +26,7 @@ Abre **PowerShell como administrador** (clic derecho → "Ejecutar como
 administrador") y corre:
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-Invoke-WebRequest https://raw.githubusercontent.com/s7even-silva/iac-project/infra/distributed-sweep/infra/deploy/install-worker.ps1 -OutFile install-worker.ps1
+Invoke-WebRequest https://raw.githubusercontent.com/s7even-silva/iac-project/main/infra/deploy/install-worker.ps1 -OutFile install-worker.ps1
 .\install-worker.ps1
 ```
 
@@ -75,7 +75,7 @@ de WSL2/Docker Desktop (ya sabe que funcionan porque tu worker ya está
 corriendo):
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-Invoke-WebRequest https://raw.githubusercontent.com/s7even-silva/iac-project/infra/distributed-sweep/infra/deploy/install-worker.ps1 -OutFile install-worker.ps1
+Invoke-WebRequest https://raw.githubusercontent.com/s7even-silva/iac-project/main/infra/deploy/install-worker.ps1 -OutFile install-worker.ps1
 .\install-worker.ps1
 ```
 
@@ -83,7 +83,7 @@ Invoke-WebRequest https://raw.githubusercontent.com/s7even-silva/iac-project/inf
 el instalador programó — Docker Desktop en sí no se desinstala):
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-Invoke-WebRequest https://raw.githubusercontent.com/s7even-silva/iac-project/infra/distributed-sweep/infra/deploy/uninstall-worker.ps1 -OutFile uninstall-worker.ps1
+Invoke-WebRequest https://raw.githubusercontent.com/s7even-silva/iac-project/main/infra/deploy/uninstall-worker.ps1 -OutFile uninstall-worker.ps1
 .\uninstall-worker.ps1
 ```
 
