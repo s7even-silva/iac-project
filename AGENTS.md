@@ -3900,3 +3900,67 @@ todos exige más RAM de la que tiene libre). Desplegado en producción
 con el mismo procedimiento de siempre (`git pull` + `systemctl restart
 geant4-coordinator`) — cambio puro de `db.py`, sin migración de schema
 ni imagen Docker nueva.
+
+### Bug real de producción: cómputo huérfano tras un reencolado manual sin señalizar al worker (2026-09-15)
+
+**Reportado por el usuario con datos exactos del dashboard:** `laptop-liz`
+mostraba heartbeat vivo (hace 5s), 98.7% CPU, 33.8h de antigüedad — pero
+**sin ningún job `claimed`/`running` asignado en la DB**. Investigado:
+`GET /api/v1/jobs` confirmó que los 4 jobs `running` del sistema
+pertenecían a otros workers (`laptop-fabiola`, `tania`, `bryam-local`,
+`eddy-laptop`); `laptop-liz` no tenía ninguno.
+
+**Causa raíz, consecuencia directa no anticipada de una intervención
+manual anterior en esta misma sesión:** minutos antes, se habían
+reencolado a mano 3 jobs de `laptop-liz` (134/470/472) con un `UPDATE`
+directo sobre la SQLite de producción (mismo patrón ya usado para el
+job huérfano `job_id=3` documentado más arriba) — ese `UPDATE` cambia
+lo que la DB *dice*, pero **no manda ninguna señal al proceso worker
+real**. El remote-kill (`cancel_job.py`) sí se había intentado antes de
+eso, pero solo puede cancelar el job que el coordinator identifica como
+el ACTIVO de ese worker (`cancelled_job_for_worker()`) — con 3 jobs
+asignados a la vez a `laptop-liz` (un estado ya fuera de lo normal, un
+worker solo debería tener uno), la cancelación remota no alcanzó a
+todos. Resultado: `laptop-liz` siguió corriendo el subprocess de Geant4
+de uno de esos 3 jobs sin enterarse de que el coordinator ya se lo
+había reencolado a otro worker — cómputo real corriendo sin ningún job
+que lo reclame en la base de datos.
+
+**Diagnóstico intentado, limitación real encontrada:** el usuario pidió
+identificar CUÁL de los 3 jobs seguía corriendo antes de decidir
+reasignarlo (evitar perder ese cómputo). Investigado: el worker YA
+manda su `active_job_id` real en cada heartbeat
+(`_active_cancel`/`heartbeat()` en `worker.py`, existente desde el
+diseño de remote-kill) — pero `touch_heartbeat()` en `db.py` solo lo
+usaba DENTRO de la misma transacción para decidir si cancelar
+(`cancelled_job_for_worker(conn, worker_id, active_job_id)`), sin
+persistirlo nunca. No había ninguna forma de consultar por API qué job
+cree un worker que tiene activo — la única opción era adivinar o
+acceder a la máquina.
+
+**Corregido:** `workers.active_job_id`/`active_job_reported_at`
+(columnas nuevas, migración idempotente) — `touch_heartbeat()` ahora
+escribe `active_job_id` TAL CUAL llega en cada heartbeat, a diferencia
+de `ram_free_gb`/`cpu_load_pct`/`image_digest` (que usan `COALESCE` y
+conservan el último valor si el heartbeat no trae uno nuevo):
+`active_job_id` debe reflejar el estado real ACTUAL, incluyendo `NULL`
+explícito cuando el worker no tiene nada corriendo — conservar el
+último valor conocido habría ocultado exactamente este bug (un worker
+sin job real seguiría mostrando el último `active_job_id` que alguna
+vez reportó). `list_workers()`/`GET /api/v1/workers` ya usan
+`SELECT *`/`row_to_dict()` sin filtrar columnas, así que el campo queda
+expuesto sin tocar `app.py`. 1 test nuevo en `test_coordinator.py` (60
+en total): confirma que un `active_job_id=None` explícito borra el
+valor anterior, no lo conserva.
+
+**Sin resolver todavía cuál de los 3 jobs (134/470/472) es el que
+`laptop-liz` sigue corriendo** — este fix agrega la instrumentación
+para diagnosticarlo (una vez desplegado, el próximo heartbeat de
+`laptop-liz` lo revelará vía `GET /api/v1/workers`), pero no reasigna
+nada todavía; eso es el paso siguiente una vez confirmado el valor
+real. Cuando ese subprocess termine y el worker intente subir el
+resultado sin tener el job asignado, `submit_result()` lo rechazará con
+`409` — descartado limpiamente por el fix de manejo de `HTTPError` ya
+documentado más arriba ("Bug de logs corregido de paso"), sin dato
+corrupto, solo el cómputo de esa corrida específica perdido si no se
+reasigna a tiempo.

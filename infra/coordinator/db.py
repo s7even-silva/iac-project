@@ -214,6 +214,8 @@ _MIGRATIONS = [
     "ALTER TABLE workers ADD COLUMN image_digest TEXT",
     "ALTER TABLE jobs ADD COLUMN connected_s REAL NOT NULL DEFAULT 0",
     "ALTER TABLE jobs ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE workers ADD COLUMN active_job_id INTEGER",
+    "ALTER TABLE workers ADD COLUMN active_job_reported_at TEXT",
 ]
 
 
@@ -292,7 +294,22 @@ def touch_heartbeat(worker_id: str, ram_free_gb: float = None, cpu_load_pct: flo
     activo de este worker si fue marcado para cancelar (ver
     request_job_cancel()/cancelled_job_for_worker()), calculado en la
     MISMA transaccion para no pagar un segundo round-trip a la DB desde
-    app.py en cada heartbeat (cada 30s, por diseno)."""
+    app.py en cada heartbeat (cada 30s, por diseno).
+
+    workers.active_job_id/active_job_reported_at (2026-09-15, nuevo):
+    a diferencia de ram_free_gb/cpu_load_pct/image_digest (COALESCE --
+    conservan el ultimo valor conocido si el heartbeat no lo trae),
+    active_job_id se ESCRIBE TAL CUAL llega, incluyendo NULL explicito --
+    el worker ya manda su job activo real en cada heartbeat
+    (_active_cancel en worker.py) precisamente para que
+    cancelled_job_for_worker() desambigue cual job cancelar; guardarlo
+    aqui (antes se usaba y se descartaba en la misma transaccion, sin
+    persistir) permite diagnosticar por API el caso real encontrado en
+    produccion: un worker con CPU alta y heartbeat vivo pero SIN ningun
+    job claimed/running en la tabla jobs -- computo huerfano tras un
+    reencolado manual que nunca senalizo al proceso real. Sin esto, la
+    unica forma de saber que job cree el worker que tiene activo era
+    adivinar o acceder a la maquina."""
     with get_conn() as conn:
         conn.execute("BEGIN IMMEDIATE")
         previous = conn.execute("SELECT last_heartbeat FROM workers WHERE worker_id=?", (worker_id,)).fetchone()
@@ -303,10 +320,10 @@ def touch_heartbeat(worker_id: str, ram_free_gb: float = None, cpu_load_pct: flo
             """
             UPDATE workers SET last_heartbeat=?, status='online',
                    ram_free_gb=COALESCE(?, ram_free_gb), cpu_load_pct=COALESCE(?, cpu_load_pct),
-                   image_digest=COALESCE(?, image_digest)
+                   image_digest=COALESCE(?, image_digest), active_job_id=?, active_job_reported_at=?
             WHERE worker_id=?
             """,
-            (now_iso(), ram_free_gb, cpu_load_pct, image_digest, worker_id),
+            (now_iso(), ram_free_gb, cpu_load_pct, image_digest, active_job_id, now_iso(), worker_id),
         )
         if cur.rowcount == 0:
             return None

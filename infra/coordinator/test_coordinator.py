@@ -592,6 +592,24 @@ def test_heartbeat_without_image_digest_keeps_previous_value():
     assert db.list_workers()[0]['image_digest'] == 'sha256:' + 'a' * 64
 
 
+def test_heartbeat_persists_active_job_id():
+    # A diferencia de ram_free_gb/cpu_load_pct/image_digest (COALESCE,
+    # conservan el valor anterior si no llega uno nuevo), active_job_id
+    # se escribe TAL CUAL en cada heartbeat -- incluyendo None explicito,
+    # que es exactamente el diagnostico que motivo este campo: un worker
+    # sin ningun job real activo debe reflejarse como None, no como "lo
+    # que reporto la ultima vez".
+    db.upsert_worker('w', 'host', 8, 16.0, '')
+    db.touch_heartbeat('w', active_job_id=42)
+    row = db.list_workers()[0]
+    assert row['active_job_id'] == 42
+    assert row['active_job_reported_at'] is not None
+
+    db.touch_heartbeat('w', active_job_id=None)
+    row = db.list_workers()[0]
+    assert row['active_job_id'] is None
+
+
 def test_request_job_cancel_marks_running_job():
     db.upsert_worker('w', 'host', 8, 16.0, '')
     job_id = db.insert_job('GCR_He', 7, 3.0, 0, 10000)
