@@ -4165,3 +4165,26 @@ el panel completo — un click en cualquier checkbox o en "Seleccionar
 todo" ya no llega al listener global. El filtrado en vivo (ya
 funcionaba, sin bug) se conserva intacto: cada `change` de un checkbox
 sigue llamando `renderJobs()` de inmediato.
+
+**Orden multi-columna, mismo día, pedido explícito del usuario:**
+"¿qué pasa si quiero ordenar las especies de manera descendente y los
+bins de manera ascendente?" — con el diseño anterior (`sortState` como
+un único `{field, dir}`), clickear una columna nueva descartaba
+cualquier orden ya activo en otra. Corregido: `sortState` pasa a ser
+una **lista** de `{field, dir}`, no un solo criterio — clickear un
+header nuevo lo agrega al final (prioridad más baja que las columnas ya
+activas), clickear uno ya activo rota su dirección (asc→desc) sin
+moverlo de posición, y un tercer click en esa misma columna la saca de
+la lista por completo sin tocar las demás. `sortJobs()` recorre la
+lista en orden, probando cada criterio hasta encontrar uno que
+desempate — mismo desempate final por `job_id` que ya existía.
+`updateSortHeaderUI()` muestra el número de prioridad (▲1, ▼2, ...)
+junto a la flecha **solo cuando hay más de un criterio activo** — con
+una sola columna, se ve exactamente igual que antes (▲/▼ sin número),
+para no ensuciar el caso común. Lista vacía (`sortState.length === 0`)
+sigue siendo "usar el default" (estado con orden fijo, luego `job_id`
+descendente), igual que antes. Verificado con datos sintéticos en Node:
+`species desc, bin_index asc` da exactamente el resultado pedido (SEP_p
+antes que GCR_He antes que GCR_H, y dentro de cada especie los bins en
+orden ascendente); la secuencia de clicks agregar→rotar→quitar deja
+intactas las columnas que no se tocaron.

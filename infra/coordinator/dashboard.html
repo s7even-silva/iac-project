@@ -878,12 +878,21 @@ let expandedJobId = null;
 // running/claimed primero (trabajo activo), luego pending, failed al
 // final antes de done -- y job_id descendente como segunda condicion,
 // exactamente el criterio que ya tenia el dashboard antes de que las
-// columnas fueran ordenables. sortState.field === null significa "usar
-// este default", nunca una columna explicita -- asi que hacer click en
-// un header y despues des-ordenarlo (tercer click) vuelve exactamente a
-// este comportamiento, no a un orden arbitrario.
+// columnas fueran ordenables. sortState (lista vacia) === "usar este
+// default", nunca una columna explicita -- asi que hacer click en un
+// header y despues des-ordenarlo (tercer click en esa columna) vuelve
+// exactamente a este comportamiento, no a un orden arbitrario.
+//
+// Multi-columna (2026-09-16, pedido explicito del usuario): sortState es
+// una LISTA de {field, dir}, no un solo criterio -- cada columna nueva
+// que se clickea se agrega al final (prioridad mas baja que las ya
+// activas), asi se puede pedir "especies descendente, y DENTRO de cada
+// especie, bins ascendente" con dos clicks en columnas distintas, sin
+// que el segundo click borre el primero. Un tercer click en una columna
+// YA en la lista la saca de ahi (no solo cambia su direccion una vez
+// mas) -- las demas columnas activas conservan su posicion relativa.
 const DEFAULT_STATUS_ORDER = {running:0, claimed:1, failed:2, pending:3, done:4};
-let sortState = {field:null, dir:"asc"};
+let sortState = [];
 
 function sortValueFor(j, field){
   switch(field){
@@ -910,34 +919,45 @@ function sortValueFor(j, field){
   }
 }
 
-function compareJobs(a, b, field, dir){
+function compareByOneField(a, b, field, dir){
   const va = sortValueFor(a, field);
   const vb = sortValueFor(b, field);
   let cmp;
   if (typeof va === "string" || typeof vb === "string") cmp = String(va).localeCompare(String(vb));
   else cmp = (va ?? -Infinity) - (vb ?? -Infinity);
-  if (cmp === 0) cmp = a.job_id - b.job_id; // desempate estable, siempre el mismo criterio
   return dir === "desc" ? -cmp : cmp;
 }
 
 function sortJobs(list){
-  if (!sortState.field){
+  if (sortState.length === 0){
     // Default: estado (orden fijo) ASC, luego job_id DESC -- igual que
     // antes de que las columnas fueran ordenables.
     return [...list].sort((a,b) =>
       (DEFAULT_STATUS_ORDER[a.status] ?? 9) - (DEFAULT_STATUS_ORDER[b.status] ?? 9) || b.job_id - a.job_id
     );
   }
-  return [...list].sort((a,b) => compareJobs(a, b, sortState.field, sortState.dir));
+  return [...list].sort((a,b) => {
+    for (const {field, dir} of sortState){
+      const cmp = compareByOneField(a, b, field, dir);
+      if (cmp !== 0) return cmp;
+    }
+    return a.job_id - b.job_id; // desempate final, siempre el mismo criterio
+  });
 }
 
 function updateSortHeaderUI(){
   document.querySelectorAll("#jobs-table th.sortable").forEach(th => {
     const field = th.dataset.sort;
     const arrow = th.querySelector(".sort-arrow");
-    if (field === sortState.field){
+    const idx = sortState.findIndex(s => s.field === field);
+    if (idx !== -1){
       th.classList.add("sort-active");
-      arrow.textContent = sortState.dir === "asc" ? "▲" : "▼";
+      const dirArrow = sortState[idx].dir === "asc" ? "▲" : "▼";
+      // Numero de prioridad solo cuando hay MAS de un criterio activo --
+      // con uno solo, mostrar "1" seria ruido sin aportar nada (pedido
+      // implicito: no complicar el caso comun de ordenar por una sola
+      // columna, que sigue viendose exactamente igual que antes).
+      arrow.textContent = sortState.length > 1 ? `${dirArrow}${idx + 1}` : dirArrow;
     } else {
       th.classList.remove("sort-active");
       arrow.textContent = "";
@@ -990,21 +1010,29 @@ document.getElementById("f-clear").addEventListener("click", () => {
     renderMselPanel(container, field);
     renderMselButton(container, field);
   }
-  sortState = {field:null, dir:"asc"};
+  sortState = [];
   renderJobs();
 });
 
+// Multi-columna: cada click en un header NUEVO se agrega al final de
+// sortState (prioridad mas baja que las columnas ya activas), un click
+// en un header YA activo rota su direccion (asc->desc), y un tercer
+// click en esa misma columna la saca de la lista por completo -- las
+// demas columnas activas no se tocan ni cambian de posicion. Con una
+// sola columna activa, este ciclo se ve identico al comportamiento
+// anterior (asc -> desc -> vuelve al default).
 document.querySelectorAll("#jobs-table th.sortable").forEach(th => {
   th.setAttribute("tabindex", "0");
   th.setAttribute("role", "button");
   const activate = () => {
     const field = th.dataset.sort;
-    if (sortState.field !== field){
-      sortState = {field, dir:"asc"};
-    } else if (sortState.dir === "asc"){
-      sortState = {field, dir:"desc"};
+    const idx = sortState.findIndex(s => s.field === field);
+    if (idx === -1){
+      sortState.push({field, dir:"asc"});
+    } else if (sortState[idx].dir === "asc"){
+      sortState[idx].dir = "desc";
     } else {
-      sortState = {field:null, dir:"asc"}; // tercer click: vuelve al default
+      sortState.splice(idx, 1);
     }
     renderJobs();
   };
