@@ -4083,3 +4083,63 @@ completen del todo, volver a correr `aggregate_organ_doses.py` sobre el
 conjunto completo para obtener la barra de error real de 5 repeticiones
 que el usuario pidió — hoy solo hay 1 repetición completa, matemáticamente
 no hay std que calcular todavía.
+
+### Dashboard: columnas ordenables y filtros de inclusión/exclusión multi-valor (2026-09-16)
+
+**Pedido explícito del usuario, con la aclaración correcta de que es un
+cambio de solo frontend:** los `<select>` de un solo valor por columna
+(especie/bin/offset/repetición) no permitían elegir varios a la vez ni
+excluir — el caso concreto que motivó el pedido fue "no quiero ver los
+bins 6 y 7". Confirmado antes de tocar nada: el dashboard ya trae todos
+los jobs de una sola vez vía `GET /api/v1/jobs` y filtra/ordena en el
+propio navegador — nada de esto requiere tocar `db.py`/`app.py` ni pedir
+nada nuevo al servidor.
+
+**Filtros multi-select con include/exclude:** cada columna filtrable
+(Estado, Especie, Bin, Offset X, Repetición) pasó de un `<select>` a un
+dropdown propio (`.msel`) con un checkbox por valor posible y un toggle
+Incluir/Excluir arriba — `MSEL_STATE[field] = {mode, values: Set}`,
+donde `values` vacío (en cualquier modo) significa "sin filtro", el
+mismo default de antes. `matchesMsel()` reemplaza las comparaciones
+directas de valor único que tenía `matchesFilters()`. Botones "Todos"/
+"Ninguno" dentro de cada panel para no tener que clickear cada opción
+una por una. Un solo panel abierto a la vez (cierra los demás al abrir
+uno, y al hacer click fuera).
+
+**Columnas ordenables por click en el header, ascendente/descendente:**
+`ID, Estado, Especie, Bin, Offset X, Rep., Asignado a, Duración,
+Intento, Actualizado` — las mismas columnas de la tabla, ver la captura
+que dio el usuario. Un solo click ordena ascendente, un segundo click en
+la misma columna invierte a descendente, un tercer click **vuelve al
+orden por defecto** (no a un estado arbitrario) — implementado como
+`sortState.field = null` en vez de fijar explícitamente
+`{field:"status", dir:"asc"}`, para que el default (ver abajo) sea
+exactamente el mismo camino de código que corría antes de que las
+columnas fueran ordenables, no una reconstrucción aproximada.
+
+**Orden por defecto preservado exactamente como pidió el usuario:**
+estado como primera condición (`running`/`claimed` primero, luego
+`failed`, `pending`, `done` al final) y `job_id` descendente como
+segunda condición — es el mismo `statusOrder` que ya existía, ahora
+nombrado `DEFAULT_STATUS_ORDER` y reutilizado tanto para el default como
+para lo que ordena la propia columna "Estado" cuando se clickea
+explícitamente. La columna "Duración" ordena por el mismo número que ya
+se muestra en pantalla (`connected_s` para un job activo,
+`actual_duration_s` para uno `done`, ver `runningCellHtml()`) — para que
+"ordenar por duración" no confunda mostrando un criterio distinto al que
+el usuario ve en la celda. Desempate: por `job_id` en la dirección que
+esa columna esté ordenada (no siempre descendente) cuando el usuario
+elige la columna explícitamente — solo el default implícito usa el
+desempate `job_id DESC` original.
+
+**Verificado sin navegador headless disponible en este entorno:** HTML
+balanceado (parser propio, sin tags huérfanos), JS sintácticamente
+válido (`node --check`), y la lógica pura de filtrado/ordenamiento
+(`sortValueFor`/`compareJobs`/`matchesMsel`) extraída y corrida con
+datos sintéticos en Node — confirmado el orden por defecto exacto, ambas
+direcciones de una columna numérica, exclusión de bins 6/7 (el caso
+concreto pedido), inclusión de varias especies, y que "sin filtro"
+sigue mostrando todo. Desplegado actualizando solo `dashboard.html` en
+la VM (`git pull`, sin `systemctl restart` — `GET /dashboard` sirve el
+archivo con `FileResponse`, leído del disco en cada request, no
+cacheado en memoria del proceso).
