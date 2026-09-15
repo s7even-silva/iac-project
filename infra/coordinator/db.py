@@ -272,7 +272,8 @@ def upsert_worker(worker_id: str, hostname: str, cpu_count: int, ram_gb: float, 
         )
 
 
-def _accrue_connected_time(conn, worker_id: str, previous_heartbeat_iso: str | None) -> None:
+def _accrue_connected_time(conn, worker_id: str, previous_heartbeat_iso: str | None,
+                            active_job_id: int | None) -> None:
     """Suma al job claimed/running de este worker (si tiene uno) el tiempo
     real transcurrido desde su heartbeat anterior -- ver jobs.connected_s,
     usado por requeue_stale_jobs() para medir progreso real en vez de
@@ -281,17 +282,82 @@ def _accrue_connected_time(conn, worker_id: str, previous_heartbeat_iso: str | N
     registrarse) no hay intervalo que sumar. El intervalo se recorta a
     MAX_HEARTBEAT_ACCRUAL_S -- un gap mas largo que eso indica una
     desconexion real en el medio (red caida, PC suspendida), y ese hueco
-    no debe contar como tiempo conectado."""
+    no debe contar como tiempo conectado.
+
+    Bug real de produccion (2026-09-15, reportado por el usuario): si el
+    PROCESO del worker muere y se reinicia (apagado/encendido, crash,
+    recreacion del contenedor) sin liberar primero el job que tenia
+    activo, el proceso nuevo simplemente pide el siguiente -- dejando el
+    job viejo huerfano en 'claimed'/'running' bajo el mismo worker_id. El
+    UPDATE de aqui, sin filtrar por job_id, sumaba connected_s a AMBOS
+    (el huerfano y el real) en cada heartbeat siguiente, aunque el worker
+    solo trabajara en uno -- Geant4 no guarda estados intermedios, asi
+    que el progreso del huerfano ya se perdio por completo y no deberia
+    seguir "avanzando" en el dashboard. No ocurre con un simple corte de
+    red (el mismo proceso sigue vivo y retoma el MISMO job_id al
+    reconectar, nunca hay dos jobs activos a la vez bajo ese worker).
+
+    Corregido filtrando por active_job_id -- el worker ya lo manda en
+    cada heartbeat (_active_cancel en worker.py, el job que el PROCESO
+    ACTUAL cree tener activo, no lo que diga la DB). Solo ese job
+    especifico acumula tiempo; cualquier otro job claimed/running del
+    mismo worker se reencola de inmediato en la misma transaccion
+    (requeue_orphaned_jobs_for_worker(), ver abajo) -- sin heartbeat
+    activo() que filtre (worker sin telemetria, version vieja), no se
+    reencola nada por este mecanismo, mismo criterio de no bloquear que
+    ya usan ram_free_gb/cpu_score ausentes."""
     if previous_heartbeat_iso is None:
         return
     interval_s = (datetime.now(timezone.utc) - datetime.fromisoformat(previous_heartbeat_iso)).total_seconds()
     if interval_s <= 0:
         return
     interval_s = min(interval_s, MAX_HEARTBEAT_ACCRUAL_S)
-    conn.execute(
-        "UPDATE jobs SET connected_s = connected_s + ? WHERE claimed_by=? AND status IN ('claimed', 'running')",
-        (interval_s, worker_id),
-    )
+    if active_job_id is not None:
+        conn.execute(
+            "UPDATE jobs SET connected_s = connected_s + ? WHERE claimed_by=? AND status IN ('claimed', 'running') AND job_id=?",
+            (interval_s, worker_id, active_job_id),
+        )
+    else:
+        conn.execute(
+            "UPDATE jobs SET connected_s = connected_s + ? WHERE claimed_by=? AND status IN ('claimed', 'running')",
+            (interval_s, worker_id),
+        )
+
+
+def requeue_orphaned_jobs_for_worker(conn, worker_id: str, active_job_id: int | None) -> list[int]:
+    """Reencola de inmediato cualquier job claimed/running de este worker
+    que NO sea su active_job_id reportado -- computo genuinamente perdido
+    (Geant4 no tiene estados intermedios), no algo a preservar esperando
+    el timeout normal de abandono. Sin active_job_id (worker sin esa
+    telemetria todavia) no se toca nada, mismo criterio conservador que
+    _accrue_connected_time(). Devuelve los job_id reencolados, para
+    loguear si hace falta."""
+    if active_job_id is None:
+        return []
+    rows = conn.execute(
+        "SELECT job_id, attempt, max_attempts FROM jobs WHERE claimed_by=? AND status IN ('claimed','running') AND job_id != ?",
+        (worker_id, active_job_id),
+    ).fetchall()
+    requeued = []
+    error = (f"reencolado automaticamente: el worker {worker_id} reclamo otro job ({active_job_id}) "
+             "sin liberar este primero (proceso reiniciado) -- computo perdido, Geant4 no guarda estados intermedios")
+    for row in rows:
+        # Mismo criterio que record_failure(): 'pending' libera la
+        # asignacion (claimed_by=NULL) para que cualquier worker lo
+        # reclame de nuevo; 'failed' (intentos agotados) CONSERVA
+        # claimed_by/claimed_at -- no es un caso especial de esta
+        # funcion, es como ya se comporta cualquier job que agota sus
+        # intentos en el resto del coordinator.
+        new_status = "pending" if row["attempt"] < row["max_attempts"] else "failed"
+        conn.execute(
+            "UPDATE jobs SET status=?, "
+            "claimed_by=CASE WHEN ?='pending' THEN NULL ELSE claimed_by END, "
+            "claimed_at=CASE WHEN ?='pending' THEN NULL ELSE claimed_at END, "
+            "connected_s=0, cancel_requested=0, log_requested=0, last_error=?, updated_at=? WHERE job_id=?",
+            (new_status, new_status, new_status, error, now_iso(), row["job_id"]),
+        )
+        requeued.append(row["job_id"])
+    return requeued
 
 
 def touch_heartbeat(worker_id: str, ram_free_gb: float = None, cpu_load_pct: float = None,
@@ -324,7 +390,7 @@ def touch_heartbeat(worker_id: str, ram_free_gb: float = None, cpu_load_pct: flo
         previous = conn.execute("SELECT last_heartbeat FROM workers WHERE worker_id=?", (worker_id,)).fetchone()
         if previous is None:
             return None
-        _accrue_connected_time(conn, worker_id, previous["last_heartbeat"])
+        _accrue_connected_time(conn, worker_id, previous["last_heartbeat"], active_job_id)
         cur = conn.execute(
             """
             UPDATE workers SET last_heartbeat=?, status='online',
@@ -343,6 +409,13 @@ def touch_heartbeat(worker_id: str, ram_free_gb: float = None, cpu_load_pct: flo
         if result["request_log"]:
             row = conn.execute("SELECT job_id, attempt, log_request_id FROM jobs WHERE claimed_by=? AND status IN ('claimed','running') AND log_requested=1 AND (? IS NULL OR job_id=?) ORDER BY job_id", (worker_id, active_job_id, active_job_id)).fetchone()
             result["log_request"] = {"job_id": row["job_id"], "attempt": row["attempt"], "request_id": row["log_request_id"]}
+        # Al final, despues de resolver cancel/log-request sobre el job
+        # activo real -- un job huerfano (claimed/running bajo este
+        # worker, pero distinto de active_job_id) nunca deberia competir
+        # por esas señales, ya se perdio del todo.
+        requeued = requeue_orphaned_jobs_for_worker(conn, worker_id, active_job_id)
+        if requeued:
+            result["requeued_orphan_job_ids"] = requeued
         return result
 
 

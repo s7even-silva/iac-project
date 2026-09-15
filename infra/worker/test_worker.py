@@ -708,3 +708,98 @@ def test_heartbeat_refreshes_image_digest(monkeypatch):
     monkeypatch.setattr(worker, 'self_image_digest', lambda: None)
     worker.heartbeat('w')
     assert post.call_args.kwargs['json']['image_digest'] is None
+
+
+def test_check_geant4_environment_ok_when_exit_zero(monkeypatch, tmp_path):
+    monkeypatch.setattr(worker, 'BUILD_DIR', tmp_path)
+    completed = MagicMock(returncode=0, stdout='', stderr='')
+    with patch.object(worker.subprocess, 'run', return_value=completed) as run:
+        assert worker.check_geant4_environment() is None
+    run.assert_called_once()
+
+
+def test_check_geant4_environment_detects_missing_conda_env(monkeypatch, tmp_path):
+    # Reproduce la firma real observada en produccion (2026-09-15, ver
+    # AGENTS.md): sin 'conda activate geant4_env', el binario SI arranca
+    # (RPATH resuelve las .so) pero Geant4 aborta con SIGABRT (134) por
+    # no encontrar G4ENSDFSTATEDATA -- no un exit_code cualquiera, uno
+    # medido en vivo con el fallo real reproducido a proposito.
+    monkeypatch.setattr(worker, 'BUILD_DIR', tmp_path)
+    completed = MagicMock(
+        returncode=134, stdout='',
+        stderr='G4ENSDFSTATEDATA environment variable must be set\n*** Fatal Exception *** core dump ***')
+    with patch.object(worker.subprocess, 'run', return_value=completed):
+        error = worker.check_geant4_environment()
+    assert error is not None
+    assert 'exit_code=134' in error
+    assert 'conda activate' in error
+
+
+def test_check_geant4_environment_reports_timeout(monkeypatch, tmp_path):
+    monkeypatch.setattr(worker, 'BUILD_DIR', tmp_path)
+    with patch.object(worker.subprocess, 'run', side_effect=worker.subprocess.TimeoutExpired('cmd', 20)):
+        error = worker.check_geant4_environment()
+    assert error is not None and 'respondio' in error
+
+
+def test_main_exits_without_registering_when_env_check_fails(monkeypatch, tmp_path):
+    monkeypatch.setattr(worker, 'RUN_ORGAN_SWEEP', tmp_path / 'run_organ_sweep.py')
+    worker.RUN_ORGAN_SWEEP.write_text('')
+    monkeypatch.setattr(worker, 'BUILD_DIR', tmp_path)
+    (tmp_path / 'ICRP110phantoms').write_text('')
+    monkeypatch.setattr(worker, 'check_geant4_environment', lambda: 'entorno roto de prueba')
+    register = MagicMock()
+    monkeypatch.setattr(worker, 'register', register)
+    with pytest.raises(SystemExit, match='entorno roto de prueba'):
+        worker.main()
+    register.assert_not_called()
+
+
+def test_run_worker_loop_stops_after_consecutive_fast_failures(monkeypatch, tmp_path):
+    # Reproduce el patron real de produccion: N jobs seguidos fallando
+    # en segundos, sin ningun exito de por medio -- debe detener el
+    # worker en vez de seguir quemando intentos de jobs reales
+    # indefinidamente (ver AGENTS.md, "Bug real de robustez").
+    monkeypatch.setattr(worker, 'WORKER_ID_FILE', tmp_path / 'worker_id')
+    monkeypatch.setattr(worker, '_CONSECUTIVE_FAST_FAILURES_LIMIT', 3)
+    monkeypatch.setattr(worker, 'get_or_create_worker_id', lambda: 'w1')
+    monkeypatch.setattr(worker, 'register', lambda *a: None)
+    monkeypatch.setattr(worker, 'retry_pending_results', lambda: None)
+    monkeypatch.setattr(worker, 'retry_pending_failures', lambda: True)
+    monkeypatch.setattr(worker, 'heartbeat', lambda *a: None)
+    jobs = iter([{'job_id': i} for i in range(1, 10)])
+    monkeypatch.setattr(worker, 'poll_next_job', lambda *a: next(jobs, None))
+    monkeypatch.setattr(worker, 'run_job', lambda *a: (False, 2.0))  # fallo rapido cada vez
+    with pytest.raises(SystemExit, match='3 fallos consecutivos'):
+        worker.run_worker_loop()
+
+
+def test_run_worker_loop_resets_streak_after_success(monkeypatch, tmp_path):
+    monkeypatch.setattr(worker, 'WORKER_ID_FILE', tmp_path / 'worker_id')
+    monkeypatch.setattr(worker, '_CONSECUTIVE_FAST_FAILURES_LIMIT', 3)
+    monkeypatch.setattr(worker, 'get_or_create_worker_id', lambda: 'w1')
+    monkeypatch.setattr(worker, 'register', lambda *a: None)
+    monkeypatch.setattr(worker, 'retry_pending_results', lambda: None)
+    monkeypatch.setattr(worker, 'retry_pending_failures', lambda: True)
+    monkeypatch.setattr(worker, 'heartbeat', lambda *a: None)
+    # 2 fallos rapidos, 1 exito, 2 fallos rapidos mas -- nunca llega a 3
+    # SEGUIDOS porque el exito de en medio resetea el contador. Tras
+    # consumir los 5, se fuerza la salida del loop real (que de otro modo
+    # seguiria haciendo poll indefinidamente con job=None) con una
+    # excepcion marcador, no con time.sleep de verdad.
+    outcomes = iter([(False, 2.0), (False, 2.0), (True, 500.0), (False, 2.0), (False, 2.0)])
+    jobs = iter([{'job_id': i} for i in range(1, 6)])
+
+    class _JobsExhausted(Exception):
+        pass
+
+    def fake_poll(*a):
+        job = next(jobs, None)
+        if job is None:
+            raise _JobsExhausted()
+        return job
+    monkeypatch.setattr(worker, 'poll_next_job', fake_poll)
+    monkeypatch.setattr(worker, 'run_job', lambda *a: next(outcomes))
+    with pytest.raises(_JobsExhausted):
+        worker.run_worker_loop()  # nunca debe salir por SystemExit de la racha
+    assert next(jobs, None) is None  # confirma que efectivamente se consumieron los 5

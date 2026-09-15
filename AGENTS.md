@@ -4478,3 +4478,227 @@ activada por `G4_EVENT_DIAGNOSTICS_DIR`, que el worker fija en su espacio tempor
 No altera scoring ni limita pasos. Las pilas nativas C++ requieren diagnóstico
 supervisado posterior; los permisos ausentes se registran sin terminar Geant4.
 Detalles y límites de conservación en `infra/README.md`.
+
+### Auto-actualización con Podman: falta el socket, no una contradicción de diseño (2026-09-16)
+
+**Pregunta directa del usuario tras un incidente real:** `tania` (el
+worker más rápido, `cpu_score=18.07`) volvió a reclamar el job 141 tras
+un remote-kill con la MISMA imagen vieja — ¿contradice esto la mecánica
+de auto-actualización "entre jobs" ya documentada? Investigado leyendo
+el código real (`auto_update()` en `worker.py`, líneas 914+), no
+repitiendo la documentación de sesiones anteriores sin verificar: el
+mecanismo sí existe, sí se invoca correctamente justo antes de pedir el
+siguiente job (`run_worker_loop()`, nunca a mitad de una simulación), y
+la imagen Docker actual sí trae la etiqueta
+`org.iac.worker-update-protocol=1` que `auto_update()` exige. No hay
+contradicción de diseño.
+
+**Causa raíz real, confirmada con `podman inspect geant4-worker` en
+`tania` (pedido explícitamente al usuario y verificado dato por
+dato):** `tania` corre el worker con **Podman**, no Docker —
+`NetworkMode: pasta`, `CgroupManager: systemd`, rutas
+`.local/share/containers/storage/overlay-containers/...`,
+`io.container.manager: libpod` en las Annotations, todos indicadores
+exclusivos de Podman. El `podman run` original (traducido a mano del
+`docker run` de `GUIA_VOLUNTARIOS.md`, que nunca menciona Podman) nunca
+montó ningún socket dentro del contenedor (`"Mounts": []` en el
+inspect). `docker_client.py` (usado exclusivamente por `auto_update()`)
+habla directo al Docker Engine API sobre `/var/run/docker.sock` vía
+HTTP crudo (`http.client`/`socket` de la stdlib, sin CLI) — sin ese
+socket montado, `DockerClient.available()` (`GET /_ping`) falla de
+inmediato, así que `self_image_digest()` devuelve `None`, y
+`auto_update()` se rinde en su primer chequeo (`if current_digest is
+None: return False`) **antes de comparar nada**, sin loguear ningún
+error visible. Confirmado con datos reales que sí había una
+actualización pendiente para aplicarse: digest corriendo en el
+contenedor (`639b183c...`, del propio `podman inspect`) distinto del
+digest deseado publicado en el coordinator (`c9a61529...`, de
+`GET /api/v1/health`).
+
+**Mismo bug ya documentado para `image_digest: null` en el dashboard**
+(ver "Digest ausente en dashboard" más arriba) — la diferencia es que
+en `tania` este fallo silencioso no solo deja un campo de telemetría en
+blanco, sino que bloquea la auto-actualización real por completo.
+
+**La API que usa `auto_update()` es Docker Engine API estándar sin
+nada específico de la implementación de Docker** (`/_ping`,
+`/containers/{id}/json`, `/images/{ref}/json`, rename, etc., verificado
+leyendo `docker_client.py` completo) — Podman expone exactamente esta
+misma API en modo compatibilidad vía `podman system service`, pensado
+justo para este caso. `self_container_id()` (el otro prerequisito de
+`auto_update()`) ya funciona en `tania` sin cambios, por su tercer
+fallback (`hostname` como ID si matchea 12/64 hex) — confirmado:
+`hostname=08976dbb9e96`. Solo faltaba el socket.
+
+**Fix entregado al usuario, no aplicado por este asistente** (`tania`
+la administra otra persona, probablemente `alexander` según las rutas
+del inspect) — habilitar `systemctl --user enable --now podman.socket`
+(persiste entre reinicios, rootless) y recrear el contenedor con
+`-v $XDG_RUNTIME_DIR/podman/podman.sock:/var/run/docker.sock` agregado
+al mismo `podman run` de siempre. Pendiente real: si algún otro
+voluntario también usa Podman en vez de Docker (nadie más confirmado
+hasta ahora), tendrá el mismo problema — `GUIA_VOLUNTARIOS.md` sigue
+documentando solo el comando `docker run`, sin una nota equivalente
+para Podman; no agregada todavía porque `tania` es, por ahora, el único
+caso real conocido.
+
+### Bug real de robustez: el worker no distingue "mi entorno está roto"
+de "esta simulación falló" — 18 jobs quemados en cadena (2026-09-15)
+
+**Reportado por el usuario:** `bryam-local` corrió solo el `nohup env
+... python3 infra/worker/worker.py &` de `GUIA_WORKER_LOCAL.md` sin el
+paso previo `conda activate geant4_env`, y esto causó "muchos jobs
+marcados como fallidos" — el usuario lo señaló correctamente como un
+bug, no solo un error de operación puntual.
+
+**Mecanismo confirmado leyendo el código real (`_run_job()` en
+`worker.py`):** `main()` (línea 1204+) solo verifica que
+`RUN_ORGAN_SWEEP` y el binario `ICRP110phantoms` **existan en el
+filesystem** (líneas 1205-1209) — ninguna de las dos comprobaciones
+depende de `LD_LIBRARY_PATH`/`G4*DATA`, así que el worker arranca y se
+registra sin problema incluso sin el entorno conda activado.
+`subprocess.Popen(cmd, ...)` (línea 1079) también arranca sin error —
+el binario existe, el problema es que **al ejecutarse** no encuentra
+las bibliotecas dinámicas de Geant4 ni sus datasets, y sale casi de
+inmediato con `returncode != 0`. Eso cae en la rama de la línea 1179
+(`if process.returncode: raise RuntimeError(...)`) → capturado por el
+`except` genérico de la línea 1188 → `report_failure()`. El worker
+nunca distingue esta causa (entorno roto, afecta a CUALQUIER job que
+reciba) de un fallo genuino de una simulación específica (ej. un bug de
+física en un bin particular) — sigue el loop normal
+(`run_worker_loop()`) y pide el siguiente job de inmediato, repitiendo
+el mismo fallo en segundos por cada uno.
+
+**Alcance real, confirmado consultando `GET /api/v1/jobs` por
+`claimed_by=ba49a04b-...` (worker_id real de `bryam-local`, no
+confundir con un `worker_id` viejo de `9386d5c3-...` encontrado en un
+`~/.geant4-worker/worker_id` local de otra sesión/máquina, sin relación
+con este incidente):** 18 jobs cayeron a `failed` definitivo (3
+intentos agotados cada uno, todos con exit_code=1 y sin llegar a
+completar ninguna corrida real) — job 141 (ya repuesto antes por el
+incidente de remote-kill, ver arriba) más 17 más:
+258/262/278/282/286/290/294/446/450/454/522/526/530/534/538/542/546,
+mezcla de GCR_H/GCR_He/SEP_p en varios bins y offsets, todos repetición
+2/3. **Repuestos manualmente a `pending` con `attempt=0`** (mismo
+criterio que job 141: el fallo fue de entorno, no de cómputo real, así
+que no debían contar contra el límite de 3 intentos) vía `gcloud
+compute ssh` a la VM del coordinator.
+
+**Segundo fallo de job 141, encontrado porque el usuario lo señaló
+explícitamente tras el barrido inicial** ("hay un fallido más que se te
+ha pasado por alto") — la primera pasada de este incidente solo
+consultó el estado en un instante dado; entre reponer job 141 (por el
+incidente de remote-kill, ANTES de saber del entorno roto) y confirmar
+que `bryam-local` ya tenía el entorno activado, la máquina volvió a
+tomar el 141 todavía sin `conda activate`, lo falló otra vez con el
+mismo `exit_code=1` característico, y agotó sus 3 intentos frescos de
+nuevo. Repuesto una segunda vez a `pending`/`attempt=0`. Verificado tras
+esto que no quedan más jobs `failed` bajo el `worker_id` de
+`bryam-local` (`GET /api/v1/jobs` filtrado por `claimed_by`, 0
+resultados) — lección para revisar de nuevo cualquier incidente similar
+después de confirmar que la causa raíz ya se corrigió, no solo antes.
+
+**Corregido en el código (2026-09-15), las dos ideas que habían quedado
+pendientes en el párrafo anterior:**
+
+1. **Self-check real del entorno antes de registrarse**
+   (`check_geant4_environment()`, nuevo en `worker.py`, llamado desde
+   `main()` antes de `run_worker_loop()`). Corre el binario real
+   (`ICRP110phantoms`) con un macro trivial (`/run/initialize`, sin
+   `beamOn`) y un timeout de 20s. **Diagnóstico verificado en vivo, no
+   supuesto** — sin `conda activate geant4_env`, el binario SÍ arranca
+   (las bibliotecas dinámicas se resuelven por RPATH embebido, no
+   dependen de `LD_LIBRARY_PATH` en runtime, al contrario de lo que se
+   había asumido inicialmente), pero Geant4 aborta con `SIGABRT` (exit
+   134) al no encontrar `G4ENSDFSTATEDATA` y el resto de los datasets
+   `G4*DATA` — reproducido con `env -i`, mensaje exacto `"G4ENSDFSTATEDATA
+   environment variable must be set"` seguido de `"*** Fatal Exception
+   *** core dump ***"`. Con el entorno activado, el mismo comando
+   termina limpio en exit 0. `/run/initialize` sin `beamOn` ya dispara
+   la carga de datasets — no hace falta ninguna corrida real para
+   detectar esto. Si el chequeo falla, `main()` sale con `sys.exit()`
+   antes de registrarse — el worker nunca aparece en el coordinator, y
+   nunca reclama ningún job real con el entorno roto.
+2. **Detección de fallos consecutivos rápidos** (`_CONSECUTIVE_FAST_FAILURES_LIMIT=5`,
+   `_FAST_FAILURE_MAX_DURATION_S=60.0`, en `run_worker_loop()`) — red de
+   seguridad complementaria al self-check: cubre el caso de que el
+   entorno se rompa DESPUÉS de arrancar (ej. una reinstalación de conda a
+   mitad de vida del proceso), no solo al inicio. `run_job()`/`_run_job()`
+   ahora devuelven `(exito: bool, duracion_s: float)` en vez de `None`
+   (cambio de contrato, ningún test existente dependía del valor viejo).
+   5 fallos seguidos de menos de 60s cada uno (la firma real observada:
+   18 jobs fallando en segundos, sin ningún éxito de por medio) detienen
+   el worker con `sys.exit()` y un mensaje explícito, en vez de seguir
+   pidiendo jobs indefinidamente. Un solo éxito de por medio resetea el
+   contador — un fallo real y aislado de una simulación específica nunca
+   dispara esto por sí solo.
+
+10 tests nuevos en `test_worker.py` (65 en total, todos pasan): el
+self-check detecta exit 0/134/timeout correctamente, `main()` sale sin
+llamar a `register()` si el entorno falla, la racha se detiene en el
+umbral exacto, y un éxito de por medio la resetea sin falsos positivos.
+Cambio puro de `worker.py` — **requiere publicar imagen Docker nueva**
+para que los workers Docker existentes lo reciban (mismo procedimiento
+de coordinación ya establecido: cada voluntario actualiza cuando su
+corrida actual termine). La guía (`GUIA_WORKER_LOCAL.md`) sigue
+recomendando `conda activate geant4_env` como primer paso — el
+self-check ahora es la red de seguridad si igual se olvida, no un
+reemplazo de seguir la guía.
+
+### Bug real de producción: jobs "fantasma" acumulando progreso tras un reinicio del proceso worker (2026-09-15)
+
+**Reportado por el usuario, con diagnóstico propio correcto antes de
+pedir el fix:** cuando el PROCESO del worker muere y se reinicia
+(apagado/encendido de la PC, crash, `docker rm`+recreate) sin liberar
+primero el job que tenía activo, el proceso nuevo simplemente pide el
+siguiente — dejando el job viejo huérfano en `claimed`/`running` bajo el
+mismo `worker_id`. El usuario señaló correctamente que esto es distinto
+de un simple corte de red (ahí el mismo proceso sigue vivo y retoma el
+MISMO `job_id` al reconectar, nunca hay dos jobs activos a la vez), y que
+como Geant4 no guarda estados intermedios, el progreso del job huérfano
+ya se perdió por completo — no tiene sentido que su `connected_s` siga
+"avanzando" en el dashboard, y no debería esperar el timeout normal de
+abandono para reencolarse.
+
+**Confirmado en vivo con datos reales de `bryam-local`** (que sufrió
+exactamente este patrón varias veces la misma sesión, por reinicios
+repetidos de su propio proceso worker): 2 jobs `claimed`/`running`
+simultáneos bajo el mismo `worker_id` (job 141, viejo, `connected_s`
+subiendo sin trabajo real; job 446, el real, `active_job_id` reportado
+en el heartbeat). Causa raíz exacta en `_accrue_connected_time()`
+(`db.py`): el `UPDATE jobs SET connected_s = connected_s + ? WHERE
+claimed_by=? AND status IN ('claimed','running')` no filtraba por
+`job_id` — sumaba tiempo a **todos** los jobs activos de ese
+`worker_id`, no solo al que el proceso real está trabajando.
+
+**Corregido usando `active_job_id`, telemetría que el worker YA manda en
+cada heartbeat** (`_active_cancel` en `worker.py`, agregada en la sesión
+anterior para el mecanismo de remote-kill, nunca antes usada para esto):
+- `_accrue_connected_time()` ahora solo suma tiempo al job cuyo
+  `job_id == active_job_id` cuando ese campo viene informado — un worker
+  sin esa telemetría todavía (versión vieja) cae al comportamiento
+  anterior sin cambios, mismo criterio conservador que `ram_free_gb`/
+  `cpu_score` ausentes en otras partes del coordinator.
+- `requeue_orphaned_jobs_for_worker()` (nuevo en `db.py`), llamado dentro
+  de la misma transacción de `touch_heartbeat()` (después de resolver
+  `cancel_job_id`/`request_log` sobre el job activo real, para que esas
+  señales nunca compitan con un huérfano): reencola de inmediato
+  cualquier job `claimed`/`running` de ese worker que NO sea su
+  `active_job_id` reportado — `pending` si le quedan intentos (mismo
+  criterio que `record_failure()`, incluyendo limpiar `claimed_by`),
+  `failed` si los agotó (conservando `claimed_by`/`claimed_at`, igual que
+  cualquier otro job que agota sus intentos en el resto del
+  coordinator). `last_error` deja explícito que fue un reencolado
+  automático por esta causa, no una cancelación ni un timeout de
+  abandono. `POST /workers/{id}/heartbeat` expone la lista de
+  `job_id` reencolados en su respuesta (`requeued_orphan_job_ids`,
+  automático vía `{"ok": True, **result}`, sin tocar `app.py`).
+
+5 tests nuevos en `test_coordinator.py` (72 en total): un job huérfano
+deja de acumular `connected_s` mientras el real sí lo hace; el huérfano
+se reencola en el mismo heartbeat que lo revela; respeta
+`max_attempts` (cae a `failed` conservando la asignación, no a
+`pending`); un worker sin `active_job_id` no reencola nada. Cambio puro
+de `db.py`/`app.py` — **no requiere imagen Docker nueva**, se despliega
+con el procedimiento normal (`git pull` + `systemctl restart
+geant4-coordinator`).

@@ -1029,20 +1029,23 @@ def auto_update(worker_id: str) -> bool:
         return False
 
 
-def run_job(worker_id: str, job: dict) -> None:
+def run_job(worker_id: str, job: dict) -> tuple[bool, float]:
+    """Devuelve (exito, duracion_s) -- usado por run_worker_loop() para
+    detectar una racha de fallos casi instantaneos (ver
+    _CONSECUTIVE_FAST_FAILURES_LIMIT), no solo para logging."""
     global _active_cancel
     context = (job["job_id"], threading.Event(), job.get("attempt", 0))
     with _cancel_lock:
         _active_cancel = context
     try:
-        _run_job(worker_id, job, context[1])
+        return _run_job(worker_id, job, context[1])
     finally:
         with _cancel_lock:
             if _active_cancel is context:
                 _active_cancel = None
 
 
-def _run_job(worker_id: str, job: dict, cancel_event) -> None:
+def _run_job(worker_id: str, job: dict, cancel_event) -> tuple[bool, float]:
     job_id = job["job_id"]
     label = f"{job['species']} bin{job['bin_index']} offset_x_m={job['offset_x_m']}"
     print(f"[worker] job {job_id} ({label}) -- iniciando")
@@ -1052,7 +1055,7 @@ def _run_job(worker_id: str, job: dict, cancel_event) -> None:
         resp.raise_for_status()
     except requests.RequestException as exc:
         print(f"[worker] no se pudo marcar 'running' el job {job_id} (se abandona esta asignacion): {exc}")
-        return
+        return True, 0.0  # No es un fallo del job/entorno -- no cuenta contra la racha.
 
     start = time.monotonic()
     try:
@@ -1185,8 +1188,11 @@ def _run_job(worker_id: str, job: dict, cancel_event) -> None:
             if not results:
                 raise RuntimeError("Simulation produced no rows matching this job")
             report_result(worker_id, job_id, 0, duration, results, read_manifest_csv(work))
+            return True, duration
     except (OSError, RuntimeError, requests.RequestException) as exc:
-        report_failure(worker_id, job_id, str(exc), time.monotonic()-start)
+        fail_duration = time.monotonic()-start
+        report_failure(worker_id, job_id, str(exc), fail_duration)
+        return False, fail_duration
 
 
 def heartbeat_loop(worker_id, stop):
@@ -1201,12 +1207,63 @@ def stop_worker(signum, frame):
     raise SystemExit(128+signum)
 
 
+_ENV_CHECK_TIMEOUT_S = 20.0
+
+
+def check_geant4_environment() -> str | None:
+    """Corre el binario real con un macro trivial (solo /run/initialize,
+    sin beamOn) para confirmar que el entorno esta realmente utilizable --
+    no solo que el archivo exista (main() ya lo comprobaba, pero eso no
+    detecta un `conda activate geant4_env` faltante).
+
+    Bug real de produccion (2026-09-15, ver AGENTS.md "Bug real de
+    robustez: el worker no distingue 'mi entorno esta roto'..."): sin el
+    entorno conda, el binario SI arranca (las bibliotecas dinamicas se
+    resuelven por RPATH embebido, no dependen de LD_LIBRARY_PATH) pero
+    Geant4 aborta con SIGABRT (exit 134) al no encontrar G4ENSDFSTATEDATA
+    y el resto de datasets G4*DATA -- confirmado en vivo, no supuesto,
+    reproduciendo el fallo real con env -i: exit code 134, mensaje
+    "G4ENSDFSTATEDATA environment variable must be set" seguido de
+    "*** Fatal Exception *** core dump ***". Con el entorno activado el
+    mismo comando termina limpio en exit 0. /run/initialize sin beamOn
+    ya dispara la carga de datasets (confirmado con el mismo experimento),
+    asi que no hace falta ninguna corrida real para detectar esto.
+
+    Devuelve None si el entorno esta OK, o un mensaje de error explicando
+    por que no (para loguear y decidir no registrarse)."""
+    probe = None
+    try:
+        with tempfile.NamedTemporaryFile("w", suffix=".mac", delete=False) as f:
+            f.write("/run/initialize\n")
+            probe = Path(f.name)
+        result = subprocess.run(
+            [str(BUILD_DIR / "ICRP110phantoms"), str(probe)],
+            cwd=BUILD_DIR, capture_output=True, text=True,
+            timeout=_ENV_CHECK_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        return f"el binario no respondio en {_ENV_CHECK_TIMEOUT_S:.0f}s con un macro trivial"
+    except OSError as exc:
+        return f"no se pudo ejecutar el binario: {exc}"
+    finally:
+        if probe is not None:
+            probe.unlink(missing_ok=True)
+    if result.returncode != 0:
+        tail = (result.stdout + result.stderr)[-1000:]
+        return f"exit_code={result.returncode} (esperado 0) -- revisa que el entorno Geant4 este activado " \
+               f"(ej. 'conda activate geant4_env'). Salida:\n{tail}"
+    return None
+
+
 def main() -> None:
     if not RUN_ORGAN_SWEEP.is_file():
         sys.exit(f"ERROR: no se encontro {RUN_ORGAN_SWEEP} -- revisa que el repo este completo.")
     if not (BUILD_DIR / "ICRP110phantoms").is_file():
         sys.exit(f"ERROR: no se encontro el binario compilado en {BUILD_DIR}. "
                   "Compila ActiveShield_Sim primero (ver README.md / scripts/install_compute_node.sh).")
+
+    env_error = check_geant4_environment()
+    if env_error:
+        sys.exit(f"ERROR: el entorno Geant4 no esta usable, no se registra ningun job -- {env_error}")
 
     if HEARTBEAT_INTERVAL_S <= 0 or POLL_INTERVAL_S <= 0 or WORKER_THREADS < 1:
         sys.exit("Intervals and WORKER_THREADS must be positive")
@@ -1219,12 +1276,17 @@ def main() -> None:
         run_worker_loop()
 
 
+_CONSECUTIVE_FAST_FAILURES_LIMIT = 5
+_FAST_FAILURE_MAX_DURATION_S = 60.0
+
+
 def run_worker_loop() -> None:
     worker_id = get_or_create_worker_id()
     register(worker_id)
     stop = threading.Event()
     heartbeat_thread = threading.Thread(target=heartbeat_loop, args=(worker_id, stop), daemon=True)
     heartbeat_thread.start()
+    consecutive_fast_failures = 0
     try:
         # Antes de pedir trabajo nuevo: si el worker se reinicio (crash,
         # --restart unless-stopped, actualizacion) mientras un resultado
@@ -1261,7 +1323,26 @@ def run_worker_loop() -> None:
                 time.sleep(POLL_INTERVAL_S)
                 continue
 
-            run_job(worker_id, job)
+            success, duration_s = run_job(worker_id, job)
+            # Red de seguridad complementaria al self-check de main() (ver
+            # check_geant4_environment()): ese chequeo solo cubre "el
+            # entorno ya estaba roto al arrancar" -- esto cubre el caso de
+            # que se rompa DESPUES (ej. una actualizacion de conda a mitad
+            # de vida del proceso). Un fallo real de UNA simulacion
+            # especifica no dispara esto solo -- hacen falta varios
+            # SEGUIDOS y RAPIDOS, la firma real observada en produccion
+            # (2026-09-15, ver AGENTS.md): 18 jobs fallando en segundos
+            # cada uno, sin ningun exito de por medio.
+            if not success and duration_s < _FAST_FAILURE_MAX_DURATION_S:
+                consecutive_fast_failures += 1
+            else:
+                consecutive_fast_failures = 0
+            if consecutive_fast_failures >= _CONSECUTIVE_FAST_FAILURES_LIMIT:
+                sys.exit(f"ERROR: {consecutive_fast_failures} fallos consecutivos en menos de "
+                          f"{_FAST_FAILURE_MAX_DURATION_S:.0f}s cada uno -- probablemente el entorno "
+                          "se rompio (ej. 'conda activate geant4_env' perdido tras un reinicio de shell), "
+                          "no un problema de las simulaciones en si. Deteniendo el worker antes de seguir "
+                          "quemando intentos de jobs reales.")
             if os.environ.get("WORKER_ONCE") == "1":
                 stop.set()
                 return
