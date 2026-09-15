@@ -4466,3 +4466,15 @@ sin identidad verificable: `auto_update()` sigue requiriendo un digest local.
 Publicar `latest` no activa por sí solo una actualización: se requiere anunciar
 el digest de manifiesto validado en el coordinator. Un dato ausente en la tabla
 no demuestra por sí solo ni una imagen antigua ni auto-update deshabilitado.
+
+### Instrumentación de silencio del worker
+
+`infra/worker/diagnostics.py` muestrea CPU por hilo/árbol de procesos y recursos
+Linux. El aviso del watchdog conserva diez muestras, estados de espera, pilas
+kernel disponibles y artefactos acotados bajo el volumen persistente, vinculados
+a job/intento/digest. Máximo tres capturas por intento; no subida automática.
+`ICRP110PhantomActionInitialization.cc` incorpora una acción begin/end por evento
+activada por `G4_EVENT_DIAGNOSTICS_DIR`, que el worker fija en su espacio temporal.
+No altera scoring ni limita pasos. Las pilas nativas C++ requieren diagnóstico
+supervisado posterior; los permisos ausentes se registran sin terminar Geant4.
+Detalles y límites de conservación en `infra/README.md`.

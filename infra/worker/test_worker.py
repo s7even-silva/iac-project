@@ -677,6 +677,7 @@ def test_tail_memory_is_bounded_for_single_huge_line(tmp_path):
 
 @pytest.mark.parametrize('action', ['warn', 'off'])
 def test_silence_does_not_kill_without_opt_in(monkeypatch, tmp_path, action):
+    monkeypatch.setattr(worker, 'WORKER_ID_FILE', tmp_path / 'worker_id')
     monkeypatch.setattr(worker, '_STALL_ACTION', action)
     monkeypatch.setattr(worker, '_STALL_TIMEOUT_S', .1)
     monkeypatch.setattr(worker, '_STALL_CHECK_INTERVAL_S', .05)
@@ -689,6 +690,9 @@ def test_silence_does_not_kill_without_opt_in(monkeypatch, tmp_path, action):
         worker.run_job('w', {'job_id':42,'species':'SEP_p','bin_index':0,'offset_x_m':0,'attempt':1})
     result.assert_called_once()
     failure.assert_not_called()
+
+    captures = list((tmp_path / 'diagnostics').glob('*.json'))
+    assert bool(captures) == (action == 'warn')
 
 
 def test_heartbeat_refreshes_image_digest(monkeypatch):

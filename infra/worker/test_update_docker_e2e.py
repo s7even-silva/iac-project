@@ -109,12 +109,12 @@ def injected_write(path, state):
 worker.write_update_state = injected_write
 worker.main()
 '''
-    for filename in ('worker.py', 'docker_client.py'):
+    for filename in ('worker.py', 'docker_client.py', 'diagnostics.py'):
         (tmp_path / filename).write_text((SOURCE / filename).read_text())
     (tmp_path / 'harness.py').write_text(harness)
     base = os.getenv('UPDATE_TEST_BASE_IMAGE', 'ghcr.io/s7even-silva/iac-project/geant4-worker:latest')
     (tmp_path / 'Dockerfile').write_text(f'''FROM {base}
-COPY worker.py docker_client.py harness.py digest /fixture/
+COPY worker.py docker_client.py diagnostics.py harness.py digest /fixture/
 LABEL org.iac.worker-update-protocol="1"
 CMD ["python3", "/fixture/harness.py"]
 ''')
