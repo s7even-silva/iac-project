@@ -3964,3 +3964,64 @@ resultado sin tener el job asignado, `submit_result()` lo rechazará con
 documentado más arriba ("Bug de logs corregido de paso"), sin dato
 corrupto, solo el cómputo de esa corrida específica perdido si no se
 reasigna a tiempo.
+
+### Bug real de `aggregate_organ_doses.py`: repeticiones parciales mezcladas al calcular std/barra de error (2026-09-15)
+
+**Pedido del usuario: un CSV que use SOLO la repetición 0 (sin mezclar
+con otras), y desconfianza correcta sobre el `resultados_riesgo_
+estocastico_repeticiones.csv` generado antes** ("no me sirve
+promediado, quiero std/barra de error con las 5 runs"). Investigando el
+código para dar el CSV de rep0, se encontró un bug real en la vista de
+estadística entre repeticiones (no en la vista pooled, que sí es
+correcta para su propósito de mejor punto estimado).
+
+**Causa raíz:** el bucle que arma `d_eq_gcr_by_rep`/`d_eq_sep_by_rep`
+por repetición hacía `if key_rep not in n_events_by_run_rep: continue`
+— esto saltaba silenciosamente cualquier combinación `(especie,bin)`
+faltante de una repetición, en vez de excluir la repetición ENTERA de
+ese cálculo. Con las repeticiones 1-3 parcialmente completas en
+producción (ver "Bug real de producción: cómputo huérfano" arriba, y
+el estado real de la cola: rep0=120/120 done, rep1=103/120, rep2=100/120,
+rep3=1/120), el script armaba un promedio "Frankenstein" por repetición
+— cada una usando solo los bins que le tocaron llegar — y reportaba
+`n_repeticiones=4` como si las 4 fueran comparables, cuando en realidad
+ninguna salvo la 0 estaba completa. El std/CV resultante mezclaba
+repeticiones con cobertura desigual sin ningún aviso.
+
+**Corregido:** una repetición ahora solo se incluye en el cálculo de
+std/SEM/IC95%/CV de una fila `(categoría, offset_x_m)` si tiene **todas**
+las combinaciones `(especie, bin_idx)` necesarias para ese offset —
+verificado con `all((rk, rep) in n_events_by_run_rep for rk in
+run_keys)` antes de usarla, no combinación por combinación. `n_repeticiones`
+en el CSV de salida ahora refleja cuántas repeticiones **realmente
+completas** entraron en ESA fila específica (`n_complete_reps`), no
+`len(reps_seen)` global (que solo contaba "en cuántas apareció al menos
+un dato"). El mensaje final ya no advierte solo si `len(reps_seen) < 2`
+(engañoso, contaba repeticiones parciales como si fueran completas) —
+ahora imprime cuántas repeticiones aparecen en los CSV de entrada,
+aclarando explícitamente que cada fila usa solo las completas.
+
+**Verificado con un caso sintético** (3 repeticiones completas para una
+sola combinación): `n_repeticiones=3` con std real (no vacío). **Con
+los datos reales de producción** (solo rep0 completa hoy): las 30 filas
+(6 categorías × 5 offsets) dan `n_repeticiones=1`, std/SEM/IC95%/CV en
+blanco como corresponde (`n<2`) — antes del fix, daban `n_repeticiones=4`
+con una "barra de error" calculada sobre datos parciales sin avisar.
+
+**Archivos regenerados en `geant4/ActiveShield_Sim/resultados/`**,
+renombrados explícitamente para no confundir cuál es cuál:
+`resultados_organo_agregados_rep0.csv`/`resultados_riesgo_estocastico
+_rep0.csv`/`_repeticiones_rep0.csv` (solo repetición 0, filtrada a mano
+antes de pasarla al script — pedido explícito del usuario, sin mezclar)
+vs. `..._pooled_todas_las_reps.csv` (todas las repeticiones disponibles,
+sumando eventos para el mejor punto estimado, sin barra de error válida
+todavía porque ninguna combinación tiene ≥2 repeticiones completas). Se
+eliminaron los CSV generados antes del fix (`resultados_organo_
+agregados_completo.csv` y el `resultados_riesgo_estocastico*.csv` sin
+sufijo de esa corrida) por tener el `n_repeticiones`/std incorrectos.
+
+**Pendiente real, no resuelto aquí:** cuando las repeticiones 1-4 se
+completen del todo, volver a correr `aggregate_organ_doses.py` sobre el
+conjunto completo para obtener la barra de error real de 5 repeticiones
+que el usuario pidió — hoy solo hay 1 repetición completa, matemáticamente
+no hay std que calcular todavía.
