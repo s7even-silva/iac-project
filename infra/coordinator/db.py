@@ -216,6 +216,9 @@ _MIGRATIONS = [
     "ALTER TABLE jobs ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE workers ADD COLUMN active_job_id INTEGER",
     "ALTER TABLE workers ADD COLUMN active_job_reported_at TEXT",
+    "ALTER TABLE jobs ADD COLUMN log_requested INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE jobs ADD COLUMN log_tail TEXT",
+    "ALTER TABLE jobs ADD COLUMN log_tail_updated_at TEXT",
 ]
 
 
@@ -290,11 +293,13 @@ def _accrue_connected_time(conn, worker_id: str, previous_heartbeat_iso: str | N
 def touch_heartbeat(worker_id: str, ram_free_gb: float = None, cpu_load_pct: float = None,
                      image_digest: str = None, active_job_id: int | None = None) -> dict | None:
     """None si el worker no esta registrado (llamador responde 404).
-    Si esta registrado: {"cancel_job_id": int | None} -- job_id del job
-    activo de este worker si fue marcado para cancelar (ver
-    request_job_cancel()/cancelled_job_for_worker()), calculado en la
-    MISMA transaccion para no pagar un segundo round-trip a la DB desde
-    app.py en cada heartbeat (cada 30s, por diseno).
+    Si esta registrado: {"cancel_job_id": int | None, "request_log": bool}
+    -- job_id del job activo de este worker si fue marcado para cancelar
+    (ver request_job_cancel()/cancelled_job_for_worker()), y si su log
+    activo fue pedido (ver request_job_log()/log_requested_for_worker(),
+    2026-09-16) -- ambos calculados en la MISMA transaccion para no pagar
+    un segundo round-trip a la DB desde app.py en cada heartbeat (cada
+    30s, por diseno).
 
     workers.active_job_id/active_job_reported_at (2026-09-15, nuevo):
     a diferencia de ram_free_gb/cpu_load_pct/image_digest (COALESCE --
@@ -327,7 +332,10 @@ def touch_heartbeat(worker_id: str, ram_free_gb: float = None, cpu_load_pct: flo
         )
         if cur.rowcount == 0:
             return None
-        return {"cancel_job_id": cancelled_job_for_worker(conn, worker_id, active_job_id)}
+        return {
+            "cancel_job_id": cancelled_job_for_worker(conn, worker_id, active_job_id),
+            "request_log": log_requested_for_worker(conn, worker_id, active_job_id),
+        }
 
 
 def get_config(key: str) -> str | None:
@@ -665,6 +673,57 @@ def cancelled_job_for_worker(conn, worker_id: str, active_job_id: int | None = N
         (worker_id, active_job_id, active_job_id),
     ).fetchone()
     return row["job_id"] if row else None
+
+
+def request_job_log(job_id: int) -> str | None:
+    """Marca un job para que el worker que lo tiene suba el tail de su log
+    activo (ver "log bajo demanda", AGENTS.md 2026-09-16) -- mismo patron
+    que request_job_cancel(): la senal viaja en la respuesta del proximo
+    heartbeat, no por polling aparte, porque el worker esta detras de NAT
+    sin puerto expuesto al coordinator. Accion administrativa/diagnostico
+    (usada por un endpoint de operador o el dashboard), no algo que un
+    worker llame.
+
+    Devuelve el worker_id que va a recibir la solicitud, o None si el job
+    no esta en un estado con worker activo."""
+    with get_conn() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        job = conn.execute("SELECT status, claimed_by FROM jobs WHERE job_id=?", (job_id,)).fetchone()
+        if job is None:
+            raise KeyError(f"job {job_id} no existe")
+        if job["status"] not in ("claimed", "running") or not job["claimed_by"]:
+            return None
+        conn.execute("UPDATE jobs SET log_requested=1 WHERE job_id=?", (job_id,))
+        return job["claimed_by"]
+
+
+def log_requested_for_worker(conn, worker_id: str, active_job_id: int | None = None) -> bool:
+    """True si el job ACTUAL de ese worker tiene un log pedido pendiente.
+    Recibe una conexion existente -- se llama DENTRO de la transaccion de
+    touch_heartbeat(), mismo motivo que cancelled_job_for_worker(). No
+    limpia el flag (eso lo hace save_job_log_tail() cuando el worker
+    efectivamente sube el log) -- solo informa."""
+    row = conn.execute(
+        "SELECT job_id FROM jobs WHERE claimed_by=? AND status IN ('claimed','running') "
+        "AND log_requested=1 AND (? IS NULL OR job_id=?) ORDER BY job_id",
+        (worker_id, active_job_id, active_job_id),
+    ).fetchone()
+    return row is not None
+
+
+def save_job_log_tail(job_id: int, worker_id: str, log_tail: str) -> bool:
+    """Guarda el tail de log subido por un worker y limpia log_requested.
+    Rechaza (devuelve False) si el job ya no le pertenece a ese worker --
+    mismo criterio de propiedad que record_result()/record_failure(), para
+    que un worker reasignado por timeout que sube tarde no pueda pisar el
+    log de un intento mas reciente."""
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE jobs SET log_tail=?, log_tail_updated_at=?, log_requested=0 "
+            "WHERE job_id=? AND claimed_by=? AND status IN ('claimed','running')",
+            (log_tail, now_iso(), job_id, worker_id),
+        )
+        return cur.rowcount > 0
 
 
 def _abandon_timeout_s(estimated_s: float | None) -> float:

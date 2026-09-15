@@ -41,3 +41,8 @@ class FailIn(BaseModel):
     worker_id: str
     error: str
     duration_s: float | None = None
+
+
+class JobLogIn(BaseModel):
+    worker_id: str
+    log_tail: str

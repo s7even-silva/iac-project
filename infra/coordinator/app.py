@@ -24,7 +24,7 @@ from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadF
 from fastapi.responses import FileResponse, JSONResponse
 
 import db
-from models import FailIn, HeartbeatIn, JobOut, WorkerRegister, WorkerRef
+from models import FailIn, HeartbeatIn, JobLogIn, JobOut, WorkerRegister, WorkerRef
 
 RESULTS_DIR = db.DB_PATH.parent / "results"
 DASHBOARD_PATH = Path(__file__).parent / "dashboard.html"
@@ -103,11 +103,15 @@ def heartbeat(worker_id: str, body: HeartbeatIn = HeartbeatIn()):
     result = db.touch_heartbeat(worker_id, body.ram_free_gb, body.cpu_load_pct, body.image_digest, body.active_job_id)
     if result is None:
         raise HTTPException(404, f"worker {worker_id} no registrado")
-    # cancel_job_id viaja aqui (no en un endpoint de polling aparte) porque
-    # el worker ya manda heartbeat cada 30s desde su propio hilo, en
-    # paralelo al subprocess de Geant4 -- ver heartbeat_loop()/run_job()
-    # en worker.py. None si no hay ningun job de este worker cancelado.
-    return {"ok": True, "cancel_job_id": result["cancel_job_id"]}
+    # cancel_job_id/request_log viajan aqui (no en un endpoint de polling
+    # aparte) porque el worker ya manda heartbeat cada 30s desde su propio
+    # hilo, en paralelo al subprocess de Geant4 -- ver
+    # heartbeat_loop()/run_job() en worker.py. request_log (2026-09-16,
+    # "log bajo demanda"): un worker detras de NAT no puede recibir un
+    # pedido directo del coordinator, asi que la solicitud viaja igual que
+    # cancel_job_id -- el worker sube el tail con un POST aparte a
+    # /jobs/{id}/log cuando ve este flag en true.
+    return {"ok": True, "cancel_job_id": result["cancel_job_id"], "request_log": result["request_log"]}
 
 
 @app.post("/api/v1/jobs/next", response_model=JobOut | None)
@@ -143,6 +147,35 @@ def cancel_job(job_id: int):
     if claimed_by is None:
         raise HTTPException(409, f"job {job_id} no esta 'claimed'/'running' con un worker asignado")
     return {"job_id": job_id, "claimed_by": claimed_by, "status": "cancel_requested"}
+
+
+@app.post("/api/v1/jobs/{job_id}/request-log")
+def request_job_log(job_id: int):
+    # Accion administrativa/diagnostico (2026-09-16, ver AGENTS.md "los
+    # logs no ayudan porque no muestran nada") -- mismo patron que
+    # cancel_job(): no lee nada aqui mismo, solo marca la senal, que el
+    # worker asignado recoge en su propio heartbeat y sube con un POST
+    # aparte a /jobs/{id}/log.
+    try:
+        claimed_by = db.request_job_log(job_id)
+    except KeyError:
+        raise HTTPException(404, f"job {job_id} no existe")
+    if claimed_by is None:
+        raise HTTPException(409, f"job {job_id} no esta 'claimed'/'running' con un worker asignado")
+    return {"job_id": job_id, "claimed_by": claimed_by, "status": "log_requested"}
+
+
+@app.post("/api/v1/jobs/{job_id}/log")
+def submit_job_log(job_id: int, body: JobLogIn):
+    # El worker sube esto en respuesta a request_log=true en su heartbeat
+    # (ver heartbeat()/report_log() en worker.py) -- rechaza si el job ya
+    # no le pertenece a ese worker (mismo criterio de propiedad que
+    # submit_result()), para que una subida tardia de un worker reasignado
+    # por timeout no pise el log de un intento mas reciente.
+    ok = db.save_job_log_tail(job_id, body.worker_id, body.log_tail)
+    if not ok:
+        raise HTTPException(409, f"job {job_id} no esta 'claimed'/'running' con claimed_by={body.worker_id}")
+    return {"job_id": job_id, "status": "log_saved"}
 
 
 @app.post("/api/v1/jobs/{job_id}/result")

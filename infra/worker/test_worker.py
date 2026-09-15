@@ -82,6 +82,121 @@ def test_filter_excludes_other_repetitions(tmp_path):
     assert len(list(csv.DictReader(io.StringIO(worker.filter_results_csv(job, tmp_path))))) == 1
 
 
+def test_tail_log_returns_last_n_lines(tmp_path):
+    log_path = tmp_path / 'run.log'
+    log_path.write_text('\n'.join(f'line {i}' for i in range(100)) + '\n')
+    tail = worker.tail_log(log_path, n_lines=5)
+    assert tail == '\n'.join(f'line {i}' for i in range(95, 100)) + '\n'
+
+
+def test_tail_log_missing_file_returns_none(tmp_path):
+    assert worker.tail_log(tmp_path / 'nope.log') is None
+
+
+def test_get_active_log_tail_none_when_no_job_active(monkeypatch):
+    monkeypatch.setattr(worker, '_active_log_path', None)
+    assert worker.get_active_log_tail() is None
+
+
+def test_get_active_log_tail_reads_from_active_path(tmp_path, monkeypatch):
+    log_path = tmp_path / 'active.log'
+    log_path.write_text('Event 4200 of 10000\n')
+    monkeypatch.setattr(worker, '_active_log_path', log_path)
+    assert worker.get_active_log_tail() == 'Event 4200 of 10000\n'
+
+
+def test_heartbeat_uploads_log_when_coordinator_requests_it(monkeypatch):
+    # Mismo patron que el remote-kill: la solicitud viaja en la respuesta
+    # del heartbeat (request_log=true), y el worker sube el tail con un
+    # POST aparte a /jobs/{id}/log -- no en el mismo request del
+    # heartbeat, para no inflar el caso comun (nadie lo pidio).
+    monkeypatch.setattr(worker, '_active_cancel', (42, worker.threading.Event()))
+    monkeypatch.setattr(worker, 'get_active_log_tail', lambda: 'Event 100 of 10000\n')
+
+    heartbeat_resp = MagicMock()
+    heartbeat_resp.raise_for_status.return_value = None
+    heartbeat_resp.json.return_value = {'cancel_job_id': None, 'request_log': True}
+
+    log_upload_calls = []
+
+    def fake_post(url, **kwargs):
+        if url.endswith('/heartbeat'):
+            return heartbeat_resp
+        if url.endswith('/log'):
+            log_upload_calls.append(kwargs.get('json'))
+            resp = MagicMock()
+            resp.raise_for_status.return_value = None
+            return resp
+        raise AssertionError(f'unexpected POST to {url}')
+
+    with patch.object(worker.SESSION, 'post', side_effect=fake_post):
+        worker.heartbeat('w1')
+
+    assert len(log_upload_calls) == 1
+    # job_id va en la URL (/jobs/{job_id}/log), no en el body -- solo
+    # worker_id y log_tail viajan como payload.
+    assert log_upload_calls[0] == {'worker_id': 'w1', 'log_tail': 'Event 100 of 10000\n'}
+
+
+def test_heartbeat_does_not_upload_log_when_not_requested(monkeypatch):
+    monkeypatch.setattr(worker, '_active_cancel', (42, worker.threading.Event()))
+
+    heartbeat_resp = MagicMock()
+    heartbeat_resp.raise_for_status.return_value = None
+    heartbeat_resp.json.return_value = {'cancel_job_id': None, 'request_log': False}
+
+    with patch.object(worker.SESSION, 'post', return_value=heartbeat_resp) as mock_post:
+        worker.heartbeat('w1')
+
+    assert mock_post.call_count == 1  # solo el propio heartbeat, ningun POST a /log
+
+
+def test_report_log_noop_without_active_job(monkeypatch):
+    monkeypatch.setattr(worker, 'get_active_log_tail', lambda: None)
+    with patch.object(worker.SESSION, 'post') as mock_post:
+        worker.report_log('w1', 42)
+    mock_post.assert_not_called()
+
+
+def test_run_job_kills_stalled_subprocess_via_watchdog(tmp_path, monkeypatch):
+    # Watchdog de progreso (2026-09-16, ver AGENTS.md "el job de tania
+    # perdio 10.1h sin ningun reencolado"): un subprocess real que corre
+    # de verdad pero nunca escribe nada a su log (equivalente a un
+    # colgado genuino de Geant4, sin progreso). El watchdog debe matarlo
+    # solo, sin depender de cancel_event ni de que el coordinator lo
+    # detecte por connected_s -- esa es justamente la deteccion que
+    # faltaba y motivo este cambio.
+    monkeypatch.setattr(worker, 'BUILD_DIR', tmp_path)
+    monkeypatch.setattr(worker, 'REPO_ROOT', tmp_path)
+    (tmp_path / 'geant4/ActiveShield_Sim/data/sources/oltaris').mkdir(parents=True)
+    # Umbrales de prueba MUCHO mas cortos que los reales (20min/30s) --
+    # solo se valida el MECANISMO (mata un proceso sin progreso), no el
+    # valor de produccion en si.
+    monkeypatch.setattr(worker, '_STALL_CHECK_INTERVAL_S', 1.0)
+    monkeypatch.setattr(worker, '_STALL_TIMEOUT_S', 2.0)
+    # 'sleep 30' nunca escribe a logs_organ/ -- cae al fallback
+    # stdout_path (worker_stdout.log), que tampoco crece porque el
+    # comando no imprime nada. Simula el caso real: un subprocess vivo,
+    # consumiendo CPU o no, pero sin ningun progreso observable.
+    monkeypatch.setattr(worker, 'build_command', lambda job, work=None: ['sleep', '30'])
+
+    start_response = MagicMock()
+    start_response.raise_for_status.return_value = None
+    with patch.object(worker.SESSION, 'post', return_value=start_response):
+        failure = {}
+        monkeypatch.setattr(worker, 'report_failure',
+                             lambda worker_id, job_id, error, duration_s: failure.update(error=error))
+        monkeypatch.setattr(worker, 'report_result', lambda *a, **k: pytest.fail('no debe reportarse como exitoso'))
+
+        started = time.monotonic()
+        worker.run_job('w1', dict(job_id=99, species='GCR_He', bin_index=7, offset_x_m=0.0))
+        elapsed = time.monotonic() - started
+
+    # Si el watchdog no actuara, esto tardaria ~30s (el sleep completo).
+    assert elapsed < 15, f"el subprocess estancado no se mato a tiempo (tardo {elapsed:.1f}s)"
+    assert 'sin progreso' in failure.get('error', '')
+
+
 def _reset_pending_results(tmp_path, monkeypatch):
     # PENDING_RESULTS_DIR/get_stale_job_timeout_s se calculan una sola
     # vez a nivel de modulo -- redirigidos aqui a un tmp_path por test y

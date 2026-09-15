@@ -653,7 +653,7 @@ def test_heartbeat_reports_cancel_job_id_for_claimed_job():
     db.request_job_cancel(job_id)
 
     result = db.touch_heartbeat('w')
-    assert result == {'cancel_job_id': job_id}
+    assert result == {'cancel_job_id': job_id, 'request_log': False}
 
 
 def test_heartbeat_reports_no_cancel_when_not_requested():
@@ -662,7 +662,76 @@ def test_heartbeat_reports_no_cancel_when_not_requested():
     db.claim_next_job('w')
 
     result = db.touch_heartbeat('w')
-    assert result == {'cancel_job_id': None}
+    assert result == {'cancel_job_id': None, 'request_log': False}
+
+
+def test_request_job_log_marks_running_job():
+    db.upsert_worker('w', 'host', 8, 16.0, '')
+    job_id = db.insert_job('GCR_He', 7, 3.0, 0, 10000)
+    db.claim_next_job('w')
+    db.mark_running(job_id, 'w')
+
+    claimed_by = db.request_job_log(job_id)
+    assert claimed_by == 'w'
+    job = db.get_job(job_id)
+    assert job['log_requested'] == 1
+    assert job['status'] == 'running'  # pedir el log no cambia el status
+
+
+def test_request_job_log_on_pending_job_returns_none():
+    job_id = db.insert_job('GCR_He', 7, 3.0, 0, 10000)
+    assert db.request_job_log(job_id) is None
+    assert db.get_job(job_id)['log_requested'] == 0
+
+
+def test_request_job_log_unknown_job_raises():
+    with pytest.raises(KeyError):
+        db.request_job_log(999999)
+
+
+def test_heartbeat_reports_request_log_true_when_requested():
+    db.upsert_worker('w', 'host', 8, 16.0, '')
+    job_id = db.insert_job('GCR_He', 7, 3.0, 0, 10000)
+    db.claim_next_job('w')
+    db.request_job_log(job_id)
+
+    result = db.touch_heartbeat('w')
+    assert result == {'cancel_job_id': None, 'request_log': True}
+
+
+def test_save_job_log_tail_clears_request_flag():
+    db.upsert_worker('w', 'host', 8, 16.0, '')
+    job_id = db.insert_job('GCR_He', 7, 3.0, 0, 10000)
+    db.claim_next_job('w')
+    db.request_job_log(job_id)
+
+    ok = db.save_job_log_tail(job_id, 'w', 'Event 4200 of 10000\n')
+    assert ok is True
+    job = db.get_job(job_id)
+    assert job['log_requested'] == 0
+    assert job['log_tail'] == 'Event 4200 of 10000\n'
+    assert job['log_tail_updated_at'] is not None
+
+    # log_requested ya en 0 -- el siguiente heartbeat no vuelve a pedirlo.
+    result = db.touch_heartbeat('w')
+    assert result['request_log'] is False
+
+
+def test_save_job_log_tail_rejected_from_wrong_worker():
+    # Mismo criterio de propiedad que record_result()/record_failure():
+    # un worker que ya no es dueño del job (reasignado por timeout) no
+    # puede pisar el log de un intento mas reciente con una subida tardia.
+    db.upsert_worker('a', 'host', 8, 16.0, '')
+    db.upsert_worker('b', 'host', 8, 16.0, '')
+    job_id = db.insert_job('GCR_He', 7, 3.0, 0, 10000)
+    db.claim_next_job('a')
+    db.record_failure(job_id, 'a', 'requeued', 5.0)  # 'a' pierde el job
+    db.claim_next_job('b')
+
+    ok = db.save_job_log_tail(job_id, 'a', 'log viejo de a')
+    assert ok is False
+    job = db.get_job(job_id)
+    assert job['log_tail'] is None
 
 
 def test_cancel_flag_clears_on_result_and_next_attempt_is_not_cancelled():
