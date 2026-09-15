@@ -234,3 +234,30 @@ El monitor de silencio usa tiempo monotónico y estas variables del worker:
 Los 20 minutos son una heurística operativa, no un límite físico validado.
 Esta política sustituye el comportamiento anterior de matar automáticamente
 por falta de bytes. La cancelación explícita del operador sigue disponible.
+
+### Captura automática de diagnóstico
+
+Al avisar por silencio, el worker guarda un JSON en el volumen de identidad:
+`/var/lib/geant4-worker/diagnostics/job-ID-attempt-N-UUID.json`. Incluye las diez
+últimas muestras (intervalo normal 30 s), CPU real por hilo (100 % = un núcleo),
+árbol de procesos, estados/wchan, E/S, memoria, presión y contadores cgroup v2.
+La primera muestra no tiene porcentaje; procesos desaparecidos o permisos
+insuficientes se registran como datos no disponibles. Los contadores cgroup
+corresponden al montaje visible en el contenedor y requieren interpretar deltas.
+
+Incluye job/intento, comando, digest detectado, macros con semillas y tails de
+logs/eventos (64 KiB por archivo). Tres capturas como máximo por job/intento;
+los diagnósticos de intentos distintos se conservan hasta su limpieza manual.
+No se suben al coordinator. El volumen debe mantenerse al recrear el contenedor.
+
+El worker configura `G4_EVENT_DIAGNOSTICS_DIR` en el subprocess. La nueva acción
+Geant4 registra begin/end por run/event/thread, con reloj monotónico y un archivo
+por hilo. Un begin sin end en la cola capturada identifica un evento pendiente;
+no demuestra bloqueo. Fuera del worker se activa creando un directorio y fijando
+esa variable. Hace falta recompilar Geant4; no cambia semillas ni scoring.
+
+La captura no detiene ni adjunta un debugger: intenta leer las pilas de kernel
+de `/proc/PID/task/TID/stack`, que pueden no estar permitidas. **No son pilas C++**.
+Para diagnosticar un deadlock nativo aún puede requerirse una captura supervisada
+con debugger y símbolos. No se habilita ptrace ni se instala gdb automáticamente.
+Fallar al capturar no cancela la corrida; `kill` sigue siendo una política optativa.

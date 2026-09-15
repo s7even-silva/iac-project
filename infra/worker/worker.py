@@ -53,6 +53,7 @@ from pathlib import Path
 
 import requests
 
+import diagnostics
 import docker_client
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -1071,8 +1072,11 @@ def _run_job(worker_id: str, job: dict, cancel_event) -> None:
             # toda la salida del subprocess en memoria.
             stdout_path = work / "worker_stdout.log"
             stdout_file = open(stdout_path, "w")
+            event_dir = work / "events"
+            event_dir.mkdir(exist_ok=True)
+            diagnostic_env = dict(os.environ, G4_EVENT_DIAGNOSTICS_DIR=str(event_dir))
             try:
-                process = subprocess.Popen(cmd, cwd=work, stdout=stdout_file,
+                process = subprocess.Popen(cmd, cwd=work, env=diagnostic_env, stdout=stdout_file,
                                            stderr=subprocess.STDOUT, text=True, start_new_session=True)
             except BaseException:
                 stdout_file.close()
@@ -1106,6 +1110,8 @@ def _run_job(worker_id: str, job: dict, cancel_event) -> None:
             # Vigila silencio con reloj monotónico; solo termina el proceso
             # si el operador habilitó explícitamente la política kill.
             stop_watching = threading.Event()
+            sampler = diagnostics.Sampler(process.pid)
+            diagnostic_image = self_image_digest()
 
             def _watch_for_cancel():
                 nonlocal cancelled, stalled
@@ -1122,6 +1128,10 @@ def _run_job(worker_id: str, job: dict, cancel_event) -> None:
                     if now < next_check:
                         continue
                     next_check = now + _STALL_CHECK_INTERVAL_S
+                    try:
+                        sampler.sample()
+                    except Exception as exc:
+                        print(f"[worker] diagnóstico no disponible: {exc}", flush=True)
                     with _log_lock:
                         log_path = _current_geant4_log_path()
                         _active_log_path = log_path
@@ -1136,6 +1146,11 @@ def _run_job(worker_id: str, job: dict, cancel_event) -> None:
                     if _STALL_ACTION != "off" and now - last_change >= _STALL_TIMEOUT_S and not warned:
                         warned = True
                         print(f"[worker] job {job_id}: sin salida observable durante {_STALL_TIMEOUT_S}s; no prueba un cuelgue", flush=True)
+                        try:
+                            capture = sampler.capture(WORKER_ID_FILE.parent / "diagnostics", work, job, cmd, diagnostic_image)
+                            print(f"[worker] diagnóstico persistente: {capture}", flush=True)
+                        except Exception as exc:
+                            print(f"[worker] error guardando diagnóstico: {exc}", flush=True)
                         if _STALL_ACTION == "kill":
                             stalled = terminate_process_group(process, _CANCEL_GRACE_S)
                             return
