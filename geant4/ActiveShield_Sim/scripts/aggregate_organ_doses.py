@@ -488,13 +488,25 @@ def main():
                     continue
                 for offset_x_m in offsets:
                     d_eq_gcr_by_rep, d_eq_sep_by_rep = [], []
+                    n_complete_reps = 0
                     for rep in reps_seen:
+                        # Una repeticion solo cuenta para el std/barra de
+                        # error si tiene TODAS las (especie,bin) de este
+                        # offset -- una repeticion parcial (ej. corriendo
+                        # todavia, solo unos bins subidos) no debe mezclarse
+                        # a medias con las completas: eso fue exactamente
+                        # el bug real encontrado (2026-09-15) que dejaba
+                        # "n_repeticiones=4" con datos Frankenstein, cada
+                        # repeticion usando solo los bins que le tocaron
+                        # llegar, en vez de exigir la repeticion entera.
+                        run_keys = [(species, bin_idx, offset_x_m) for species, bin_idx in species_bins]
+                        if not all((rk, rep) in n_events_by_run_rep for rk in run_keys):
+                            continue
+                        n_complete_reps += 1
                         r_by_bin = {}
                         for species, bin_idx in species_bins:
                             run_key = (species, bin_idx, offset_x_m)
                             key_rep = (run_key, rep)
-                            if key_rep not in n_events_by_run_rep:
-                                continue
                             n = n_events_by_run_rep[key_rep]
                             edep_this_rep = edep_by_run_rep[key_rep]
                             if category == "red_bone_marrow":
@@ -503,18 +515,16 @@ def main():
                             else:
                                 edep = sum(edep_this_rep.get(oid, 0.0) for oid in organ_ids)
                             r_by_bin[(species, bin_idx)] = (edep / mass_kg) / n
-                        if not r_by_bin:
-                            continue
                         _d_abs_gcr, d_eq_gcr, _d_abs_sep, d_eq_sep = combine_bins(r_by_bin)
                         d_eq_gcr_by_rep.append(d_eq_gcr)
                         d_eq_sep_by_rep.append(d_eq_sep)
-                    if not d_eq_gcr_by_rep and not d_eq_sep_by_rep:
+                    if n_complete_reps == 0:
                         continue
                     gcr_stats = summarize(d_eq_gcr_by_rep) if d_eq_gcr_by_rep else (float("nan"),)*6
                     sep_stats = summarize(d_eq_sep_by_rep) if d_eq_sep_by_rep else (float("nan"),)*6
                     writer.writerow({
                         "categoria": category, "offset_x_m": offset_x_m,
-                        "n_repeticiones": len(reps_seen),
+                        "n_repeticiones": n_complete_reps,
                         "D_equivalente_GCR_Sv_dia_media": gcr_stats[0],
                         "D_equivalente_GCR_Sv_dia_std": gcr_stats[1],
                         "D_equivalente_GCR_Sv_dia_sem": gcr_stats[2],
@@ -528,9 +538,9 @@ def main():
                         "D_equivalente_SEP_Sv_evento_ic95_high": sep_stats[4],
                         "D_equivalente_SEP_Sv_evento_cv_pct": sep_stats[5],
                     })
-        if len(reps_seen) < 2:
-            print(f"ADVERTENCIA: solo {len(reps_seen)} repeticion(es) vista(s) -- std/SEM/IC95%/CV en blanco "
-                  f"en {stats_out_path}. Correr run_organ_sweep.py con --repeats >= 2 para tener barra de error.")
+        print(f"Repeticiones vistas en los CSV de entrada: {len(reps_seen)} ({sorted(reps_seen)}) -- "
+              f"cada fila de {stats_out_path} solo cuenta las que estaban COMPLETAS para ese "
+              f"offset/categoria (ver n_repeticiones por fila), nunca una repeticion parcial.")
         print(f"Media/std/IC95% entre repeticiones (placeholder, ver AGENTS.md): {stats_out_path}")
 
 
