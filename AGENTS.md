@@ -4262,3 +4262,146 @@ deadlock de I/O, proceso zombie) — este fix corrige que el coordinator
 detecte y reencole el estancamiento, no la causa de que `tania` se
 estancara en primer lugar; sin acceso a esa máquina para inspeccionar
 el proceso real, la causa exacta queda sin confirmar.
+
+**Reproducido en vivo, mismo día:** al desplegar el fix, `requeue_stale_
+jobs()` reencoló el job 141 correctamente en el primer barrido tras el
+reinicio (`last_error="requeued: progreso agotado..."`) — pero `tania`
+**no tomó ningún job nuevo**, porque el proceso local seguía creyendo
+que corría el job 141 (mismo patrón ya documentado de "cómputo huérfano
+tras un reencolado manual sin señalizar al worker", más arriba: el
+`UPDATE` del coordinator cambia la DB, nunca le llega al proceso real).
+Resuelto reasignando el job 141 a `tania` temporalmente (`force_claim`
+directo en la VM) con `cancel_requested=1`, para que el mecanismo de
+remote-kill ya existente pudiera entregarle la señal en su próximo
+heartbeat — funcionó: `last_error="cancelado por el operador
+(exit_code=-15)"`, y `tania` retomó el job por su cuenta con
+`cpu_load_pct=76.5%` (trabajando activamente de verdad, contra el 17.3%
+sostenido de las 10+ horas anteriores) — confirma que el proceso viejo
+estaba genuinamente atascado, no simplemente "lento".
+
+### Investigación de la causa física, y robustez contra colgados sin diagnóstico visible (2026-09-16)
+
+**Pedido explícito del usuario tras el incidente:** investigar por qué
+pasa esto (no solo reaccionar), y hacer el sistema más robusto contra el
+caso — "los logs no ayudan porque no muestran nada".
+
+**Diagnóstico de por qué los logs no ayudaban, confirmado leyendo el
+código real, no solo supuesto:** dos causas independientes, ambas
+reales:
+1. El macro de Geant4 (`MACRO_TEMPLATE` en `run_organ_sweep.py`) corría
+   con `/event/verbose 0` — **cero** salida por evento hasta el resumen
+   final del `beamOn`. Aunque alguien hubiera podido leer el log en vivo,
+   estaría genuinamente vacío durante un colgado real: no hay diferencia
+   observable entre "progresando normal" y "atascado" con ese nivel de
+   verbosidad.
+2. `worker.py` capturaba el stdout del subprocess con
+   `subprocess.PIPE` + `process.communicate()` — un pipe que **solo
+   entrega su contenido completo al terminar el proceso**, imposible de
+   inspeccionar mientras sigue corriendo. Aunque el punto 1 no existiera,
+   nadie podría haber leído "las últimas líneas ahora mismo".
+
+**Hipótesis de causa física investigada, no confirmada al 100%:** el
+límite de pista existente (`envelopeMaxTrackLength`, ver el fix de
+2026-09-13 para partículas atrapadas) protege contra el caso de energía
+**baja** (radio de giro diminuto, pista individual dando muchas vueltas)
+— pero el job 141 era `GCR_He bin7`, la energía **más alta** de todo el
+barrido (~225 GeV cinéticos reales, `56230.4 MeV/amu × A=4`). A esa
+energía, con la physics list `Shielding` (modelos hadrónicos completos),
+un núcleo de He de 225 GeV puede generar cascadas de secundarios
+extensas (espalación, producción de piones) — el límite de pista acota
+la longitud de **una** pista, no la **cantidad** de pistas ni el tiempo
+total de un evento; una cascada suficientemente compleja podría tardar
+un tiempo desproporcionado sin que ninguna pista individual exceda el
+límite. **No se pudo reproducir de forma controlada** (el checkout local
+no tenía `field/production/*.map` disponible para replicar el campo
+real) ni confirmar contra el log real del intento colgado (se perdió al
+matarlo — vivía en un `tempfile.TemporaryDirectory()` ya borrado) — se
+documenta como hipótesis fundamentada, no como causa confirmada.
+
+**Corregido, en tres piezas, todas necesarias juntas (confirmado con el
+usuario antes de implementar — bloquea publicar imagen Docker nueva):**
+
+1. **Progreso real en el log**: `MACRO_TEMPLATE` gana
+   `/run/printProgress {print_progress_every}` — calculado como
+   `max(1, n_events // 50)` (~50 líneas de progreso por corrida sin
+   importar el tamaño: una corrida barata no se ahoga en logs, una cara
+   tiene progreso frecuente). Se prefirió sobre `/event/verbose 1`
+   (mucho más verboso, potencialmente desordenado con 8 threads
+   escribiendo en paralelo) — el comando estándar de Geant4 para
+   exactamente este propósito.
+
+2. **stdout a archivo real, no a un pipe en memoria**: `_run_job()` en
+   `worker.py` redirige el subprocess a `work/worker_stdout.log` (no
+   `subprocess.PIPE`) y usa `process.wait()` en vez de
+   `process.communicate()` — necesario para poder leer "las últimas
+   líneas ahora mismo" mientras el proceso sigue corriendo.
+   `_current_geant4_log_path()` busca el log real que escribe
+   `run_organ_sweep.py` (`work/logs_organ/*.log`, con `--limit 1` hay a
+   lo sumo uno) y cae al `worker_stdout.log` como fallback si no existe
+   todavía. `tail_log()`/`get_active_log_tail()` (nuevo) leen las
+   últimas `_LOG_TAIL_LINES=40` líneas, tolerante a que el archivo no
+   exista aún o desaparezca a mitad de lectura (carrera real contra el
+   cleanup del `TemporaryDirectory` al terminar el job, no hipotética).
+
+3. **Watchdog de progreso automático dentro del propio worker**: el
+   hilo `_watch_for_cancel()` (ya existía para remote-kill) ahora
+   también vigila el tamaño del log activo cada
+   `_STALL_CHECK_INTERVAL_S=30s` — si no crece en absoluto durante
+   `_STALL_TIMEOUT_S=20min` (muchísimo más generoso que el intervalo de
+   progreso esperado incluso para GCR_He bin7, la corrida más cara del
+   barrido, ~85min con progreso periódico; muchísimo más corto que las
+   10+ horas que tardó en detectarse el caso real), el worker se mata a
+   sí mismo (`terminate_process_group`, mismo mecanismo ya usado para
+   cancelación) y reporta el fallo con el tail del log adjunto — **sin
+   depender de que el coordinator lo detecte por `connected_s`** (que
+   puede tardar horas si el heartbeat sigue vivo, exactamente el bug de
+   arriba) **ni de que un operador lo note a mano**. El worker se
+   auto-corrige.
+
+**Log bajo demanda desde el coordinator (pedido explícito del
+usuario, complementario al watchdog — diagnóstico manual, no
+automático):** mismo patrón que remote-kill, viaja en la respuesta del
+heartbeat existente porque el worker está detrás de NAT sin puerto
+expuesto — el coordinator no puede alcanzarlo directamente.
+`jobs.log_requested`/`log_tail`/`log_tail_updated_at` (columnas nuevas,
+migración idempotente); `request_job_log()`/`log_requested_for_worker()`
+(`db.py`) espejan `request_job_cancel()`/`cancelled_job_for_worker()`
+exactamente; `touch_heartbeat()` devuelve ahora
+`{"cancel_job_id", "request_log"}` (cambio de contrato, todos los
+llamadores/tests actualizados). Nuevos endpoints: `POST
+/jobs/{id}/request-log` (administrativo, dispara la solicitud — mismo
+criterio que `/cancel`, **a propósito NO en `dashboard.html`** por la
+misma razón que remote-kill: acción de diagnóstico sin autenticación no
+va en un link compartible) y `POST /jobs/{id}/log` (el worker sube el
+tail, rechaza con `409` si el job ya no le pertenece — mismo criterio de
+propiedad que `submit_result()`). `report_log()`/`heartbeat()` en
+`worker.py`: si `request_log=true` en la respuesta, sube el tail con un
+`POST` aparte (no en el mismo heartbeat, para no inflar el caso común
+donde nadie lo pidió). Nuevo `infra/coordinator/request_job_log.py`
+(script CLI, mismo estilo que `cancel_job.py`) — pide el log y hace poll
+a `GET /jobs` hasta que `log_tail_updated_at` cambie, sin necesitar una
+segunda invocación manual.
+
+**Verificado, no solo escrito:** 66 tests del coordinator pasan
+(7 nuevos: `request_job_log`/`log_requested_for_worker`/
+`save_job_log_tail`, más 2 tests existentes de `touch_heartbeat()`
+actualizados al nuevo contrato de retorno) y 54 del worker (7 nuevos:
+`tail_log`, `get_active_log_tail`, el flujo completo de
+`heartbeat()`→`report_log()`, y el watchdog probado con un **subprocess
+real** — `sleep 30` que nunca escribe a su log, con umbrales de prueba
+acortados vía `monkeypatch`, confirmado matado en ~3.4s en vez de
+esperar los 30s completos). Verificado contra `fastapi` real instalado
+(no solo `ast.parse`), no solo los 5 tests que dependían de `app.py` que
+suelen fallar en este entorno por falta de esa dependencia.
+
+**Pendiente, bloqueante para que esto llegue a producción:** publicar
+imagen Docker nueva (el cambio de `_run_job()` a redirigir stdout a
+archivo, más el watchdog, viven en `worker.py`) y coordinar con cada
+voluntario que actualice cuando termine su corrida actual — mismo
+procedimiento ya establecido para publicaciones anteriores (`cpu_score`,
+persistencia de resultados). El coordinator (`db.py`/`app.py`) sí se
+puede desplegar de inmediato con el procedimiento normal (`git pull` +
+`systemctl restart`) sin esperar a la imagen — los workers viejos
+simplemente nunca ven `request_log=true` como `true` de forma útil (no
+tienen `report_log()`) hasta que actualicen, sin romper nada mientras
+tanto.
