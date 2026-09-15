@@ -111,7 +111,7 @@ def heartbeat(worker_id: str, body: HeartbeatIn = HeartbeatIn()):
     # pedido directo del coordinator, asi que la solicitud viaja igual que
     # cancel_job_id -- el worker sube el tail con un POST aparte a
     # /jobs/{id}/log cuando ve este flag en true.
-    return {"ok": True, "cancel_job_id": result["cancel_job_id"], "request_log": result["request_log"]}
+    return {"ok": True, **result}
 
 
 @app.post("/api/v1/jobs/next", response_model=JobOut | None)
@@ -157,12 +157,12 @@ def request_job_log(job_id: int):
     # worker asignado recoge en su propio heartbeat y sube con un POST
     # aparte a /jobs/{id}/log.
     try:
-        claimed_by = db.request_job_log(job_id)
+        claimed_by = db.request_job_log(job_id, detailed=True)
     except KeyError:
         raise HTTPException(404, f"job {job_id} no existe")
     if claimed_by is None:
         raise HTTPException(409, f"job {job_id} no esta 'claimed'/'running' con un worker asignado")
-    return {"job_id": job_id, "claimed_by": claimed_by, "status": "log_requested"}
+    return {**claimed_by, "status": "log_requested"}
 
 
 @app.post("/api/v1/jobs/{job_id}/log")
@@ -172,7 +172,7 @@ def submit_job_log(job_id: int, body: JobLogIn):
     # no le pertenece a ese worker (mismo criterio de propiedad que
     # submit_result()), para que una subida tardia de un worker reasignado
     # por timeout no pise el log de un intento mas reciente.
-    ok = db.save_job_log_tail(job_id, body.worker_id, body.log_tail)
+    ok = db.save_job_log_tail(job_id, body.worker_id, body.log_tail, body.request_id, body.attempt)
     if not ok:
         raise HTTPException(409, f"job {job_id} no esta 'claimed'/'running' con claimed_by={body.worker_id}")
     return {"job_id": job_id, "status": "log_saved"}

@@ -203,3 +203,34 @@ reales aislados. También aprobaron 17 escenarios PowerShell con mocks y 4 Bash.
 Se verificó la limpieza de los recursos Docker de ensayo. No se publicó imagen,
 no se hizo push ni se modificaron jobs/DB de producción. Sigue pendiente validar
 Windows/Docker Desktop y un canario con digest publicado antes del despliegue.
+
+### Diagnóstico de logs y política de silencio (revisión)
+
+`request_job_log.py JOB_ID` solicita las últimas 40 líneas (lectura limitada
+ a 64 KiB). Cada solicitud lleva un ID único y el número de intento del job:
+el coordinator rechaza subidas tardías, de otro intento o de una solicitud
+sustituida. El comando espera esa respuesta exacta, incluso si el log está
+vacío. El dashboard muestra el último log recibido, escapado como texto, con
+su intento y fecha; no solicita logs ni cancela jobs desde la página.
+
+Actualizar coordinator y workers para usar este protocolo: un worker antiguo
+sin ID de solicitud/intento recibirá rechazo al subir logs. La migración SQLite
+es automática. Esto no publica ni actualiza imágenes por sí solo.
+
+El barrido usa `/run/printProgress 1` por defecto; puede cambiarse con
+`run_organ_sweep.py --print-progress-every N` (N positivo). No aumenta
+`/event/verbose`. Un evento largo o la inicialización todavía pueden permanecer
+sin salida: el crecimiento del archivo tampoco certifica avance físico.
+
+El monitor de silencio usa tiempo monotónico y estas variables del worker:
+
+- `WORKER_STALL_ACTION=warn` (default): avisa una vez por período de silencio;
+  conserva el proceso. `off` desactiva esa alerta.
+- `WORKER_STALL_TIMEOUT_S=1200` (default): umbral positivo en segundos.
+- `WORKER_STALL_ACTION=kill`: terminación y reporte de fallo mediante el flujo
+  normal de reintentos. Usar solo tras calibrar el umbral con tiempos de
+  inicialización y de eventos en las especies/bins y equipos más lentos.
+
+Los 20 minutos son una heurística operativa, no un límite físico validado.
+Esta política sustituye el comportamiento anterior de matar automáticamente
+por falta de bytes. La cancelación explícita del operador sigue disponible.

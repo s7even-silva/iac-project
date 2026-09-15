@@ -105,17 +105,21 @@ def test_get_active_log_tail_reads_from_active_path(tmp_path, monkeypatch):
     assert worker.get_active_log_tail() == 'Event 4200 of 10000\n'
 
 
-def test_heartbeat_uploads_log_when_coordinator_requests_it(monkeypatch):
+def test_heartbeat_uploads_log_when_coordinator_requests_it(monkeypatch, tmp_path):
     # Mismo patron que el remote-kill: la solicitud viaja en la respuesta
     # del heartbeat (request_log=true), y el worker sube el tail con un
     # POST aparte a /jobs/{id}/log -- no en el mismo request del
     # heartbeat, para no inflar el caso comun (nadie lo pidio).
-    monkeypatch.setattr(worker, '_active_cancel', (42, worker.threading.Event()))
-    monkeypatch.setattr(worker, 'get_active_log_tail', lambda: 'Event 100 of 10000\n')
+    context = (42, worker.threading.Event(), 1)
+    monkeypatch.setattr(worker, '_active_cancel', context)
+    monkeypatch.setattr(worker, '_active_log_context', context)
+    path = tmp_path / 'log'
+    path.write_text('Event 100 of 10000\n')
+    monkeypatch.setattr(worker, '_active_log_path', path)
 
     heartbeat_resp = MagicMock()
     heartbeat_resp.raise_for_status.return_value = None
-    heartbeat_resp.json.return_value = {'cancel_job_id': None, 'request_log': True}
+    heartbeat_resp.json.return_value = {'cancel_job_id': None, 'request_log': True, 'log_request': {'job_id':42, 'attempt':1, 'request_id':'a'*32}}
 
     log_upload_calls = []
 
@@ -135,7 +139,7 @@ def test_heartbeat_uploads_log_when_coordinator_requests_it(monkeypatch):
     assert len(log_upload_calls) == 1
     # job_id va en la URL (/jobs/{job_id}/log), no en el body -- solo
     # worker_id y log_tail viajan como payload.
-    assert log_upload_calls[0] == {'worker_id': 'w1', 'log_tail': 'Event 100 of 10000\n'}
+    assert log_upload_calls[0] == {'worker_id': 'w1', 'log_tail': 'Event 100 of 10000\n', 'attempt':1, 'request_id':'a'*32}
 
 
 def test_heartbeat_does_not_upload_log_when_not_requested(monkeypatch):
@@ -174,6 +178,7 @@ def test_run_job_kills_stalled_subprocess_via_watchdog(tmp_path, monkeypatch):
     # valor de produccion en si.
     monkeypatch.setattr(worker, '_STALL_CHECK_INTERVAL_S', 1.0)
     monkeypatch.setattr(worker, '_STALL_TIMEOUT_S', 2.0)
+    monkeypatch.setattr(worker, '_STALL_ACTION', 'kill')
     # 'sleep 30' nunca escribe a logs_organ/ -- cae al fallback
     # stdout_path (worker_stdout.log), que tampoco crece porque el
     # comando no imprime nada. Simula el caso real: un subprocess vivo,
@@ -639,3 +644,48 @@ def test_expired_result_is_archived_not_lost(tmp_path, monkeypatch):
     archived = list((tmp_path / 'unconfirmed_results').glob('*/results.csv'))
     assert len(archived) == 1
     assert archived[0].read_text() == 'valuable-result'
+
+
+def test_late_log_response_does_not_upload_next_jobs_log(monkeypatch, tmp_path):
+    old = (42, worker.threading.Event(), 1)
+    new = (43, worker.threading.Event(), 1)
+    monkeypatch.setattr(worker, '_active_cancel', old)
+    monkeypatch.setattr(worker, '_active_log_context', new)
+    path = tmp_path / 'new.log'
+    path.write_text('next job secret')
+    monkeypatch.setattr(worker, '_active_log_path', path)
+    response = MagicMock()
+    response.json.return_value = {'request_log':True, 'log_request':{'job_id':42,'attempt':1,'request_id':'a'*32}}
+    def post(*args, **kwargs):
+        worker._active_cancel = new
+        return response
+    with patch.object(worker.SESSION, 'post', side_effect=post) as mocked:
+        worker.heartbeat('w')
+    assert mocked.call_count == 1
+
+
+def test_tail_memory_is_bounded_for_single_huge_line(tmp_path):
+    path = tmp_path / 'large.log'
+    with path.open('wb') as stream:
+        stream.truncate(10_000_000)
+        stream.seek(0, 2)
+        stream.write(b'last-line')
+    result = worker.tail_log(path)
+    assert len(result) <= 65536
+    assert result.endswith('last-line')
+
+
+@pytest.mark.parametrize('action', ['warn', 'off'])
+def test_silence_does_not_kill_without_opt_in(monkeypatch, tmp_path, action):
+    monkeypatch.setattr(worker, '_STALL_ACTION', action)
+    monkeypatch.setattr(worker, '_STALL_TIMEOUT_S', .1)
+    monkeypatch.setattr(worker, '_STALL_CHECK_INTERVAL_S', .05)
+    monkeypatch.setattr(worker, 'BUILD_DIR', tmp_path)
+    monkeypatch.setattr(worker, 'REPO_ROOT', tmp_path)
+    monkeypatch.setattr(worker, 'build_command', lambda *a: ['sleep', '1'])
+    monkeypatch.setattr(worker, 'filter_results_csv', lambda *a: 'complete')
+    monkeypatch.setattr(worker, 'read_manifest_csv', lambda *a: 'manifest')
+    with patch.object(worker.SESSION, 'post'), patch.object(worker, 'report_result') as result, patch.object(worker, 'report_failure') as failure:
+        worker.run_job('w', {'job_id':42,'species':'SEP_p','bin_index':0,'offset_x_m':0,'attempt':1})
+    result.assert_called_once()
+    failure.assert_not_called()

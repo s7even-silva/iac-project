@@ -10,6 +10,7 @@ WAL + `BEGIN IMMEDIATE` en claim_next_job() para que dos workers polleando
 al mismo tiempo nunca reciban el mismo job -- sqlite3 serializa esa
 transaccion, la segunda espera a que la primera libere el lock.
 """
+import uuid
 import sqlite3
 import os
 import time
@@ -216,6 +217,9 @@ _MIGRATIONS = [
     "ALTER TABLE jobs ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE workers ADD COLUMN active_job_id INTEGER",
     "ALTER TABLE workers ADD COLUMN active_job_reported_at TEXT",
+    "ALTER TABLE jobs ADD COLUMN log_request_id TEXT",
+    "ALTER TABLE jobs ADD COLUMN log_received_id TEXT",
+    "ALTER TABLE jobs ADD COLUMN log_attempt INTEGER",
     "ALTER TABLE jobs ADD COLUMN log_requested INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE jobs ADD COLUMN log_tail TEXT",
     "ALTER TABLE jobs ADD COLUMN log_tail_updated_at TEXT",
@@ -332,10 +336,14 @@ def touch_heartbeat(worker_id: str, ram_free_gb: float = None, cpu_load_pct: flo
         )
         if cur.rowcount == 0:
             return None
-        return {
+        result = {
             "cancel_job_id": cancelled_job_for_worker(conn, worker_id, active_job_id),
             "request_log": log_requested_for_worker(conn, worker_id, active_job_id),
         }
+        if result["request_log"]:
+            row = conn.execute("SELECT job_id, attempt, log_request_id FROM jobs WHERE claimed_by=? AND status IN ('claimed','running') AND log_requested=1 AND (? IS NULL OR job_id=?) ORDER BY job_id", (worker_id, active_job_id, active_job_id)).fetchone()
+            result["log_request"] = {"job_id": row["job_id"], "attempt": row["attempt"], "request_id": row["log_request_id"]}
+        return result
 
 
 def get_config(key: str) -> str | None:
@@ -513,7 +521,7 @@ def claim_next_job(worker_id: str) -> sqlite3.Row | None:
             job_id = pick_job_for_worker(candidates, worker_cpu_score)
         conn.execute(
             """
-            UPDATE jobs SET status='claimed', cancel_requested=0, claimed_by=?, claimed_at=?, attempt=attempt+1, updated_at=?
+            UPDATE jobs SET status='claimed', cancel_requested=0, log_requested=0, claimed_by=?, claimed_at=?, attempt=attempt+1, updated_at=?
             WHERE job_id=? AND status='pending'
             """,
             (worker_id, now_iso(), now_iso(), job_id),
@@ -538,7 +546,7 @@ def force_claim_job(job_id: int, worker_id: str) -> bool:
     job a un worker real que ya lo tenga en 'claimed'/'running'."""
     with get_conn() as conn:
         cur = conn.execute(
-            "UPDATE jobs SET status='claimed', cancel_requested=0, claimed_by=?, claimed_at=?, attempt=attempt+1, updated_at=? "
+            "UPDATE jobs SET status='claimed', cancel_requested=0, log_requested=0, claimed_by=?, claimed_at=?, attempt=attempt+1, updated_at=? "
             "WHERE job_id=? AND status='pending'",
             (worker_id, now_iso(), now_iso(), job_id),
         )
@@ -609,7 +617,7 @@ def record_result(job_id: int, worker_id: str, duration_s: float, exit_code: int
         # llego (cancelado o no), asi que la senal no debe seguir viva para
         # un futuro intento de este mismo job_id.
         conn.execute(
-            "UPDATE jobs SET status=?, last_error=?, updated_at=?, cancel_requested=0, "
+            "UPDATE jobs SET status=?, last_error=?, updated_at=?, cancel_requested=0, log_requested=0, "
             "connected_s=CASE WHEN ?='pending' THEN 0 ELSE connected_s END WHERE job_id=?",
             (new_status, None if new_status == "done" else f"exit_code={exit_code} n_rows={n_rows}",
              now_iso(), new_status, job_id),
@@ -630,7 +638,7 @@ def record_failure(job_id: int, worker_id: str, error: str, duration_s: float | 
         # reportado como fallo (ver run_job() en worker.py) no debe seguir
         # con la senal encendida para el proximo intento.
         conn.execute(
-            "UPDATE jobs SET status=?, last_error=?, updated_at=?, cancel_requested=0, "
+            "UPDATE jobs SET status=?, last_error=?, updated_at=?, cancel_requested=0, log_requested=0, "
             "connected_s=CASE WHEN ?='pending' THEN 0 ELSE connected_s END WHERE job_id=?",
             (new_status, error, now_iso(), new_status, job_id),
         )
@@ -675,7 +683,7 @@ def cancelled_job_for_worker(conn, worker_id: str, active_job_id: int | None = N
     return row["job_id"] if row else None
 
 
-def request_job_log(job_id: int) -> str | None:
+def request_job_log(job_id: int, detailed=False):
     """Marca un job para que el worker que lo tiene suba el tail de su log
     activo (ver "log bajo demanda", AGENTS.md 2026-09-16) -- mismo patron
     que request_job_cancel(): la senal viaja en la respuesta del proximo
@@ -688,13 +696,15 @@ def request_job_log(job_id: int) -> str | None:
     no esta en un estado con worker activo."""
     with get_conn() as conn:
         conn.execute("BEGIN IMMEDIATE")
-        job = conn.execute("SELECT status, claimed_by FROM jobs WHERE job_id=?", (job_id,)).fetchone()
+        job = conn.execute("SELECT status, claimed_by, attempt FROM jobs WHERE job_id=?", (job_id,)).fetchone()
         if job is None:
             raise KeyError(f"job {job_id} no existe")
         if job["status"] not in ("claimed", "running") or not job["claimed_by"]:
             return None
-        conn.execute("UPDATE jobs SET log_requested=1 WHERE job_id=?", (job_id,))
-        return job["claimed_by"]
+        request_id = uuid.uuid4().hex
+        conn.execute("UPDATE jobs SET log_requested=1, log_request_id=? WHERE job_id=?", (request_id, job_id))
+        result = {"job_id": job_id, "claimed_by": job["claimed_by"], "attempt": job["attempt"], "request_id": request_id}
+        return result if detailed else job["claimed_by"]
 
 
 def log_requested_for_worker(conn, worker_id: str, active_job_id: int | None = None) -> bool:
@@ -711,7 +721,7 @@ def log_requested_for_worker(conn, worker_id: str, active_job_id: int | None = N
     return row is not None
 
 
-def save_job_log_tail(job_id: int, worker_id: str, log_tail: str) -> bool:
+def save_job_log_tail(job_id: int, worker_id: str, log_tail: str, request_id=None, attempt=None) -> bool:
     """Guarda el tail de log subido por un worker y limpia log_requested.
     Rechaza (devuelve False) si el job ya no le pertenece a ese worker --
     mismo criterio de propiedad que record_result()/record_failure(), para
@@ -719,9 +729,9 @@ def save_job_log_tail(job_id: int, worker_id: str, log_tail: str) -> bool:
     log de un intento mas reciente."""
     with get_conn() as conn:
         cur = conn.execute(
-            "UPDATE jobs SET log_tail=?, log_tail_updated_at=?, log_requested=0 "
-            "WHERE job_id=? AND claimed_by=? AND status IN ('claimed','running')",
-            (log_tail, now_iso(), job_id, worker_id),
+            "UPDATE jobs SET log_tail=?, log_tail_updated_at=?, log_requested=0, log_received_id=?, log_attempt=? "
+            "WHERE job_id=? AND claimed_by=? AND status IN ('claimed','running') AND attempt=? AND log_request_id=? AND log_requested=1",
+            (log_tail, now_iso(), request_id, attempt, job_id, worker_id, attempt, request_id),
         )
         return cur.rowcount > 0
 
@@ -816,7 +826,7 @@ def requeue_stale_jobs() -> list[int]:
             conn.execute(
                 """
                 UPDATE jobs SET status=CASE WHEN attempt < max_attempts THEN 'pending' ELSE 'failed' END,
-                       claimed_by=NULL, claimed_at=NULL, connected_s=0, cancel_requested=0,
+                       claimed_by=NULL, claimed_at=NULL, connected_s=0, cancel_requested=0, log_requested=0,
                        last_error=?, updated_at=?
                 WHERE job_id=?
                 """,

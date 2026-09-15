@@ -221,17 +221,15 @@ _CANCEL_GRACE_S = 2.0
 # de una corrida ya finalizada/borrada.
 _log_lock = threading.Lock()
 _active_log_path = None
+_active_log_context = None
 _LOG_TAIL_LINES = 40
 _STALL_CHECK_INTERVAL_S = 30.0
-# Cuanto tiempo sin que el log de Geant4 crezca ni un byte antes de asumir
-# que el subprocess esta genuinamente colgado, no solo procesando un evento
-# lento. Con /run/printProgress (ver run_organ_sweep.py) el log crece
-# periodicamente durante una corrida normal, incluso las mas caras del
-# barrido (GCR_He bin7, ~85min/corrida en la maquina de referencia) --
-# 20 min sin ningun crecimiento es muchisimo mas generoso que el intervalo
-# de progreso esperado, pero mucho mas corto que las horas que tardo en
-# detectarse el caso real (tania, 10.1h) antes de este fix.
-_STALL_TIMEOUT_S = 20.0 * 60.0
+# Silencio observable, no prueba de cuelgue: un evento o la inicialización
+# pueden tardar más que este umbral. Por defecto solo avisamos.
+_STALL_TIMEOUT_S = float(os.environ.get("WORKER_STALL_TIMEOUT_S", "1200"))
+_STALL_ACTION = os.environ.get("WORKER_STALL_ACTION", "warn")
+if _STALL_ACTION not in ("warn", "kill", "off") or not math.isfinite(_STALL_TIMEOUT_S) or _STALL_TIMEOUT_S <= 0:
+    raise ValueError("WORKER_STALL_ACTION debe ser warn/kill/off y WORKER_STALL_TIMEOUT_S positivo")
 
 
 def deliver_cancellation(context, job_id):
@@ -247,9 +245,13 @@ def tail_log(path, n_lines=_LOG_TAIL_LINES):
     terminar el job -- una carrera real, no hipotetica, entre esta
     funcion y el cleanup de _run_job())."""
     try:
-        with open(path, "r", errors="replace") as f:
-            lines = f.readlines()
-        return "".join(lines[-n_lines:])
+        with open(path, "rb") as stream:
+            stream.seek(0, os.SEEK_END)
+            size = stream.tell()
+            stream.seek(max(0, size - 65536))
+            raw = stream.read(65536)
+        text = raw.decode("utf-8", errors="replace")
+        return "".join(text.splitlines(keepends=True)[-n_lines:])[-65536:]
     except (FileNotFoundError, OSError):
         return None
 
@@ -567,7 +569,8 @@ def heartbeat(worker_id: str) -> int | None:
     activo con un segundo request aparte -- no en el mismo heartbeat, para
     no inflar cada request cuando nadie lo pidio (el caso comun)."""
     with _cancel_lock:
-        active_job_id = _active_cancel[0] if _active_cancel is not None else None
+        log_context = _active_cancel
+        active_job_id = log_context[0] if log_context is not None else None
     try:
         resp = SESSION.post(
             f"{COORDINATOR_URL}/api/v1/workers/{worker_id}/heartbeat",
@@ -577,7 +580,9 @@ def heartbeat(worker_id: str) -> int | None:
         resp.raise_for_status()
         payload = resp.json()
         if isinstance(payload, dict) and payload.get("request_log") and active_job_id is not None:
-            report_log(worker_id, active_job_id)
+            request = payload.get("log_request")
+            if isinstance(request, dict):
+                report_log(worker_id, active_job_id, log_context, request)
         cancel_id = payload.get("cancel_job_id") if isinstance(payload, dict) else None
         return cancel_id if type(cancel_id) is int and cancel_id > 0 else None
     except (requests.RequestException, ValueError) as exc:
@@ -585,24 +590,29 @@ def heartbeat(worker_id: str) -> int | None:
         return None
 
 
-def report_log(worker_id: str, job_id: int) -> None:
-    """Sube el tail del log activo al coordinator, pedido explicitamente
-    via el flag request_log del heartbeat -- ver "log bajo demanda",
-    AGENTS.md 2026-09-16. Mejor esfuerzo: un fallo aqui no debe tumbar el
-    heartbeat_loop ni afectar el job en curso, solo se pierde la
-    oportunidad de reportar esta vez (se puede volver a pedir en el
-    proximo heartbeat)."""
-    tail = get_active_log_tail()
+def report_log(worker_id: str, job_id: int, context=None, request=None) -> None:
+    if not isinstance(request, dict) or context is None or len(context) < 3:
+        return
+    with _cancel_lock:
+        if _active_cancel is not context or request.get("job_id") != job_id or request.get("attempt") != context[2]:
+            return
+        with _log_lock:
+            if _active_log_context is not context:
+                return
+            path = _active_log_path
+    tail = tail_log(path) if path is not None else None
     if tail is None:
         return
+    with _cancel_lock:
+        if _active_cancel is not context:
+            return
     try:
-        SESSION.post(
-            f"{COORDINATOR_URL}/api/v1/jobs/{job_id}/log",
-            json={"worker_id": worker_id, "log_tail": tail},
-            timeout=15,
-        )
+        resp = SESSION.post(f"{COORDINATOR_URL}/api/v1/jobs/{job_id}/log",
+                            json={"worker_id": worker_id, "log_tail": tail,
+                                  "attempt": context[2], "request_id": request.get("request_id")}, timeout=15)
+        resp.raise_for_status()
     except requests.RequestException as exc:
-        print(f"[worker] no se pudo subir el log del job {job_id} (no fatal): {exc}")
+        print(f"[worker] log no confirmado para job {job_id}: {exc}")
 
 
 def poll_next_job(worker_id: str) -> dict | None:
@@ -1019,7 +1029,7 @@ def auto_update(worker_id: str) -> bool:
 
 def run_job(worker_id: str, job: dict) -> None:
     global _active_cancel
-    context = (job["job_id"], threading.Event())
+    context = (job["job_id"], threading.Event(), job.get("attempt", 0))
     with _cancel_lock:
         _active_cancel = context
     try:
@@ -1056,18 +1066,16 @@ def _run_job(worker_id: str, job: dict, cancel_event) -> None:
             (work / "data").symlink_to(REPO_ROOT / "geant4/ActiveShield_Sim/data/sources/oltaris")
             cmd = build_command(job, work)
             print(f"[worker] comando: {' '.join(cmd)}", flush=True)
-            # stdout redirigido a un archivo REAL en disco, no a un pipe
-            # capturado en memoria (subprocess.PIPE + communicate() de antes)
-            # -- un pipe solo entrega su contenido completo al terminar el
-            # proceso, imposible de leer "ahora mismo" mientras sigue vivo.
-            # Necesario para el watchdog de progreso y para report_log() bajo
-            # demanda del coordinator (ver AGENTS.md "los logs no ayudan
-            # porque no muestran nada", 2026-09-16) -- ambos necesitan leer
-            # las ultimas lineas de un proceso EN CURSO, no solo al final.
+            # Archivo compartido con el diagnóstico en vivo, sin acumular
+            # toda la salida del subprocess en memoria.
             stdout_path = work / "worker_stdout.log"
             stdout_file = open(stdout_path, "w")
-            process = subprocess.Popen(cmd, cwd=work, stdout=stdout_file,
-                                       stderr=subprocess.STDOUT, text=True, start_new_session=True)
+            try:
+                process = subprocess.Popen(cmd, cwd=work, stdout=stdout_file,
+                                           stderr=subprocess.STDOUT, text=True, start_new_session=True)
+            except BaseException:
+                stdout_file.close()
+                raise
             cancelled = False
             stalled = False
 
@@ -1084,7 +1092,8 @@ def _run_job(worker_id: str, job: dict, cancel_event) -> None:
                 return candidates[-1] if candidates else stdout_path
 
             with _log_lock:
-                global _active_log_path
+                global _active_log_path, _active_log_context
+                _active_log_context = _active_cancel
                 _active_log_path = _current_geant4_log_path()
 
             # Hilo watcher separado, mismo patron que heartbeat_loop(): solo
@@ -1093,48 +1102,42 @@ def _run_job(worker_id: str, job: dict, cancel_event) -> None:
             # mismo con stop_watching cuando el job termina solo, para no
             # quedar corriendo de fondo despues (heartbeat_loop() sigue
             # corriendo entre jobs, pero este watcher es solo por job).
-            # Ahora TAMBIEN vigila estancamiento de progreso (2026-09-16):
-            # si el log de Geant4 no crece en _STALL_CHECK_INTERVAL_S*N
-            # ciclos consecutivos, se asume colgado y se mata -- el worker
-            # se auto-corrige sin depender de que el coordinator lo detecte
-            # por connected_s (que puede tardar horas, ver el caso real de
-            # tania en AGENTS.md) ni de que un operador lo note a mano.
+            # Vigila silencio con reloj monotónico; solo termina el proceso
+            # si el operador habilitó explícitamente la política kill.
             stop_watching = threading.Event()
 
             def _watch_for_cancel():
                 nonlocal cancelled, stalled
                 global _active_log_path
-                last_size = -1
-                stall_ticks = 0
-                stall_ticks_needed = max(1, int(_STALL_TIMEOUT_S / _STALL_CHECK_INTERVAL_S))
-                elapsed_ticks = 0
-                while not stop_watching.wait(1.0):
+                last_signature = None
+                last_change = time.monotonic()
+                warned = False
+                next_check = 0.0
+                while not stop_watching.wait(.25):
                     if cancel_event.is_set():
-                        cancelled = True
-                        print(f"[worker] job {job_id} cancelado por el operador -- terminando el subprocess")
                         cancelled = terminate_process_group(process, _CANCEL_GRACE_S)
                         return
-                    elapsed_ticks += 1
-                    if elapsed_ticks % int(_STALL_CHECK_INTERVAL_S) != 0:
+                    now = time.monotonic()
+                    if now < next_check:
                         continue
+                    next_check = now + _STALL_CHECK_INTERVAL_S
                     with _log_lock:
                         log_path = _current_geant4_log_path()
                         _active_log_path = log_path
                     try:
-                        size = log_path.stat().st_size
-                    except (FileNotFoundError, OSError):
-                        size = -1
-                    if size == last_size and size >= 0:
-                        stall_ticks += 1
-                        if stall_ticks >= stall_ticks_needed:
-                            stalled = True
-                            print(f"[worker] job {job_id} sin progreso en el log por "
-                                  f"{_STALL_TIMEOUT_S:.0f}s -- asumido colgado, terminando el subprocess")
-                            terminate_process_group(process, _CANCEL_GRACE_S)
+                        stat = log_path.stat()
+                        signature = (str(log_path), stat.st_ino, stat.st_size, stat.st_mtime_ns)
+                    except OSError:
+                        signature = None
+                    if signature != last_signature:
+                        last_change, warned = now, False
+                        last_signature = signature
+                    if _STALL_ACTION != "off" and now - last_change >= _STALL_TIMEOUT_S and not warned:
+                        warned = True
+                        print(f"[worker] job {job_id}: sin salida observable durante {_STALL_TIMEOUT_S}s; no prueba un cuelgue", flush=True)
+                        if _STALL_ACTION == "kill":
+                            stalled = terminate_process_group(process, _CANCEL_GRACE_S)
                             return
-                    else:
-                        stall_ticks = 0
-                    last_size = size
 
             watcher = threading.Thread(target=_watch_for_cancel, daemon=True)
             watcher.start()
@@ -1149,6 +1152,7 @@ def _run_job(worker_id: str, job: dict, cancel_event) -> None:
                 stdout_file.close()
                 with _log_lock:
                     _active_log_path = None
+                    _active_log_context = None
             duration = time.monotonic()-start
             if cancelled:
                 raise RuntimeError(f"cancelado por el operador (exit_code={process.returncode})")

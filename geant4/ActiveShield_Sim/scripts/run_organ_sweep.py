@@ -257,6 +257,7 @@ def main():
                          help="Directorio de build con ICRP110phantoms compilado (default: <repo>/build)")
     parser.add_argument("--n-events", type=int, default=sweep_config.DEFAULT_N_EVENTS,
                          help=f"Eventos por corrida, default {sweep_config.DEFAULT_N_EVENTS}")
+    parser.add_argument("--print-progress-every", type=int, default=1, help="Imprimir progreso cada N eventos (default 1; no es un temporizador).")
     parser.add_argument("--threads", type=int, default=os.cpu_count(),
                          help="Hilos de Geant4 MT por corrida via /run/numberOfThreads (default: todos los "
                               "nucleos detectados -- antes de este flag, el binario usaba el default de 4 "
@@ -296,6 +297,8 @@ def main():
     parser.add_argument("--repetition-start", type=int, default=0,
                         help="Indice inicial de repeticion (default 0); con --repeats 1 ejecuta solo ese indice.")
     args = parser.parse_args()
+    if args.print_progress_every < 1:
+        parser.error("--print-progress-every debe ser positivo")
     if args.repetition_start < 0 or args.repeats < 1:
         parser.error("Require repetition-start >= 0 and repeats >= 1")
 
@@ -396,16 +399,9 @@ def main():
 
             macro_path = generated_dir / f"organ_run_{combo['index']:03d}_r{rep:02d}.mac"
             coil_geometry_line = f"/spacecraft/coilGeometry {coil_geometry}\n" if coil_geometry is not None else ""
-            # ~50 lineas de progreso por corrida sin importar n_events -- una
-            # corrida barata (bin0, pocos eventos) no se ahoga en logs, una
-            # cara (bin7, muchos eventos/mucho tiempo por evento) tiene
-            # progreso frecuente. Minimo 1 (nunca 0, que en Geant4 significa
-            # "nunca imprimir", justo lo que queremos evitar). Ver AGENTS.md
-            # "los logs no ayudan porque no muestran nada" (2026-09-16) --
-            # antes de este cambio /event/verbose 0 significaba silencio
-            # total hasta el resumen final del beamOn, indistinguible entre
-            # una corrida progresando normal y una genuinamente colgada.
-            print_progress_every = max(1, args.n_events // 50)
+            # Cada evento por defecto reduce intervalos silenciosos. Un evento
+            # individual aun puede durar mucho; esto no certifica ausencia de cuelgues.
+            print_progress_every = args.print_progress_every
             macro_path.write_text(MACRO_TEMPLATE.format(
                 ship_radius_m=SHIP_RADIUS_M, ship_half_length_m=SHIP_HALF_LENGTH_M,
                 world_half_size_m=WORLD_HALF_SIZE_M, coil_geometry_line=coil_geometry_line,

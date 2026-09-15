@@ -865,6 +865,9 @@ function detailRowHtml(j){
           <div><b>Asignado desde (pared)</b><span class="tab-num" title="tiempo de reloj desde claimed_at, incluye tiempo desconectado">${fmtSpan(elapsedSinceClaim(j))}</span></div>
           <div><b>Tiempo estimado</b><span class="tab-num" title="basado en cpu_score del worker asignado, escalado contra la tabla de referencia medida en bryam-local">${fmtSpan(j.estimated_duration_s)}</span></div>
           <div><b>Duración real</b><span class="tab-num" title="duration_s reportado por el worker al subir el resultado exitoso">${fmtSpan(j.actual_duration_s)}</span></div>
+          <div style="grid-column:1/-1"><b>Último log recibido (solo lectura)</b>
+          <span>Intento ${esc(j.log_attempt ?? '—')} · ${fmtDate(j.log_tail_updated_at)}${j.log_requested ? ' · nueva solicitud pendiente' : ''}</span>
+          <pre style="white-space:pre-wrap;max-height:20rem;overflow:auto">${esc(j.log_tail ?? 'Todavía no se recibió un log. Solicitarlo con request_job_log.py.')}</pre></div>
           ${errBlock}
         </div>
       </td>
