@@ -4438,3 +4438,20 @@ explícitamente — mismo riesgo latente ya anotado en la entrada de
 `cpu_score` variando entre reinicios, sin mitigación implementada
 (recalcular el score en cada reinicio sigue siendo por diseño, no un
 bug).
+
+### Revisión del diagnóstico de corridas y watchdog
+
+Esta actualización sustituye la política histórica de terminación automática
+tras 20 minutos sin crecimiento del log: el default es ahora
+`WORKER_STALL_ACTION=warn`, con umbral configurable
+`WORKER_STALL_TIMEOUT_S=1200` y reloj monotónico. `kill` es optativo y requiere
+calibración con inicializaciones/eventos lentos; silencio no demuestra cuelgue.
+El barrido imprime progreso cada evento por defecto (`--print-progress-every`).
+
+Las solicitudes de logs quedan vinculadas a un ID único y al intento del job,
+tanto en el heartbeat como al subir y consultar la respuesta. Se rechazan
+respuestas obsoletas; un log vacío sí confirma recepción. El worker limita la
+lectura a 64 KiB y comprueba errores HTTP. El dashboard presenta el último log
+como texto escapado, con intento/fecha, sin acciones administrativas nuevas.
+Actualizar ambos extremos del protocolo; clientes antiguos sin estos IDs no
+pueden subir logs. Detalles de operación en `infra/README.md`.

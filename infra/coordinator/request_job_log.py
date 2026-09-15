@@ -14,7 +14,7 @@ porque el worker esta detras de NAT sin puerto expuesto):
    proximo heartbeat (hasta 30s de espera) y sube el tail de su log activo
    con un POST aparte a /jobs/{id}/log (ver report_log() en worker.py).
 3. Este comando espera esa subida haciendo poll a GET /api/v1/jobs y la
-   imprime cuando log_tail_updated_at cambia -- no requiere una segunda
+   imprime cuando coinciden el ID de solicitud y el intento -- no requiere una segunda
    invocacion manual.
 
 Uso:
@@ -70,7 +70,7 @@ def main():
     try:
         resp.raise_for_status()
         body = resp.json()
-        if not isinstance(body, dict) or "job_id" not in body or "claimed_by" not in body:
+        if not isinstance(body, dict) or "job_id" not in body or "claimed_by" not in body or "request_id" not in body or "attempt" not in body:
             raise ValueError("Respuesta de solicitud invalida")
     except (requests.RequestException, ValueError) as exc:
         sys.exit(f"Solicitud no confirmada: {exc}")
@@ -93,9 +93,9 @@ def main():
         job = next((j for j in jobs if j.get("job_id") == args.job_id), None)
         if job is None:
             sys.exit(f"job {args.job_id} ya no existe en la cola.")
-        if job.get("log_tail"):
+        if job.get("log_received_id") == body["request_id"] and job.get("log_attempt") == body["attempt"]:
             print(f"\n--- log de job {args.job_id}, actualizado {job.get('log_tail_updated_at')} ---")
-            print(job["log_tail"])
+            print(job["log_tail"] or "(log recibido vacío)")
             return
         time.sleep(POLL_INTERVAL_S)
     sys.exit(f"Sin respuesta del worker tras {args.wait_timeout:.0f}s -- puede estar genuinamente "

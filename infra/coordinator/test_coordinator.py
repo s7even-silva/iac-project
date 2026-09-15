@@ -696,7 +696,9 @@ def test_heartbeat_reports_request_log_true_when_requested():
     db.request_job_log(job_id)
 
     result = db.touch_heartbeat('w')
-    assert result == {'cancel_job_id': None, 'request_log': True}
+    assert result['request_log'] is True
+    assert result['log_request']['attempt'] == 1
+    assert result['log_request']['job_id'] == job_id
 
 
 def test_save_job_log_tail_clears_request_flag():
@@ -705,7 +707,8 @@ def test_save_job_log_tail_clears_request_flag():
     db.claim_next_job('w')
     db.request_job_log(job_id)
 
-    ok = db.save_job_log_tail(job_id, 'w', 'Event 4200 of 10000\n')
+    row = db.get_job(job_id)
+    ok = db.save_job_log_tail(job_id, 'w', 'Event 4200 of 10000\n', row['log_request_id'], row['attempt'])
     assert ok is True
     job = db.get_job(job_id)
     assert job['log_requested'] == 0
@@ -817,3 +820,46 @@ def test_cancel_selects_reported_active_job_when_worker_has_multiple_claims():
     db.request_job_cancel(first)
     db.request_job_cancel(second)
     assert db.touch_heartbeat('w', active_job_id=second)['cancel_job_id'] == second
+
+
+def test_logs_are_bound_to_request_and_attempt_even_for_same_worker():
+    db.upsert_worker('w', 'host', 8, 16, '')
+    job_id = db.insert_job('SEP_p', 0, 0, 0, 10)
+    db.claim_next_job('w')
+    first = db.request_job_log(job_id, detailed=True)
+    second = db.request_job_log(job_id, detailed=True)
+    assert not db.save_job_log_tail(job_id,'w','stale',first['request_id'],first['attempt'])
+    assert db.save_job_log_tail(job_id,'w','',second['request_id'],second['attempt'])
+    row = db.get_job(job_id)
+    assert row['log_received_id'] == second['request_id']
+    assert row['log_tail'] == ''
+    db.record_failure(job_id,'w','retry',1)
+    db.claim_next_job('w')
+    third = db.request_job_log(job_id, detailed=True)
+    assert not db.save_job_log_tail(job_id,'w','stale',second['request_id'],second['attempt'])
+    assert not db.save_job_log_tail(job_id,'w','wrong attempt',third['request_id'],second['attempt'])
+    assert db.save_job_log_tail(job_id,'w','fresh',third['request_id'],third['attempt'])
+
+
+def test_log_cli_waits_for_matching_empty_response(monkeypatch, capsys):
+    import request_job_log as cli
+    from unittest.mock import Mock
+    token = 'a' * 32
+    monkeypatch.setattr('sys.argv', ['request_job_log.py', '42'])
+    post = Mock(status_code=200)
+    post.json.return_value = dict(job_id=42, claimed_by='w', request_id=token, attempt=2)
+    monkeypatch.setattr(cli.requests, 'post', Mock(return_value=post))
+    responses = []
+    for received, tail in [('old', 'old output'), (token, '')]:
+        response = Mock()
+        response.json.return_value = [dict(job_id=42, log_received_id=received,
+                                          log_attempt=2, log_tail=tail)]
+        responses.append(response)
+    get = Mock(side_effect=responses)
+    monkeypatch.setattr(cli.requests, 'get', get)
+    monkeypatch.setattr(cli.time, 'sleep', lambda _: None)
+    cli.main()
+    assert get.call_count == 2
+    output = capsys.readouterr().out
+    assert 'log recibido vacío' in output
+    assert 'old output' not in output

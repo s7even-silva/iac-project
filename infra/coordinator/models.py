@@ -1,5 +1,5 @@
 """Modelos Pydantic de request/response de la API del coordinator."""
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class WorkerRegister(BaseModel):
@@ -26,6 +26,7 @@ class HeartbeatIn(BaseModel):
 
 
 class JobOut(BaseModel):
+    attempt: int = 0
     job_id: int
     species: str
     bin_index: int
@@ -45,4 +46,6 @@ class FailIn(BaseModel):
 
 class JobLogIn(BaseModel):
     worker_id: str
-    log_tail: str
+    log_tail: str = Field(max_length=65536)
+    request_id: str = Field(min_length=32, max_length=32)
+    attempt: int = Field(ge=1)
