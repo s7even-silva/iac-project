@@ -4455,3 +4455,14 @@ lectura a 64 KiB y comprueba errores HTTP. El dashboard presenta el último log
 como texto escapado, con intento/fecha, sin acciones administrativas nuevas.
 Actualizar ambos extremos del protocolo; clientes antiguos sin estos IDs no
 pueden subir logs. Detalles de operación en `infra/README.md`.
+
+### Digest ausente en dashboard: recuperación por heartbeat
+
+El worker enviaba `image_digest` solo al registrarse: una detección inicial
+fallida dejaba el dashboard sin dato aunque Docker se recuperase. Ahora cada
+heartbeat vuelve a detectarlo y enviarlo; el coordinator ya conserva el último
+valor conocido cuando recibe null. Esto no habilita auto-update sin socket ni
+sin identidad verificable: `auto_update()` sigue requiriendo un digest local.
+Publicar `latest` no activa por sí solo una actualización: se requiere anunciar
+el digest de manifiesto validado en el coordinator. Un dato ausente en la tabla
+no demuestra por sí solo ni una imagen antigua ni auto-update deshabilitado.

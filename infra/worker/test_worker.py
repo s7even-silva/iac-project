@@ -689,3 +689,18 @@ def test_silence_does_not_kill_without_opt_in(monkeypatch, tmp_path, action):
         worker.run_job('w', {'job_id':42,'species':'SEP_p','bin_index':0,'offset_x_m':0,'attempt':1})
     result.assert_called_once()
     failure.assert_not_called()
+
+
+def test_heartbeat_refreshes_image_digest(monkeypatch):
+    from unittest.mock import Mock
+    digest = 'sha256:' + 'a' * 64
+    monkeypatch.setattr(worker, 'self_image_digest', lambda: digest)
+    response = Mock()
+    response.json.return_value = {}
+    post = Mock(return_value=response)
+    monkeypatch.setattr(worker.SESSION, 'post', post)
+    worker.heartbeat('w')
+    assert post.call_args.kwargs['json']['image_digest'] == digest
+    monkeypatch.setattr(worker, 'self_image_digest', lambda: None)
+    worker.heartbeat('w')
+    assert post.call_args.kwargs['json']['image_digest'] is None
