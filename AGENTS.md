@@ -4188,3 +4188,77 @@ descendente), igual que antes. Verificado con datos sintéticos en Node:
 antes que GCR_He antes que GCR_H, y dentro de cada especie los bins en
 orden ascendente); la secuencia de clicks agregar→rotar→quitar deja
 intactas las columnas que no se tocaron.
+
+### Bug real de producción grave: `requeue_stale_jobs()` nunca reencolaba un job estancado con heartbeat vivo — 10.1h de cómputo perdidas (2026-09-16)
+
+**Reportado por el usuario con datos exactos, tras haber pedido
+explícitamente "esperar y monitorear antes de matar nada":** el job 141
+(`GCR_He bin7`, el más caro del barrido) en el worker `tania`
+(`cpu_score=18.07`, la máquina más rápida conocida) llevaba
+`connected_s=36368s (10.1h)` contra una estimación de `5331s (1.48h)`
+— **682% del estimado**, muy por encima del umbral de reencolado por
+progreso (`ESTIMATE_SAFETY_FACTOR=2.5x ≈ 3.7h`). El worker seguía
+reportando heartbeat vivo (`seconds_since_heartbeat` siempre <30s) pero
+`cpu_load_pct=17.3%` sostenido — la CPU había dejado de trabajar
+activamente en la simulación. Un Monitor armado para vigilar el caso se
+detuvo silenciosamente al terminar la sesión anterior (sin dejar
+ninguna notificación de cierre), así que nadie —ni el sistema
+automático, ni el monitor manual— actuó durante esas horas.
+
+**Causa raíz real, no el bug de "cutoff SQL demasiado largo" ya
+corregido antes (ver "Bug real encontrado por el primer test..." más
+arriba, ese fix seguía siendo insuficiente):** el `WHERE` de SQL en
+`requeue_stale_jobs()` exigía `w.last_heartbeat < cutoff` —es decir,
+heartbeat **vencido**— como condición de entrada antes de que CUALQUIER
+fila llegara a evaluarse en Python. Pero `progress_exhausted`
+(¿`connected_s` excede la estimación con margen?) es una condición
+**completamente independiente** de si el heartbeat sigue vivo —
+`heartbeat_loop()` corre en su propio hilo daemon separado (ver
+"Worker, endurecido..." más arriba) y sigue latiendo con total
+normalidad aunque el hilo principal, bloqueado en
+`process.communicate()` esperando al subprocess de Geant4, esté
+genuinamente colgado. Un heartbeat vivo nunca implica que el trabajo
+avanza — pero el filtro SQL asumía lo contrario, así que un job
+estancado con heartbeat sano **nunca podía reencolarse**, sin importar
+cuánto tiempo pasara.
+
+**Un test existente codificaba directamente el comportamiento
+incorrecto** (`test_requeue_by_progress_exhausted_even_with_recent_
+heartbeat_is_not_triggered`, ya en la suite desde el diseño original del
+2026-09-14) — afirmaba explícitamente que "progress_exhausted por sí
+solo no reencola sin que también haya vencido el heartbeat", exactamente
+la suposición errónea que causó la pérdida real. El test pasaba porque
+el código hacía lo que el test esperaba, no porque el diseño fuera
+correcto.
+
+**Corregido:** el `WHERE` de SQL ya no filtra por heartbeat en absoluto
+— trae **todos** los jobs `claimed`/`running` sin acotar por edad de
+heartbeat (el costo extra es despreciable, la cola tiene como mucho un
+puñado de jobs activos a la vez, uno por worker conectado), y dejar que
+el filtro fino en Python evalúe ambas condiciones independientes
+(`progress_exhausted`, `abandoned`) sobre cada fila sin excepción. Test
+renombrado y corregido a `test_requeue_by_progress_exhausted_triggers_
+even_with_recent_heartbeat` — ahora confirma el comportamiento correcto
+(`job_id in requeued`), documentando explícitamente el caso real de
+producción que lo motivó. `last_error` del reencolado ya no dice
+genéricamente "heartbeat vencido" — distingue "progreso agotado
+(connected_s excede estimación×margen)" de "heartbeat vencido
+(abandonado)" de "sin worker/heartbeat registrado", para que un futuro
+diagnóstico como este no tenga que adivinar cuál de las dos condiciones
+independientes disparó el reencolado. 55 tests siguen pasando (más el
+renombrado, mismo total).
+
+**Job 141 no se tocó manualmente** — el fix desplegado deja que el
+propio ciclo automático de `requeue_stale_jobs()` (cada
+`REQUEUE_SWEEP_INTERVAL_S=300s`) lo reencole solo en el siguiente
+barrido tras el despliegue, sin necesitar un `UPDATE` ad-hoc en la VM.
+Las 10.1h de cómputo real en `tania` se pierden sin remedio (no hay
+forma de recuperar avance de un proceso que nunca reportó resultado
+parcial) — el costo real de este bug, no solo un riesgo teórico.
+Pendiente real: investigar por separado **por qué** el proceso de
+Geant4 dentro de `tania` dejó de usar CPU activamente durante tanto
+tiempo (loop infinito no cubierto por el límite de pista existente,
+deadlock de I/O, proceso zombie) — este fix corrige que el coordinator
+detecte y reencole el estancamiento, no la causa de que `tania` se
+estancara en primer lugar; sin acceso a esa máquina para inspeccionar
+el proceso real, la causa exacta queda sin confirmar.
