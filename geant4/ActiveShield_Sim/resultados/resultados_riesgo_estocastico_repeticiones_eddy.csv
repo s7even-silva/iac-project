@@ -1,0 +1,13 @@
+categoria,offset_x_m,n_repeticiones,D_equivalente_GCR_Sv_dia_media,D_equivalente_GCR_Sv_dia_std,D_equivalente_GCR_Sv_dia_sem,D_equivalente_GCR_Sv_dia_ic95_low,D_equivalente_GCR_Sv_dia_ic95_high,D_equivalente_GCR_Sv_dia_cv_pct,D_equivalente_SEP_Sv_evento_media,D_equivalente_SEP_Sv_evento_std,D_equivalente_SEP_Sv_evento_sem,D_equivalente_SEP_Sv_evento_ic95_low,D_equivalente_SEP_Sv_evento_ic95_high,D_equivalente_SEP_Sv_evento_cv_pct
+colon,0.0,1,0.07448205332736832,,,,,,0.0,,,,,
+colon,1.0,1,5.284135534487446e-05,,,,,,0.0,,,,,
+lung,0.0,1,0.04673391352206219,,,,,,0.0,,,,,
+lung,1.0,1,9.592998584215251e-05,,,,,,0.0,,,,,
+stomach,0.0,1,0.06723292037455575,,,,,,0.0,,,,,
+stomach,1.0,1,3.640456387907718e-05,,,,,,0.0,,,,,
+breast,0.0,1,0.041265111514911273,,,,,,0.0,,,,,
+breast,1.0,1,4.499183385022424e-05,,,,,,0.0,,,,,
+remainder_tissues,0.0,1,0.0625859899485132,,,,,,0.0,,,,,
+remainder_tissues,1.0,1,3.744500619082371e-05,,,,,,0.0,,,,,
+red_bone_marrow,0.0,1,0.06208736127400433,,,,,,0.0,,,,,
+red_bone_marrow,1.0,1,3.172614551295651e-05,,,,,,0.0,,,,,
