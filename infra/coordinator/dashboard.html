@@ -218,6 +218,104 @@ section.panel{
 }
 .filters .clear:hover{text-decoration:underline}
 
+/* multi-select dropdown (incluir/excluir, varios valores por check) */
+.msel{position:relative}
+.msel-btn{
+  font:inherit;
+  font-size:.82rem;
+  background:var(--surface);
+  color:var(--text);
+  border:1px solid var(--border);
+  border-radius:6px;
+  padding:6px 10px;
+  cursor:pointer;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+}
+.msel-btn:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+.msel-btn .msel-count{
+  background:var(--accent-soft);
+  color:var(--accent);
+  border-radius:999px;
+  font-size:.7rem;
+  font-weight:700;
+  padding:1px 6px;
+  font-family:"IBM Plex Mono",monospace;
+}
+.msel-btn .msel-count.exclude{background:var(--bad-bg);color:var(--bad)}
+.msel-btn .caret{font-size:.65em;opacity:.6}
+.msel-panel{
+  display:none;
+  position:absolute;
+  z-index:20;
+  top:calc(100% + 4px);
+  left:0;
+  min-width:180px;
+  max-height:280px;
+  overflow-y:auto;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:8px;
+  box-shadow:var(--shadow);
+  padding:6px;
+}
+.msel.open .msel-panel{display:block}
+.msel-mode{
+  display:flex;
+  gap:2px;
+  padding:2px;
+  margin-bottom:6px;
+  background:var(--surface-2);
+  border-radius:6px;
+}
+.msel-mode button{
+  flex:1;
+  font:inherit;
+  font-size:.72rem;
+  font-weight:600;
+  text-transform:uppercase;
+  letter-spacing:.03em;
+  border:none;
+  background:none;
+  color:var(--text-dim);
+  padding:5px 4px;
+  border-radius:5px;
+  cursor:pointer;
+}
+.msel-mode button.active.include{background:var(--good-bg);color:var(--good)}
+.msel-mode button.active.exclude{background:var(--bad-bg);color:var(--bad)}
+.msel-opt{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  padding:5px 6px;
+  border-radius:5px;
+  cursor:pointer;
+  font-size:.82rem;
+}
+.msel-opt:hover{background:var(--surface-2)}
+.msel-opt input{margin:0;cursor:pointer}
+.msel-actions{
+  display:flex;
+  justify-content:space-between;
+  gap:6px;
+  padding:6px 4px 2px;
+  border-top:1px solid var(--border);
+  margin-top:4px;
+}
+.msel-actions button{
+  font:inherit;
+  font-size:.72rem;
+  font-weight:600;
+  color:var(--accent);
+  background:none;
+  border:none;
+  cursor:pointer;
+  padding:2px 4px;
+}
+.msel-actions button:hover{text-decoration:underline}
+
 /* table */
 .table-scroll{overflow-x:auto}
 table{width:100%;border-collapse:collapse;font-size:.82rem}
@@ -235,6 +333,16 @@ thead th{
   position:sticky;
   top:0;
 }
+thead th.sortable{cursor:pointer;user-select:none}
+thead th.sortable:hover{color:var(--text)}
+thead th.sortable:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+thead th .sort-arrow{
+  display:inline-block;
+  width:.8em;
+  opacity:.35;
+  font-size:.85em;
+}
+thead th.sort-active .sort-arrow{opacity:1;color:var(--accent)}
 tbody td{
   padding:9px 14px;
   border-bottom:1px solid var(--border);
@@ -395,26 +503,11 @@ footer.note code{font-family:"IBM Plex Mono",monospace;background:var(--surface-
       <h2>Jobs <span class="count" id="jobs-count"></span></h2>
     </div>
     <div class="filters">
-      <select id="f-status" aria-label="Filtrar por estado">
-        <option value="">Estado: todos</option>
-        <option value="pending">pending</option>
-        <option value="claimed">claimed</option>
-        <option value="running">running</option>
-        <option value="done">done</option>
-        <option value="failed">failed</option>
-      </select>
-      <select id="f-species" aria-label="Filtrar por especie">
-        <option value="">Especie: todas</option>
-      </select>
-      <select id="f-bin" aria-label="Filtrar por bin">
-        <option value="">Bin: todos</option>
-      </select>
-      <select id="f-offset" aria-label="Filtrar por offset">
-        <option value="">Offset X: todos</option>
-      </select>
-      <select id="f-rep" aria-label="Filtrar por repetición">
-        <option value="">Repetición: todas</option>
-      </select>
+      <div class="msel" id="msel-status" data-field="status"><button class="msel-btn" type="button" aria-haspopup="true"><span class="label">Estado</span><span class="caret">▾</span></button><div class="msel-panel"></div></div>
+      <div class="msel" id="msel-species" data-field="species"><button class="msel-btn" type="button" aria-haspopup="true"><span class="label">Especie</span><span class="caret">▾</span></button><div class="msel-panel"></div></div>
+      <div class="msel" id="msel-bin" data-field="bin_index"><button class="msel-btn" type="button" aria-haspopup="true"><span class="label">Bin</span><span class="caret">▾</span></button><div class="msel-panel"></div></div>
+      <div class="msel" id="msel-offset" data-field="offset_x_m"><button class="msel-btn" type="button" aria-haspopup="true"><span class="label">Offset X</span><span class="caret">▾</span></button><div class="msel-panel"></div></div>
+      <div class="msel" id="msel-rep" data-field="repeticion"><button class="msel-btn" type="button" aria-haspopup="true"><span class="label">Repetición</span><span class="caret">▾</span></button><div class="msel-panel"></div></div>
       <select id="f-date-field" aria-label="Campo de fecha a filtrar">
         <option value="updated_at">Fecha: actualizado</option>
         <option value="created_at">Fecha: creado</option>
@@ -433,16 +526,16 @@ footer.note code{font-family:"IBM Plex Mono",monospace;background:var(--surface-
       <table id="jobs-table">
         <thead>
           <tr>
-            <th>ID</th>
-            <th>Estado</th>
-            <th>Especie</th>
-            <th>Bin</th>
-            <th>Offset X</th>
-            <th>Rep.</th>
-            <th>Asignado a</th>
-            <th>Duración</th>
-            <th>Intento</th>
-            <th>Actualizado</th>
+            <th class="sortable" data-sort="job_id">ID <span class="sort-arrow"></span></th>
+            <th class="sortable" data-sort="status">Estado <span class="sort-arrow"></span></th>
+            <th class="sortable" data-sort="species">Especie <span class="sort-arrow"></span></th>
+            <th class="sortable" data-sort="bin_index">Bin <span class="sort-arrow"></span></th>
+            <th class="sortable" data-sort="offset_x_m">Offset X <span class="sort-arrow"></span></th>
+            <th class="sortable" data-sort="repeticion">Rep. <span class="sort-arrow"></span></th>
+            <th class="sortable" data-sort="assigned">Asignado a <span class="sort-arrow"></span></th>
+            <th class="sortable" data-sort="duration">Duración <span class="sort-arrow"></span></th>
+            <th class="sortable" data-sort="attempt">Intento <span class="sort-arrow"></span></th>
+            <th class="sortable" data-sort="updated_at">Actualizado <span class="sort-arrow"></span></th>
           </tr>
         </thead>
         <tbody id="jobs-body"></tbody>
@@ -543,38 +636,118 @@ async function fetchAll(){
   }
 }
 
-function populateFilterOptions(){
-  const speciesSel = document.getElementById("f-species");
-  const binSel = document.getElementById("f-bin");
-  const offsetSel = document.getElementById("f-offset");
-  const repSel = document.getElementById("f-rep");
-  if (speciesSel.dataset.filled) return;
-  const species = [...new Set(jobs.map(j => j.species))].sort();
-  const bins = [...new Set(jobs.map(j => j.bin_index))].sort((a,b) => a-b);
-  const offsets = [...new Set(jobs.map(j => j.offset_x_m))].sort((a,b) => a-b);
-  const reps = [...new Set(jobs.map(j => j.repeticion))].sort((a,b) => a-b);
-  for (const s of species){
-    const o = document.createElement("option");
-    o.value = s; o.textContent = s;
-    speciesSel.appendChild(o);
-  }
-  for (const b of bins){
-    const o = document.createElement("option");
-    o.value = b; o.textContent = `bin ${b}`;
-    binSel.appendChild(o);
-  }
-  for (const off of offsets){
-    const o = document.createElement("option");
-    o.value = off; o.textContent = `${off.toFixed(1)} m`;
-    offsetSel.appendChild(o);
-  }
-  for (const r of reps){
-    const o = document.createElement("option");
-    o.value = r; o.textContent = `repetición ${r}`;
-    repSel.appendChild(o);
-  }
-  speciesSel.dataset.filled = "1";
+// Filtros multi-select (2026-09-16, pedido explicito del usuario): cada
+// dropdown (#msel-*) guarda su estado en MSEL_STATE[field] = {mode:
+// "include"|"exclude", values: Set<string>} -- "values" vacio + mode
+// "include" significa "sin filtro" (se muestra todo), el mismo default de
+// antes con los <select> simples. Solo cambia el frontend: sigue
+// filtrando sobre el array `jobs` que ya devuelve GET /api/v1/jobs, sin
+// tocar db.py/app.py ni pedir nada nuevo al servidor.
+const MSEL_LABELS = {
+  status: v => v,
+  species: v => v,
+  bin_index: v => `bin ${v}`,
+  offset_x_m: v => `${Number(v).toFixed(1)} m`,
+  repeticion: v => `rep ${v}`,
+};
+const MSEL_STATE = {};
+for (const el of document.querySelectorAll(".msel")){
+  MSEL_STATE[el.dataset.field] = {mode:"include", values:new Set()};
 }
+
+function mselOptionValues(field){
+  if (field === "status") return ["pending","claimed","running","done","failed"];
+  const raw = [...new Set(jobs.map(j => j[field]))];
+  if (field === "bin_index" || field === "repeticion") return raw.sort((a,b) => a-b);
+  if (field === "offset_x_m") return raw.sort((a,b) => a-b);
+  return raw.sort();
+}
+
+function renderMselButton(container, field){
+  const st = MSEL_STATE[field];
+  const label = container.querySelector(".msel-btn .label");
+  const btn = container.querySelector(".msel-btn");
+  const existingCount = btn.querySelector(".msel-count");
+  if (existingCount) existingCount.remove();
+  if (st.values.size > 0){
+    const count = document.createElement("span");
+    count.className = "msel-count" + (st.mode === "exclude" ? " exclude" : "");
+    count.textContent = (st.mode === "exclude" ? "≠" : "") + st.values.size;
+    btn.insertBefore(count, btn.querySelector(".caret"));
+  }
+}
+
+function renderMselPanel(container, field){
+  const panel = container.querySelector(".msel-panel");
+  const st = MSEL_STATE[field];
+  const options = mselOptionValues(field);
+  const fmt = MSEL_LABELS[field] || (v => v);
+  panel.innerHTML = `
+    <div class="msel-mode">
+      <button type="button" class="mode-btn ${st.mode === "include" ? "active include" : ""}" data-mode="include">Incluir</button>
+      <button type="button" class="mode-btn ${st.mode === "exclude" ? "active exclude" : ""}" data-mode="exclude">Excluir</button>
+    </div>
+    ${options.map(v => `
+      <label class="msel-opt">
+        <input type="checkbox" value="${esc(v)}" ${st.values.has(String(v)) ? "checked" : ""}>
+        ${esc(fmt(v))}
+      </label>
+    `).join("")}
+    <div class="msel-actions">
+      <button type="button" data-act="all">Todos</button>
+      <button type="button" data-act="none">Ninguno</button>
+    </div>
+  `;
+  panel.querySelectorAll(".mode-btn").forEach(b => b.addEventListener("click", () => {
+    st.mode = b.dataset.mode;
+    renderMselPanel(container, field);
+    renderMselButton(container, field);
+    renderJobs();
+  }));
+  panel.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.addEventListener("change", () => {
+    if (cb.checked) st.values.add(cb.value); else st.values.delete(cb.value);
+    renderMselButton(container, field);
+    renderJobs();
+  }));
+  panel.querySelector('[data-act="all"]').addEventListener("click", () => {
+    st.values = new Set(options.map(String));
+    renderMselPanel(container, field);
+    renderMselButton(container, field);
+    renderJobs();
+  });
+  panel.querySelector('[data-act="none"]').addEventListener("click", () => {
+    st.values = new Set();
+    renderMselPanel(container, field);
+    renderMselButton(container, field);
+    renderJobs();
+  });
+}
+
+function populateFilterOptions(){
+  for (const container of document.querySelectorAll(".msel")){
+    const field = container.dataset.field;
+    if (container.dataset.filled) { renderMselPanel(container, field); continue; }
+    renderMselPanel(container, field);
+    renderMselButton(container, field);
+    container.dataset.filled = "1";
+  }
+}
+
+// Abrir/cerrar dropdowns: un solo panel abierto a la vez, cierra al hacer
+// click afuera. Delegado una sola vez (no depende de populateFilterOptions,
+// que puede correr de nuevo en cada fetchAll()).
+document.querySelectorAll(".msel > .msel-btn").forEach(btn => {
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const container = btn.parentElement;
+    const wasOpen = container.classList.contains("open");
+    document.querySelectorAll(".msel.open").forEach(m => m.classList.remove("open"));
+    if (!wasOpen) container.classList.add("open");
+  });
+});
+document.addEventListener("click", () => {
+  document.querySelectorAll(".msel.open").forEach(m => m.classList.remove("open"));
+});
 
 function renderWorkers(){
   document.getElementById("workers-count").textContent = `(${workers.length})`;
@@ -601,20 +774,22 @@ function workerLabelFor(workerId){
   return w ? (w.label || w.hostname) : workerId;
 }
 
+function matchesMsel(field, value){
+  const st = MSEL_STATE[field];
+  if (st.values.size === 0) return true; // sin filtro -- se muestra todo
+  const has = st.values.has(String(value));
+  return st.mode === "exclude" ? !has : has;
+}
+
 function matchesFilters(j){
-  const status = document.getElementById("f-status").value;
-  const species = document.getElementById("f-species").value;
-  const bin = document.getElementById("f-bin").value;
-  const offset = document.getElementById("f-offset").value;
-  const rep = document.getElementById("f-rep").value;
   const dateField = document.getElementById("f-date-field").value;
   const dateRangeH = document.getElementById("f-date-range").value;
   const workerQuery = document.getElementById("f-worker").value.trim().toLowerCase();
-  if (status && j.status !== status) return false;
-  if (species && j.species !== species) return false;
-  if (bin !== "" && String(j.bin_index) !== bin) return false;
-  if (offset !== "" && String(j.offset_x_m) !== offset) return false;
-  if (rep !== "" && String(j.repeticion) !== rep) return false;
+  if (!matchesMsel("status", j.status)) return false;
+  if (!matchesMsel("species", j.species)) return false;
+  if (!matchesMsel("bin_index", j.bin_index)) return false;
+  if (!matchesMsel("offset_x_m", j.offset_x_m)) return false;
+  if (!matchesMsel("repeticion", j.repeticion)) return false;
   if (dateRangeH){
     const ts = j[dateField];
     if (!ts) return false;
@@ -732,21 +907,92 @@ function detailRowHtml(j){
 
 let expandedJobId = null;
 
+// Orden por defecto (2026-09-16): estado como primera condicion --
+// running/claimed primero (trabajo activo), luego pending, failed al
+// final antes de done -- y job_id descendente como segunda condicion,
+// exactamente el criterio que ya tenia el dashboard antes de que las
+// columnas fueran ordenables. sortState.field === null significa "usar
+// este default", nunca una columna explicita -- asi que hacer click en
+// un header y despues des-ordenarlo (tercer click) vuelve exactamente a
+// este comportamiento, no a un orden arbitrario.
+const DEFAULT_STATUS_ORDER = {running:0, claimed:1, failed:2, pending:3, done:4};
+let sortState = {field:null, dir:"asc"};
+
+function sortValueFor(j, field){
+  switch(field){
+    case "job_id": return j.job_id;
+    case "status": return DEFAULT_STATUS_ORDER[j.status] ?? 9;
+    case "species": return j.species;
+    case "bin_index": return j.bin_index;
+    case "offset_x_m": return j.offset_x_m;
+    case "repeticion": return j.repeticion;
+    case "assigned": return (workerLabelFor(j.claimed_by) || "").toLowerCase();
+    case "attempt": return j.attempt;
+    case "updated_at": return j.updated_at ? new Date(j.updated_at).getTime() : -Infinity;
+    case "duration": {
+      // Mismo numero que se muestra en pantalla (runningCellHtml): tiempo
+      // conectado para un job activo, duracion real para uno done -- para
+      // que "ordenar por duracion" coincida con lo que el usuario ve, no
+      // con un campo interno distinto.
+      const isActive = j.status === "claimed" || j.status === "running";
+      if (isActive) return j.connected_s ?? -Infinity;
+      if (j.status === "done") return j.actual_duration_s ?? -Infinity;
+      return -Infinity;
+    }
+    default: return null;
+  }
+}
+
+function compareJobs(a, b, field, dir){
+  const va = sortValueFor(a, field);
+  const vb = sortValueFor(b, field);
+  let cmp;
+  if (typeof va === "string" || typeof vb === "string") cmp = String(va).localeCompare(String(vb));
+  else cmp = (va ?? -Infinity) - (vb ?? -Infinity);
+  if (cmp === 0) cmp = a.job_id - b.job_id; // desempate estable, siempre el mismo criterio
+  return dir === "desc" ? -cmp : cmp;
+}
+
+function sortJobs(list){
+  if (!sortState.field){
+    // Default: estado (orden fijo) ASC, luego job_id DESC -- igual que
+    // antes de que las columnas fueran ordenables.
+    return [...list].sort((a,b) =>
+      (DEFAULT_STATUS_ORDER[a.status] ?? 9) - (DEFAULT_STATUS_ORDER[b.status] ?? 9) || b.job_id - a.job_id
+    );
+  }
+  return [...list].sort((a,b) => compareJobs(a, b, sortState.field, sortState.dir));
+}
+
+function updateSortHeaderUI(){
+  document.querySelectorAll("#jobs-table th.sortable").forEach(th => {
+    const field = th.dataset.sort;
+    const arrow = th.querySelector(".sort-arrow");
+    if (field === sortState.field){
+      th.classList.add("sort-active");
+      arrow.textContent = sortState.dir === "asc" ? "▲" : "▼";
+    } else {
+      th.classList.remove("sort-active");
+      arrow.textContent = "";
+    }
+  });
+}
+
 function renderJobs(){
   const filtered = jobs.filter(matchesFilters);
   document.getElementById("jobs-count").textContent = `(${filtered.length} de ${jobs.length})`;
   const body = document.getElementById("jobs-body");
   const empty = document.getElementById("jobs-empty");
+  updateSortHeaderUI();
   if (filtered.length === 0){
     body.innerHTML = "";
     empty.hidden = false;
     return;
   }
   empty.hidden = true;
-  const statusOrder = {running:0, claimed:1, failed:2, pending:3, done:4};
-  filtered.sort((a,b) => (statusOrder[a.status]??9) - (statusOrder[b.status]??9) || b.job_id - a.job_id);
+  const sorted = sortJobs(filtered);
   const rows = [];
-  for (const j of filtered){
+  for (const j of sorted){
     rows.push(jobRowHtml(j));
     if (j.job_id === expandedJobId) rows.push(detailRowHtml(j));
   }
@@ -762,7 +1008,7 @@ function renderJobs(){
 }
 
 document.getElementById("refresh-btn").addEventListener("click", fetchAll);
-const FILTER_SELECT_IDS = ["f-status","f-species","f-bin","f-offset","f-rep","f-date-field","f-date-range"];
+const FILTER_SELECT_IDS = ["f-date-field","f-date-range"];
 FILTER_SELECT_IDS.forEach(id =>
   document.getElementById(id).addEventListener("change", renderJobs)
 );
@@ -771,7 +1017,34 @@ document.getElementById("f-clear").addEventListener("click", () => {
   FILTER_SELECT_IDS.forEach(id => { document.getElementById(id).value = ""; });
   document.getElementById("f-date-field").value = "updated_at";
   document.getElementById("f-worker").value = "";
+  for (const container of document.querySelectorAll(".msel")){
+    const field = container.dataset.field;
+    MSEL_STATE[field] = {mode:"include", values:new Set()};
+    renderMselPanel(container, field);
+    renderMselButton(container, field);
+  }
+  sortState = {field:null, dir:"asc"};
   renderJobs();
+});
+
+document.querySelectorAll("#jobs-table th.sortable").forEach(th => {
+  th.setAttribute("tabindex", "0");
+  th.setAttribute("role", "button");
+  const activate = () => {
+    const field = th.dataset.sort;
+    if (sortState.field !== field){
+      sortState = {field, dir:"asc"};
+    } else if (sortState.dir === "asc"){
+      sortState = {field, dir:"desc"};
+    } else {
+      sortState = {field:null, dir:"asc"}; // tercer click: vuelve al default
+    }
+    renderJobs();
+  };
+  th.addEventListener("click", activate);
+  th.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " "){ e.preventDefault(); activate(); }
+  });
 });
 
 fetchAll();
