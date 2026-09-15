@@ -3816,3 +3816,52 @@ nunca se fija), reanudación real (`-ResumeAfterWsl` con marcador,
 `$isResume=true`, marcador se borra), y ejecución normal (sin el flag,
 `$isResume=false`). Sintaxis validada de punta a punta tras el
 rediseño completo.
+
+### Worker "elite": salta el orden de repetición para aprovechar una máquina muy rápida conectada toda la noche (2026-09-14)
+
+**Pedido explícito del usuario:** `tania` (`cpu_score=18.07`, más de 4x
+el segundo mejor worker conocido, `bryam-parrot` con 4.2) se mantendría
+conectada toda la noche — el usuario quiso asegurar avance en los jobs
+más pesados del barrido (GCR_He bin6/7 sobre todo) aprovechando esa
+ventana, sin importar la repetición. El emparejamiento por `cpu_score`
+ya existente (`pick_job_for_worker()`, ver entrada de arriba "Criterio
+de asignación de jobs") solo reordena **dentro** de un
+`(repeticion, priority)` ya fijado por el orden estricto de
+repeticiones en serie (ver "Bug real corregido: repeticiones corriendo
+en paralelo") — así que aunque `tania` sea rapidísima, si la repetición
+más baja con trabajo pendiente solo tenía jobs livianos, eso era lo
+único que se le podía ofrecer, sin importar cuánto trabajo pesado
+esperaba en repeticiones más altas.
+
+**`ELITE_WORKER_CPU_SCORE_THRESHOLD = 10.0`** (`db.py`, nuevo,
+confirmado con el usuario) — deliberadamente muy por encima de
+`FAST_WORKER_CPU_SCORE_THRESHOLD` (4.461, la máquina de referencia):
+deja fuera a cualquier worker "rápido" normal conocido (el siguiente
+mejor tras `tania` es 4.2, muy por debajo). `claim_next_job()` ahora
+bifurca antes de fijar `(repeticion, priority)`: un worker con
+`cpu_score` real (no el fallback "infinito" de un worker sin
+telemetría — verificado explícitamente con `worker["cpu_score"] is not
+None`, para que "infinito" nunca califique como élite por accidente)
+igual o mayor a ese umbral se salta el orden por repetición por
+completo y recibe directamente el job pendiente con mayor
+`REFERENCE_TIMINGS_S` de **todo el sistema** (cualquier repetición),
+siempre que sus recursos (`min_ram_gb`/`min_cpu_count`/`min_cpu_score`)
+alcancen — reusa `pick_job_for_worker()` sin modificarlo (ya hace
+`max(candidates, key=weight)` para cualquier worker "rápido", y un
+worker élite siempre lo es), solo cambia el conjunto de candidatos que
+se le pasa (todos los `pending` elegibles, no solo los del grupo ya
+fijado). Un worker no-élite nunca entra a esta rama — el fix de
+repeticiones en serie sigue intacto para todos los demás.
+
+**5 tests nuevos en `test_coordinator.py` (59 en total):** un worker
+élite cruza a una repetición más alta cuando ahí está el job más
+pesado; elige el más pesado entre varias repeticiones con pesos
+mezclados (no solo la repetición más alta ni la de inserción más
+reciente); un worker sin `cpu_score` (`None`, cae a "infinito"
+internamente) nunca se trata como élite y sigue el camino normal; un
+worker élite sigue respetando los umbrales de recursos del job (recibe
+el siguiente más pesado que sí pueda satisfacer si el más pesado de
+todos exige más RAM de la que tiene libre). Desplegado en producción
+con el mismo procedimiento de siempre (`git pull` + `systemctl restart
+geant4-coordinator`) — cambio puro de `db.py`, sin migración de schema
+ni imagen Docker nueva.

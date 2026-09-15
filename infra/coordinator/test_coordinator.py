@@ -149,15 +149,73 @@ def test_claim_pairing_never_crosses_repetition_or_priority_group():
     # El emparejamiento por cpu_score no debe poder saltar a un
     # (repeticion, priority) distinto solo porque tenga un job mejor
     # emparejado -- eso reintroduciria el bug de repeticiones en
-    # paralelo. Un worker muy rapido con un job pesado disponible en
-    # repeticion 1 igual debe recibir el (unico) job de repeticion 0,
-    # aunque sea liviano.
+    # paralelo. Un worker muy rapido (pero NO elite, cpu_score ==
+    # REFERENCE_CPU_SCORE, muy por debajo de ELITE_WORKER_CPU_SCORE_THRESHOLD)
+    # con un job pesado disponible en repeticion 1 igual debe recibir el
+    # (unico) job de repeticion 0, aunque sea liviano.
     db.upsert_worker("fast", "h1", 8, 16.0, "", cpu_score=db.REFERENCE_CPU_SCORE)
     light_rep0 = db.insert_job("GCR_H", 0, 0.0, 0, 10000, priority=0)
     db.insert_job("GCR_He", 7, 0.0, 1, 10000, priority=20)
 
     job = db.claim_next_job("fast")
     assert job["job_id"] == light_rep0
+
+
+def test_claim_elite_worker_crosses_repetition_boundary():
+    # Pedido explicito del usuario (2026-09-14): un worker "elite"
+    # (cpu_score >= ELITE_WORKER_CPU_SCORE_THRESHOLD, ej. "tania" con
+    # 18.07 en produccion) debe recibir el job MAS PESADO de todo el
+    # sistema sin importar la repeticion -- a diferencia de un worker
+    # rapido normal (test de arriba), este SI puede saltar a una
+    # repeticion mas alta si ahi esta el trabajo mas caro.
+    db.upsert_worker("elite", "h1", 8, 32.0, "", cpu_score=db.ELITE_WORKER_CPU_SCORE_THRESHOLD)
+    light_rep0 = db.insert_job("GCR_H", 0, 0.0, 0, 10000, priority=0)
+    heavy_rep1 = db.insert_job("GCR_He", 7, 0.0, 1, 10000, priority=20)
+
+    job = db.claim_next_job("elite")
+    assert job["job_id"] == heavy_rep1
+    assert light_rep0 != heavy_rep1  # sanity: son jobs distintos
+
+
+def test_claim_elite_worker_picks_heaviest_among_multiple_repetitions():
+    # El job mas pesado puede estar en cualquier repeticion, no solo la
+    # mas alta -- el criterio es REFERENCE_TIMINGS_S real, no el numero
+    # de repeticion ni el orden de insercion.
+    db.upsert_worker("elite", "h1", 8, 32.0, "", cpu_score=db.ELITE_WORKER_CPU_SCORE_THRESHOLD)
+    db.insert_job("SEP_p", 0, 0.0, 3, 10000, priority=5)  # liviano, rep alta
+    heaviest = db.insert_job("GCR_He", 7, 0.0, 0, 10000, priority=20)  # pesado, rep baja
+    db.insert_job("GCR_H", 3, 0.0, 2, 10000, priority=3)  # intermedio
+
+    job = db.claim_next_job("elite")
+    assert job["job_id"] == heaviest
+
+
+def test_claim_worker_without_cpu_score_is_never_treated_as_elite():
+    # worker["cpu_score"] ausente (None) cae a "infinito" para no
+    # bloquear min_cpu_score (ver claim_next_job()) -- pero "infinito"
+    # nunca debe calificar como elite por accidente solo por ser
+    # matematicamente >= ELITE_WORKER_CPU_SCORE_THRESHOLD. Sin
+    # cpu_score real medido, el worker sigue el camino normal
+    # (repeticion ASC), igual que antes de este cambio.
+    db.upsert_worker("no_score", "h1", 8, 32.0, "")  # cpu_score=None
+    low_rep = db.insert_job("GCR_H", 0, 0.0, 0, 10000, priority=0)
+    db.insert_job("GCR_He", 7, 0.0, 1, 10000, priority=20)
+
+    job = db.claim_next_job("no_score")
+    assert job["job_id"] == low_rep
+
+
+def test_claim_elite_worker_still_respects_resource_thresholds():
+    # Un worker elite no se salta min_ram_gb/min_cpu_count/min_cpu_score
+    # del job -- solo se salta el orden por repeticion. Aqui el job mas
+    # pesado exige mas RAM de la que el worker tiene libre, asi que debe
+    # recibir el siguiente mas pesado que si pueda satisfacer.
+    db.upsert_worker("elite", "h1", 8, 32.0, "", cpu_score=db.ELITE_WORKER_CPU_SCORE_THRESHOLD, ram_free_gb=4.0)
+    db.insert_job("GCR_He", 7, 0.0, 0, 10000, priority=20, min_ram_gb=8.0)  # inalcanzable
+    reachable = db.insert_job("GCR_H", 6, 0.0, 1, 10000, priority=6, min_ram_gb=2.0)
+
+    job = db.claim_next_job("elite")
+    assert job["job_id"] == reachable
 
 
 def test_failed_result_requeues_until_max_attempts():
