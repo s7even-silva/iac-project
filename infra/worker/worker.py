@@ -574,7 +574,8 @@ def heartbeat(worker_id: str) -> int | None:
     try:
         resp = SESSION.post(
             f"{COORDINATOR_URL}/api/v1/workers/{worker_id}/heartbeat",
-            json={"ram_free_gb": ram_free_gb(), "cpu_load_pct": cpu_load_pct(), "active_job_id": active_job_id},
+            json={"ram_free_gb": ram_free_gb(), "cpu_load_pct": cpu_load_pct(),
+                  "image_digest": self_image_digest(), "active_job_id": active_job_id},
             timeout=15,
         )
         resp.raise_for_status()
