@@ -575,6 +575,99 @@ def test_requeue_by_progress_exhausted_triggers_even_with_recent_heartbeat():
     assert job_id in requeued
 
 
+def test_heartbeat_does_not_accrue_connected_s_to_orphaned_job():
+    # Bug real de produccion (2026-09-15, reportado por el usuario): si el
+    # PROCESO del worker muere y se reinicia (apagado/encendido, crash) sin
+    # liberar primero el job que tenia activo, el proceso nuevo pide otro
+    # job -- dejando el viejo huerfano en claimed/running bajo el mismo
+    # worker_id. Antes de este fix, cada heartbeat siguiente sumaba
+    # connected_s a AMBOS jobs (el huerfano y el real), aunque el worker
+    # solo trabajara en uno. No pasa con un simple corte de red (el mismo
+    # proceso retoma el MISMO job_id al reconectar).
+    db.upsert_worker('w', 'host', 8, 16.0, '')
+    db.insert_job("SEP_p", 0, 0.0, 0, 100)
+    db.claim_next_job('w')  # queda claimed/running bajo 'w'
+
+    real_id = db.insert_job("SEP_p", 1, 0.0, 0, 100)
+    with db.get_conn() as conn:
+        # Simula el reinicio: el proceso nuevo reclama otro job sin que el
+        # coordinator sepa que el anterior murio -- fuerza el estado
+        # exacto que produjo el bug real (dos jobs claimed/running bajo el
+        # mismo worker_id a la vez).
+        conn.execute("UPDATE jobs SET status='running', claimed_by='w', claimed_at=? WHERE job_id=?",
+                     (db.now_iso(), real_id))
+
+    ten_s_ago = datetime.fromtimestamp(time.time() - 10, tz=timezone.utc).isoformat()
+    with db.get_conn() as conn:
+        conn.execute("UPDATE workers SET last_heartbeat=? WHERE worker_id='w'", (ten_s_ago,))
+
+    db.touch_heartbeat('w', active_job_id=real_id)
+    assert db.get_job(real_id)["connected_s"] == pytest.approx(10.0, abs=1.0)
+
+
+def test_heartbeat_requeues_orphaned_job_when_worker_claims_another():
+    # Continuacion del test anterior: el job huerfano no debe quedarse
+    # colgado esperando el timeout normal de abandono -- Geant4 no tiene
+    # estados intermedios, asi que su progreso ya se perdio por completo
+    # en el momento en que el worker reclamo otro job. Se reencola de
+    # inmediato, en el mismo heartbeat que revela la orfandad.
+    db.upsert_worker('w', 'host', 8, 16.0, '')
+    orphan_id = db.insert_job("SEP_p", 0, 0.0, 0, 100)
+    db.claim_next_job('w')
+
+    real_id = db.insert_job("SEP_p", 1, 0.0, 0, 100)
+    with db.get_conn() as conn:
+        conn.execute("UPDATE jobs SET status='running', claimed_by='w', claimed_at=? WHERE job_id=?",
+                     (db.now_iso(), real_id))
+
+    result = db.touch_heartbeat('w', active_job_id=real_id)
+    assert result["requeued_orphan_job_ids"] == [orphan_id]
+
+    orphan = db.get_job(orphan_id)
+    assert orphan["status"] == "pending"
+    assert orphan["claimed_by"] is None
+    assert orphan["connected_s"] == 0
+    assert "reencolado automaticamente" in orphan["last_error"]
+
+    # El job real (el que el worker de verdad esta trabajando) no se toca.
+    real = db.get_job(real_id)
+    assert real["status"] == "running"
+    assert real["claimed_by"] == "w"
+
+
+def test_heartbeat_orphan_requeue_respects_max_attempts():
+    db.upsert_worker('w', 'host', 8, 16.0, '')
+    orphan_id = db.insert_job("SEP_p", 0, 0.0, 0, 100)
+    db.claim_next_job('w')
+    with db.get_conn() as conn:
+        conn.execute("UPDATE jobs SET attempt=max_attempts WHERE job_id=?", (orphan_id,))
+
+    real_id = db.insert_job("SEP_p", 1, 0.0, 0, 100)
+    with db.get_conn() as conn:
+        conn.execute("UPDATE jobs SET status='running', claimed_by='w', claimed_at=? WHERE job_id=?",
+                     (db.now_iso(), real_id))
+
+    db.touch_heartbeat('w', active_job_id=real_id)
+    orphan = db.get_job(orphan_id)
+    # failed conserva claimed_by/claimed_at, mismo criterio que
+    # record_failure() para cualquier otro job que agota sus intentos.
+    assert orphan["status"] == "failed"
+    assert orphan["claimed_by"] == "w"
+
+
+def test_heartbeat_without_active_job_id_does_not_requeue_anything():
+    # Un worker sin esa telemetria todavia (version vieja) no debe perder
+    # su job real por este mecanismo -- mismo criterio conservador que
+    # ram_free_gb/cpu_score ausentes en otras partes del coordinator.
+    db.upsert_worker('w', 'host', 8, 16.0, '')
+    job_id = db.insert_job("SEP_p", 0, 0.0, 0, 100)
+    db.claim_next_job('w')
+
+    result = db.touch_heartbeat('w')  # sin active_job_id
+    assert "requeued_orphan_job_ids" not in result
+    assert db.get_job(job_id)["status"] in ("claimed", "running")
+
+
 def test_config_roundtrip():
     assert db.get_config('worker_image_digest') is None
     db.set_config('worker_image_digest', 'sha256:' + 'a' * 64)
