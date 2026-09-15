@@ -4405,3 +4405,36 @@ puede desplegar de inmediato con el procedimiento normal (`git pull` +
 simplemente nunca ven `request_log=true` como `true` de forma útil (no
 tienen `report_log()`) hasta que actualicen, sin romper nada mientras
 tanto.
+
+### `MIN_CPU_SCORE` subido de 3.0 a 5.0: excluir `bryam-local` de bin6/7 (2026-09-16)
+
+**Pedido explícito del usuario:** `bryam-local` (`cpu_score=3.692` en su
+lectura más reciente) seguía calificando para `bin6`/`bin7` de
+GCR_H/GCR_He con el umbral anterior (3.0) — pero esos bins estiman
+~7h en esa máquina, demasiado según el usuario. El propio valor de 3.0
+venía de lecturas de `cpu_score` **de otro momento** (2026-09-14:
+`bryam-local` 4.461, `bryam-parrot` 4.334) — ya desactualizadas, ver la
+entrada de arriba sobre por qué `cpu_score` cambia entre reinicios del
+worker (no es una propiedad fija del hardware, se mide una sola vez al
+arrancar bajo la contención real de ese momento).
+
+**Corregido:** `MIN_CPU_SCORE = 5.0` en `seed_full_sweep.py` (valor
+elegido explícitamente por el usuario) — con los `cpu_score` reales
+observados hoy (`tania` 18.07, `laptop-liz` 5.24, `bryam-parrot` 4.25,
+`bryam-local` 3.69, `laptop-fabiola` 3.59, `eddy-laptop` 0.7), deja
+pasar solo a `tania` y `laptop-liz` para los bins más pesados. Aplicado
+también retroactivamente en la DB real (mismo patrón ya usado para el
+cambio anterior de 0.5→3.0): `UPDATE` directo sobre los 73 jobs
+`pending` de bin6/7 que aún tenían `min_cpu_score < 5.0` — verificado
+vía la API pública sin cambiar `jobs_pending` total ni afectar los jobs
+`running` (ninguno pertenecía a `bryam-local`, que además está offline
+en este momento). Un job ya en curso no se ve afectado por este cambio
+retroactivo -- solo los que todavía no fueron reclamados.
+
+**Riesgo ya documentado, sigue aplicando:** si `bryam-local` se reinicia
+en algún momento futuro bajo menos contención y su `cpu_score` sube por
+encima de 5.0, volvería a calificar sin que nadie lo decidiera
+explícitamente — mismo riesgo latente ya anotado en la entrada de
+`cpu_score` variando entre reinicios, sin mitigación implementada
+(recalcular el score en cada reinicio sigue siendo por diseño, no un
+bug).

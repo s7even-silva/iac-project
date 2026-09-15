@@ -74,22 +74,28 @@ MIN_RAM_BIN_THRESHOLD_HIGH_ENERGY = 6   # GCR_H/GCR_He: caro a bin_index alto
 MIN_RAM_BIN_THRESHOLD_LOW_ENERGY_SEP = 1  # SEP_p: caro a bin_index bajo
 MIN_RAM_GB = 8.0
 MIN_CPU_COUNT = 4
-# Subido de 0.5 a 3.0 (2026-09-14, decision de equipo) -- el valor
-# anterior era deliberadamente bajo/prudente por falta de datos reales al
-# calibrar el benchmark; con cpu_score reales ya observados via
-# GET /api/v1/workers (bryam-local 4.461, bryam-parrot 4.334, eddy-laptop
-# 1.247), 0.5 resultaba demasiado permisivo -- excluia solo a maquinas
-# extremadamente lentas, no protegia a los bins caros de terminar en
-# workers mediocres. 3.0 deja pasar a las dos maquinas mas rapidas
-# conocidas (bryam-local/bryam-parrot) y excluye explicitamente a
-# eddy-laptop (1.247) de bin6/7 -- ajustar de nuevo cuando se observen
-# mas maquinas reales. Ver tambien el emparejamiento dinamico en
+# Subido de 3.0 a 5.0 (2026-09-16, pedido explicito del usuario) -- con
+# 3.0, bryam-local (cpu_score=3.692 en su lectura mas reciente, ver
+# AGENTS.md "por que cpu_score cambia entre reinicios") seguia
+# calificando para bin6/7, pero esos bins estiman ~7h en esa maquina --
+# demasiado, segun el usuario. Historia del valor anterior: 3.0 vino de
+# subir 0.5 (2026-09-14) usando lecturas de cpu_score de ESE momento
+# (bryam-local 4.461, bryam-parrot 4.334, eddy-laptop 1.247) -- esas
+# lecturas ya no son las actuales (cpu_score se mide una sola vez al
+# arrancar el worker, no es una propiedad fija del hardware, ver la
+# entrada de AGENTS.md sobre esto). Con los valores reales observados
+# hoy (tania=18.07, laptop-liz=5.24, bryam-parrot=4.25, bryam-local=3.69,
+# laptop-fabiola=3.59, eddy-laptop=0.7), 5.0 deja pasar solo a tania y
+# laptop-liz para los bins mas caros -- excluye explicitamente a
+# bryam-local, ajustar de nuevo cuando se observen mas maquinas reales o
+# si estas mismas maquinas cambian de score en un reinicio futuro. Ver
+# tambien el emparejamiento dinamico en
 # claim_next_job()/pick_job_for_worker() (db.py): este umbral es un
 # filtro minimo pasa/no-pasa, el emparejamiento es lo que ademas prefiere
 # activamente el worker MAS rapido disponible para el job mas pesado.
 # Estos MIN_* aplican solo a GCR_H/GCR_He (bin_index alto) -- SEP_p tiene
 # sus propios umbrales, mucho mas bajos, ver SEP_MIN_* abajo.
-MIN_CPU_SCORE = 3.0
+MIN_CPU_SCORE = 5.0
 
 # SEP_p bin0/bin1, umbrales SEPARADOS de GCR (2026-09-14, decision de
 # equipo) -- encontrado en produccion: SEP_p bin0/bin1 compartian los
