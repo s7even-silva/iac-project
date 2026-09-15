@@ -340,6 +340,25 @@ def set_config(key: str, value: str) -> None:
 # emparejamiento, solo mas casos que razonar.
 FAST_WORKER_CPU_SCORE_THRESHOLD = REFERENCE_CPU_SCORE
 
+# Umbral de cpu_score para considerar un worker "elite" (2026-09-14,
+# pedido explicito del usuario): muy por encima de FAST_WORKER_CPU_SCORE_THRESHOLD
+# a proposito -- el unico worker real que hoy lo supera es "tania"
+# (cpu_score=18.07, mas de 4x el segundo mejor conocido, bryam-parrot
+# con 4.2). Motivo: el usuario confirmo que tania se mantendra conectada
+# toda la noche, y quiere asegurar el avance de los jobs mas pesados del
+# barrido (GCR_He bin6/7 sobre todo) aprovechando esa ventana, en vez de
+# dejarlos sujetos al orden normal por repeticion. Un worker elite se
+# salta claim_next_job()'s "repeticion ASC" (ver claim_next_job()) y
+# recibe directamente el job pendiente mas pesado de TODO el sistema
+# (cualquier repeticion), siempre que sus recursos alcancen los umbrales
+# min_* del job -- una excepcion deliberada a "repeticiones en serie"
+# para los pocos workers realmente sobresalientes, no un cambio del
+# criterio general (ver test_claim_elite_worker_crosses_repetition_boundary
+# en test_coordinator.py). Valor elegido por el usuario tras confirmar
+# que deja fuera a cualquier worker "rapido" normal conocido (el
+# siguiente mejor, bryam-parrot, tiene 4.2 -- muy por debajo).
+ELITE_WORKER_CPU_SCORE_THRESHOLD = 10.0
+
 
 def pick_job_for_worker(candidates: list[sqlite3.Row], worker_cpu_score: float) -> int | None:
     """Dentro de un (repeticion, priority) ya fijado (ver claim_next_job()),
@@ -389,7 +408,20 @@ def claim_next_job(worker_id: str) -> sqlite3.Row | None:
     mismo bin_index/priority), se elige cual dar segun pick_job_for_worker()
     -- un worker rapido recibe el mas pesado del grupo, uno lento el mas
     liviano. Pedido explicito del usuario: los bins caros (6/7) deben
-    tender a terminar en las maquinas rapidas sin bloquear a las lentas."""
+    tender a terminar en las maquinas rapidas sin bloquear a las lentas.
+
+    Worker "elite" (cpu_score >= ELITE_WORKER_CPU_SCORE_THRESHOLD,
+    2026-09-14): excepcion deliberada a "repeticiones en serie" para el
+    puñado de workers realmente sobresalientes (hoy, solo "tania",
+    cpu_score=18.07) -- en vez de fijar primero (repeticion, priority)
+    como arriba, se busca directamente el job pendiente MAS PESADO de
+    TODO el sistema (cualquier repeticion) que el worker pueda
+    satisfacer por recursos. Pedido explicito del usuario: aprovechar
+    que un worker asi de rapido se mantiene conectado toda la noche para
+    asegurar avance en los jobs mas caros del barrido (GCR_He bin6/7),
+    en vez de dejarlos sujetos al orden normal por repeticion. Un worker
+    no-elite nunca ve este camino, asi que el fix de repeticiones en
+    serie sigue intacto para todos los demas."""
     with get_conn() as conn:
         conn.execute("BEGIN IMMEDIATE")
         worker = conn.execute("SELECT * FROM workers WHERE worker_id=?", (worker_id,)).fetchone()
@@ -401,33 +433,59 @@ def claim_next_job(worker_id: str) -> sqlite3.Row | None:
         # total, cpu_score cae a "infinito" (cualquier min_cpu_score pasa).
         available_ram = worker["ram_free_gb"] if worker["ram_free_gb"] is not None else worker["ram_gb"]
         worker_cpu_score = worker["cpu_score"] if worker["cpu_score"] is not None else float("inf")
-        # Primero se fija repeticion/priority (el orden ya decidido, sin
-        # tocar) tomando el (repeticion, priority) mas alto entre los
-        # candidatos elegibles -- despues, DENTRO de ese grupo, se elige
-        # cual job especifico dar segun que tan rapido es este worker (ver
-        # abajo). No se puede saltar a un (repeticion, priority) distinto
-        # solo porque tenga un job mejor emparejado -- eso reintroduciria
-        # el bug de repeticiones en paralelo que este ORDER BY ya corrige.
-        top = conn.execute(
-            """
-            SELECT repeticion, priority FROM jobs
-            WHERE status='pending' AND min_cpu_count <= ? AND min_ram_gb <= ? AND min_cpu_score <= ?
-            ORDER BY repeticion ASC, priority DESC LIMIT 1
-            """,
-            (worker["cpu_count"] or 0, available_ram or 0, worker_cpu_score),
-        ).fetchone()
-        if top is None:
-            return None
-        candidates = conn.execute(
-            """
-            SELECT job_id, species, bin_index FROM jobs
-            WHERE status='pending' AND min_cpu_count <= ? AND min_ram_gb <= ? AND min_cpu_score <= ?
-              AND repeticion=? AND priority=?
-            ORDER BY job_id ASC
-            """,
-            (worker["cpu_count"] or 0, available_ram or 0, worker_cpu_score, top["repeticion"], top["priority"]),
-        ).fetchall()
-        job_id = pick_job_for_worker(candidates, worker_cpu_score)
+
+        # worker["cpu_score"] es None (fallback "infinito" arriba, para no
+        # bloquear min_cpu_score) se trata explicitamente como NO-elite --
+        # un worker sin telemetria real de cpu_score no debe entrar a la
+        # rama que salta el orden de repeticion, solo porque "infinito" es
+        # matematicamente >= 10.0. Elite exige un cpu_score real medido.
+        worker_is_elite = worker["cpu_score"] is not None and worker["cpu_score"] >= ELITE_WORKER_CPU_SCORE_THRESHOLD
+        if worker_is_elite:
+            # "Mas pesado" se mide por REFERENCE_TIMINGS_S real (segundos),
+            # no por bin_index crudo -- GCR_He bin6 (~7321s) es mas pesado
+            # que GCR_H bin7 (~4670s) pese a tener bin_index menor, asi que
+            # esto no puede resolverse con un ORDER BY de SQL sobre
+            # columnas de la tabla; se trae todo lo elegible (cualquier
+            # repeticion) y se elige en Python, mismo criterio de peso que
+            # pick_job_for_worker() usa dentro de un grupo.
+            elite_candidates = conn.execute(
+                """
+                SELECT job_id, species, bin_index FROM jobs
+                WHERE status='pending' AND min_cpu_count <= ? AND min_ram_gb <= ? AND min_cpu_score <= ?
+                """,
+                (worker["cpu_count"] or 0, available_ram or 0, worker_cpu_score),
+            ).fetchall()
+            job_id = pick_job_for_worker(elite_candidates, worker_cpu_score)
+            if job_id is None:
+                return None
+        else:
+            # Primero se fija repeticion/priority (el orden ya decidido, sin
+            # tocar) tomando el (repeticion, priority) mas alto entre los
+            # candidatos elegibles -- despues, DENTRO de ese grupo, se elige
+            # cual job especifico dar segun que tan rapido es este worker (ver
+            # abajo). No se puede saltar a un (repeticion, priority) distinto
+            # solo porque tenga un job mejor emparejado -- eso reintroduciria
+            # el bug de repeticiones en paralelo que este ORDER BY ya corrige.
+            top = conn.execute(
+                """
+                SELECT repeticion, priority FROM jobs
+                WHERE status='pending' AND min_cpu_count <= ? AND min_ram_gb <= ? AND min_cpu_score <= ?
+                ORDER BY repeticion ASC, priority DESC LIMIT 1
+                """,
+                (worker["cpu_count"] or 0, available_ram or 0, worker_cpu_score),
+            ).fetchone()
+            if top is None:
+                return None
+            candidates = conn.execute(
+                """
+                SELECT job_id, species, bin_index FROM jobs
+                WHERE status='pending' AND min_cpu_count <= ? AND min_ram_gb <= ? AND min_cpu_score <= ?
+                  AND repeticion=? AND priority=?
+                ORDER BY job_id ASC
+                """,
+                (worker["cpu_count"] or 0, available_ram or 0, worker_cpu_score, top["repeticion"], top["priority"]),
+            ).fetchall()
+            job_id = pick_job_for_worker(candidates, worker_cpu_score)
         conn.execute(
             """
             UPDATE jobs SET status='claimed', cancel_requested=0, claimed_by=?, claimed_at=?, attempt=attempt+1, updated_at=?
