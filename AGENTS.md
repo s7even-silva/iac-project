@@ -4143,3 +4143,25 @@ sigue mostrando todo. Desplegado actualizando solo `dashboard.html` en
 la VM (`git pull`, sin `systemctl restart` — `GET /dashboard` sirve el
 archivo con `FileResponse`, leído del disco en cada request, no
 cacheado en memoria del proceso).
+
+**Simplificado el mismo día, dos correcciones de UX pedidas tras probarlo:**
+(1) el toggle explícito Incluir/Excluir se quitó — el usuario señaló que
+alcanza con un solo botón "Seleccionar todo"/"Deseleccionar todo": para
+excluir bins 6/7 se selecciona todo y se desmarcan esos dos, para
+incluir solo un subconjunto se deselecciona todo y se marcan los que
+interesan. `MSEL_STATE[field]` pasó de `{mode, values}` a un `Set`
+simple; el botón cambia su propio label según si ya está todo marcado
+(`allSelected`), sin necesitar dos botones separados. (2) **bug real
+encontrado al probarlo**: el panel se cerraba solo cada vez que se
+marcaba un checkbox — el listener global `document.addEventListener
+("click", cerrarTodo)` (necesario para cerrar el dropdown al hacer click
+afuera) capturaba también los clicks *dentro* del panel abierto, porque
+el evento burbujea hasta `document` sin que nada lo detuviera ahí (solo
+el botón que abre el dropdown llamaba `stopPropagation()`, no el panel
+en sí). Pedido explícito del usuario: poder marcar varios checkboxes
+seguidos sin que la ventana se cierre después de cada uno. Corregido
+con `panel.addEventListener("click", e => e.stopPropagation())` sobre
+el panel completo — un click en cualquier checkbox o en "Seleccionar
+todo" ya no llega al listener global. El filtrado en vivo (ya
+funcionaba, sin bug) se conserva intacto: cada `change` de un checkbox
+sigue llamando `renderJobs()` de inmediato.

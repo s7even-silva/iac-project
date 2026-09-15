@@ -243,7 +243,6 @@ section.panel{
   padding:1px 6px;
   font-family:"IBM Plex Mono",monospace;
 }
-.msel-btn .msel-count.exclude{background:var(--bad-bg);color:var(--bad)}
 .msel-btn .caret{font-size:.65em;opacity:.6}
 .msel-panel{
   display:none;
@@ -261,30 +260,6 @@ section.panel{
   padding:6px;
 }
 .msel.open .msel-panel{display:block}
-.msel-mode{
-  display:flex;
-  gap:2px;
-  padding:2px;
-  margin-bottom:6px;
-  background:var(--surface-2);
-  border-radius:6px;
-}
-.msel-mode button{
-  flex:1;
-  font:inherit;
-  font-size:.72rem;
-  font-weight:600;
-  text-transform:uppercase;
-  letter-spacing:.03em;
-  border:none;
-  background:none;
-  color:var(--text-dim);
-  padding:5px 4px;
-  border-radius:5px;
-  cursor:pointer;
-}
-.msel-mode button.active.include{background:var(--good-bg);color:var(--good)}
-.msel-mode button.active.exclude{background:var(--bad-bg);color:var(--bad)}
 .msel-opt{
   display:flex;
   align-items:center;
@@ -298,7 +273,7 @@ section.panel{
 .msel-opt input{margin:0;cursor:pointer}
 .msel-actions{
   display:flex;
-  justify-content:space-between;
+  justify-content:flex-start;
   gap:6px;
   padding:6px 4px 2px;
   border-top:1px solid var(--border);
@@ -636,13 +611,16 @@ async function fetchAll(){
   }
 }
 
-// Filtros multi-select (2026-09-16, pedido explicito del usuario): cada
-// dropdown (#msel-*) guarda su estado en MSEL_STATE[field] = {mode:
-// "include"|"exclude", values: Set<string>} -- "values" vacio + mode
-// "include" significa "sin filtro" (se muestra todo), el mismo default de
-// antes con los <select> simples. Solo cambia el frontend: sigue
-// filtrando sobre el array `jobs` que ya devuelve GET /api/v1/jobs, sin
-// tocar db.py/app.py ni pedir nada nuevo al servidor.
+// Filtros multi-select (2026-09-16, pedido explicito del usuario, luego
+// simplificado a su pedido tras probarlo: sin toggle incluir/excluir --
+// "excluir" se logra marcando todo y desmarcando lo que no se quiere ver,
+// "incluir" marcando solo lo que se quiere, con un solo boton Seleccionar
+// todo/Deseleccionar todo para no tener que clickear opcion por opcion).
+// MSEL_STATE[field] = Set<string> de valores marcados -- vacio significa
+// "sin filtro" (se muestra todo), el mismo default de antes con los
+// <select> simples. Solo cambia el frontend: sigue filtrando sobre el
+// array `jobs` que ya devuelve GET /api/v1/jobs, sin tocar db.py/app.py
+// ni pedir nada nuevo al servidor.
 const MSEL_LABELS = {
   status: v => v,
   species: v => v,
@@ -652,7 +630,7 @@ const MSEL_LABELS = {
 };
 const MSEL_STATE = {};
 for (const el of document.querySelectorAll(".msel")){
-  MSEL_STATE[el.dataset.field] = {mode:"include", values:new Set()};
+  MSEL_STATE[el.dataset.field] = new Set();
 }
 
 function mselOptionValues(field){
@@ -664,59 +642,49 @@ function mselOptionValues(field){
 }
 
 function renderMselButton(container, field){
-  const st = MSEL_STATE[field];
-  const label = container.querySelector(".msel-btn .label");
+  const values = MSEL_STATE[field];
   const btn = container.querySelector(".msel-btn");
   const existingCount = btn.querySelector(".msel-count");
   if (existingCount) existingCount.remove();
-  if (st.values.size > 0){
+  if (values.size > 0){
     const count = document.createElement("span");
-    count.className = "msel-count" + (st.mode === "exclude" ? " exclude" : "");
-    count.textContent = (st.mode === "exclude" ? "≠" : "") + st.values.size;
+    count.className = "msel-count";
+    count.textContent = values.size;
     btn.insertBefore(count, btn.querySelector(".caret"));
   }
 }
 
 function renderMselPanel(container, field){
   const panel = container.querySelector(".msel-panel");
-  const st = MSEL_STATE[field];
+  const values = MSEL_STATE[field];
   const options = mselOptionValues(field);
   const fmt = MSEL_LABELS[field] || (v => v);
+  const allSelected = options.length > 0 && options.every(v => values.has(String(v)));
   panel.innerHTML = `
-    <div class="msel-mode">
-      <button type="button" class="mode-btn ${st.mode === "include" ? "active include" : ""}" data-mode="include">Incluir</button>
-      <button type="button" class="mode-btn ${st.mode === "exclude" ? "active exclude" : ""}" data-mode="exclude">Excluir</button>
-    </div>
     ${options.map(v => `
       <label class="msel-opt">
-        <input type="checkbox" value="${esc(v)}" ${st.values.has(String(v)) ? "checked" : ""}>
+        <input type="checkbox" value="${esc(v)}" ${values.has(String(v)) ? "checked" : ""}>
         ${esc(fmt(v))}
       </label>
     `).join("")}
     <div class="msel-actions">
-      <button type="button" data-act="all">Todos</button>
-      <button type="button" data-act="none">Ninguno</button>
+      <button type="button" data-act="toggle-all">${allSelected ? "Deseleccionar todo" : "Seleccionar todo"}</button>
     </div>
   `;
-  panel.querySelectorAll(".mode-btn").forEach(b => b.addEventListener("click", () => {
-    st.mode = b.dataset.mode;
-    renderMselPanel(container, field);
-    renderMselButton(container, field);
-    renderJobs();
-  }));
+  // stopPropagation en el panel entero: sin esto, cualquier click adentro
+  // (marcar un checkbox, "seleccionar todo") burbujea hasta el listener
+  // global en document que cierra los dropdowns abiertos -- pedido
+  // explicito del usuario, quiere poder hacer varios clicks seguidos sin
+  // que la ventana se cierre despues de cada uno.
+  panel.addEventListener("click", e => e.stopPropagation());
   panel.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.addEventListener("change", () => {
-    if (cb.checked) st.values.add(cb.value); else st.values.delete(cb.value);
+    if (cb.checked) values.add(cb.value); else values.delete(cb.value);
     renderMselButton(container, field);
+    renderMselPanel(container, field); // re-renderiza solo para actualizar el label del boton, no cierra nada
     renderJobs();
   }));
-  panel.querySelector('[data-act="all"]').addEventListener("click", () => {
-    st.values = new Set(options.map(String));
-    renderMselPanel(container, field);
-    renderMselButton(container, field);
-    renderJobs();
-  });
-  panel.querySelector('[data-act="none"]').addEventListener("click", () => {
-    st.values = new Set();
+  panel.querySelector('[data-act="toggle-all"]').addEventListener("click", () => {
+    MSEL_STATE[field] = allSelected ? new Set() : new Set(options.map(String));
     renderMselPanel(container, field);
     renderMselButton(container, field);
     renderJobs();
@@ -775,10 +743,9 @@ function workerLabelFor(workerId){
 }
 
 function matchesMsel(field, value){
-  const st = MSEL_STATE[field];
-  if (st.values.size === 0) return true; // sin filtro -- se muestra todo
-  const has = st.values.has(String(value));
-  return st.mode === "exclude" ? !has : has;
+  const values = MSEL_STATE[field];
+  if (values.size === 0) return true; // sin filtro -- se muestra todo
+  return values.has(String(value));
 }
 
 function matchesFilters(j){
@@ -1019,7 +986,7 @@ document.getElementById("f-clear").addEventListener("click", () => {
   document.getElementById("f-worker").value = "";
   for (const container of document.querySelectorAll(".msel")){
     const field = container.dataset.field;
-    MSEL_STATE[field] = {mode:"include", values:new Set()};
+    MSEL_STATE[field] = new Set();
     renderMselPanel(container, field);
     renderMselButton(container, field);
   }
