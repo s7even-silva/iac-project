@@ -3246,12 +3246,47 @@ ahí hubiera un job "mejor" para ese worker.
 **`MIN_CPU_SCORE` subido de 0.5 a 3.0** (`seed_full_sweep.py`) — el
 valor anterior era deliberadamente bajo/prudente por falta de datos
 reales al calibrarlo (ver la entrada original de `cpu_score`, más
-arriba); con mediciones reales ya observadas (`bryam-local` 4.461,
-`bryam-parrot` 4.334, `eddy-laptop` 1.247), 0.5 resultaba demasiado
-permisivo — excluía solo máquinas extremadamente lentas, no protegía
-bin6/7 de terminar en workers mediocres. 3.0 deja pasar a las dos
-máquinas más rápidas conocidas y excluye explícitamente a `eddy-laptop`
-de esos bins. **Aplicado también retroactivamente en la DB real**
+arriba); con mediciones reales ya observadas en ese momento
+(`bryam-local` 4.461, `bryam-parrot` 4.334, `eddy-laptop` 1.247), 0.5
+resultaba demasiado permisivo — excluía solo máquinas extremadamente
+lentas, no protegía bin6/7 de terminar en workers mediocres. 3.0 deja
+pasar a las dos máquinas más rápidas conocidas y excluye explícitamente
+a `eddy-laptop` de esos bins.
+
+**Importante, no confundir con lo anterior: esos números no son fijos
+en el tiempo, son la lectura de un momento puntual.** `cpu_score()`
+(`worker.py`) se corre **una sola vez al arrancar el proceso del
+worker**, no en cada heartbeat (ver su propio docstring: "el hardware
+no cambia en caliente") — así que cada reinicio del worker puede medir
+un número distinto, sobre todo en una VM (como `bryam-local`,
+VirtualBox) que comparte CPU física real con el host: el benchmark mide
+throughput agregado bajo la contención real del momento exacto del
+arranque, no una propiedad fija del hardware. Confirmado el
+2026-09-15: `bryam-local` (14 vCPUs) aparecía en `cpu_score=3.692`, por
+debajo de `bryam-parrot` (solo 8 vCPUs, `cpu_score=4.247`) — inversión
+real, no un bug de lectura, explicada por la misma contención (más
+procesos del benchmark compitiendo por menos CPU física real disponible
+en el host da *peor* throughput agregado, la pérdida de eficiencia bajo
+carga que este benchmark existe para capturar, ver la entrada original
+de `cpu_score`). Verificado que `bryam-local` llevaba encadenando
+corridas de `GCR_He bin7` sin pausa desde su registro inicial — el
+worker nunca se reinició a sabiendas del usuario; el número simplemente
+refleja lo que midió el benchmark en el momento en que ese proceso
+arrancó, que puede no coincidir con mediciones anteriores de la misma
+máquina. `REFERENCE_CPU_SCORE=4.461` en `db.py` es la constante fija
+elegida el 2026-09-14 a partir de UNA de esas lecturas — no se
+recalcula ni necesita cambiar solo porque una lectura posterior de la
+misma máquina dé un número distinto; sigue siendo un punto de
+referencia válido para escalar estimaciones. **Riesgo real que esto
+expone, no resuelto aquí:** `bryam-local` a 3.692 está peligrosamente
+cerca de `MIN_CPU_SCORE=3.0` — un reinicio futuro bajo más contención
+podría dejarla por debajo del umbral y excluirla de bin6/7 sin que nada
+haya cambiado en el hardware real. Sin mitigación implementada (ej. no
+recalcular en cada reinicio, o promediar varias mediciones) — anotado
+como pendiente, no urgente mientras `bryam-local` siga corriendo sin
+reiniciarse.
+
+**Aplicado también retroactivamente en la DB real**
 (decisión explícita del usuario, no solo el código para sembrados
 futuros): verificado que los 388 jobs `pending` en producción tenían
 `min_cpu_score=0.0` en TODOS los casos — incluidos bin6/7, que sí
