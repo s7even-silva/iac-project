@@ -549,12 +549,20 @@ def test_connected_s_resets_when_job_returns_to_pending():
     assert job["connected_s"] == 0
 
 
-def test_requeue_by_progress_exhausted_even_with_recent_heartbeat_is_not_triggered():
-    # progress_exhausted por si solo no reencola sin que TAMBIEN haya
-    # vencido el heartbeat -- el WHERE de SQL exige heartbeat vencido
-    # antes de evaluar cualquiera de las dos condiciones (un worker con
-    # heartbeat reciente sigue vivo, no tiene sentido reencolarle nada
-    # aunque su connected_s ya sea alto).
+def test_requeue_by_progress_exhausted_triggers_even_with_recent_heartbeat():
+    # Bug real de produccion (2026-09-16, ver AGENTS.md "job 141 en
+    # tania"): el WHERE de SQL exigia heartbeat VENCIDO antes de
+    # evaluar cualquiera de las dos condiciones -- pero progress_exhausted
+    # es sobre connected_s, independiente de si el heartbeat sigue vivo.
+    # heartbeat_loop() corre en su propio hilo daemon y sigue latiendo
+    # con normalidad aunque el hilo principal (process.communicate()
+    # bloqueando en el subprocess de Geant4) este genuinamente colgado --
+    # un heartbeat vivo NO implica que el job avanza. Resultado real: un
+    # job acumulo 10.1h conectado (682% del estimado) sin reencolarse
+    # nunca porque la fila jamas paso el filtro SQL. Este test antes
+    # afirmaba el comportamiento INCORRECTO (que motivo el bug) -- ahora
+    # confirma el correcto: progress_exhausted reencola por si solo, sin
+    # necesitar que el heartbeat tambien este vencido.
     db.upsert_worker("fast", "h1", 8, 16.0, "", cpu_score=db.REFERENCE_CPU_SCORE)
     job_id = db.insert_job("GCR_H", 0, 0.0, 0, 10000)  # referencia ~20.9s
     db.claim_next_job("fast")
@@ -564,7 +572,7 @@ def test_requeue_by_progress_exhausted_even_with_recent_heartbeat_is_not_trigger
         # last_heartbeat sigue reciente (touch_heartbeat_in_conn del propio claim)
 
     requeued = db.requeue_stale_jobs()
-    assert job_id not in requeued
+    assert job_id in requeued
 
 
 def test_config_roundtrip():

@@ -697,15 +697,26 @@ def requeue_stale_jobs() -> list[int]:
     aplica la condicion de abandono con el piso fijo STALE_JOB_TIMEOUT_S,
     igual que el comportamiento original.
 
-    El cutoff de heartbeat en el WHERE de SQL usa el MAS CORTO de los
-    pisos posibles (min(STALE_JOB_TIMEOUT_S, ABANDON_FLOOR_S), no el mas
-    largo) para no excluir de entrada candidatos que el criterio fino en
-    Python si debe evaluar -- trae un superconjunto amplio de la tabla,
-    y cada fila se filtra despues con su propio umbral real (que puede
-    ser mucho mas corto que STALE_JOB_TIMEOUT_S cuando hay estimacion).
-    Mas simple y correcto que expresar el timeout dinamico por fila
-    dentro del WHERE."""
-    floor_cutoff = time.time() - min(STALE_JOB_TIMEOUT_S, ABANDON_FLOOR_S)
+    Bug real de produccion encontrado 2026-09-16 (job 141 en "tania",
+    GCR_He bin7 -- ver AGENTS.md): el WHERE de SQL exigia heartbeat
+    VENCIDO (w.last_heartbeat < cutoff) antes de traer una fila a
+    Python -- pero progress_exhausted es una condicion sobre
+    connected_s, TOTALMENTE INDEPENDIENTE de si el heartbeat sigue
+    vivo. heartbeat_loop() corre en su propio hilo daemon (ver
+    worker.py) y sigue latiendo con normalidad aunque el hilo principal
+    (process.communicate() bloqueando en el subprocess de Geant4) este
+    genuinamente colgado -- un heartbeat vivo NO implica que el job
+    avanza. Resultado real: ese job acumulo 10.1h conectado (682% del
+    estimado, muy por encima de ESTIMATE_SAFETY_FACTOR=2.5x) sin
+    reencolarse nunca, porque la fila jamas paso el filtro SQL para
+    llegar a evaluarse en Python. Corregido: el WHERE ya NO filtra por
+    heartbeat -- trae TODOS los jobs claimed/running (superconjunto
+    completo, no acotado por edad de heartbeat) y deja que el filtro
+    fino en Python evalue las dos condiciones independientes
+    (progress_exhausted, abandoned) sobre cada fila sin excepcion. El
+    costo extra de traer mas filas es despreciable (la cola tiene, como
+    mucho, unos pocos jobs activos a la vez -- uno por worker
+    conectado)."""
     with get_conn() as conn:
         candidates = conn.execute(
             """
@@ -714,15 +725,15 @@ def requeue_stale_jobs() -> list[int]:
             FROM jobs j
             LEFT JOIN workers w ON w.worker_id = j.claimed_by
             WHERE j.status IN ('claimed', 'running')
-              AND (w.last_heartbeat IS NULL OR w.last_heartbeat < ?)
-            """,
-            (datetime.fromtimestamp(floor_cutoff, tz=timezone.utc).isoformat(),),
+            """
         ).fetchall()
         now = time.time()
         job_ids = []
+        reasons = {}
         for row in candidates:
             if row["last_heartbeat"] is None:
                 job_ids.append(row["job_id"])
+                reasons[row["job_id"]] = "sin worker/heartbeat registrado"
                 continue
             last_heartbeat_s = datetime.fromisoformat(row["last_heartbeat"]).timestamp()
             age_s = now - last_heartbeat_s
@@ -730,22 +741,27 @@ def requeue_stale_jobs() -> list[int]:
             progress_exhausted = estimated_s is not None and row["connected_s"] >= estimated_s * ESTIMATE_SAFETY_FACTOR
             abandoned = age_s >= _abandon_timeout_s(estimated_s)
             if progress_exhausted or abandoned:
+                # Motivo real registrado por separado -- el bug de 2026-09-16
+                # (ver arriba) mostro que "heartbeat vencido" generico era
+                # enganoso: progress_exhausted puede dispararse con
+                # heartbeat COMPLETAMENTE VIVO (heartbeat_loop en hilo
+                # separado sigue latiendo aunque el trabajo real este
+                # colgado), asi que el mensaje debe decir cual de las dos
+                # condiciones independientes fue la que realmente actuo.
+                reason = "progreso agotado (connected_s excede estimacion*margen)" if progress_exhausted else "heartbeat vencido (abandonado)"
                 job_ids.append(row["job_id"])
+                reasons[row["job_id"]] = reason
         for job_id in job_ids:
-            # El mensaje sigue diciendo "heartbeat vencido" de forma
-            # generica -- ambas condiciones (progreso agotado o abandono)
-            # comparten la misma causa raiz visible (el worker dejo de dar
-            # heartbeat), solo cambia el criterio que decidio actuar ahora.
             # connected_s se resetea a 0: el proximo intento empieza su
             # propio progreso desde cero.
             conn.execute(
                 """
                 UPDATE jobs SET status=CASE WHEN attempt < max_attempts THEN 'pending' ELSE 'failed' END,
                        claimed_by=NULL, claimed_at=NULL, connected_s=0, cancel_requested=0,
-                       last_error='requeued: heartbeat vencido', updated_at=?
+                       last_error=?, updated_at=?
                 WHERE job_id=?
                 """,
-                (now_iso(), job_id),
+                (f"requeued: {reasons[job_id]}", now_iso(), job_id),
             )
         return job_ids
 
