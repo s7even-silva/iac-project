@@ -62,7 +62,12 @@ RESULTS_FIELDNAMES = ["especie", "fase", "bin_index", "energy_mev", "offset_x_m"
 
 
 def combo_key(row: dict) -> tuple:
-    return (row["especie"], int(row["bin_index"]), round(float(row["offset_x_m"]), 6), int(row["repeticion"]))
+    # Incluye "fase" (2026-09-16, antes solo especie/bin/offset/repeticion)
+    # -- mismo UNIQUE de 5 columnas que ahora tiene jobs (ver db.py). Los
+    # CSV reales (resultados_organo_sweep_*.csv) ya traen columna "fase"
+    # desde siempre (la escribe run_organ_sweep.py), asi que este cambio
+    # no requiere ningun dato nuevo, solo usar el que ya estaba en el CSV.
+    return (row["especie"], row["fase"], int(row["bin_index"]), round(float(row["offset_x_m"]), 6), int(row["repeticion"]))
 
 
 def main():
@@ -94,7 +99,10 @@ def main():
 
     manifest_by_combo = {}
     for row in all_manifest_rows:
-        key = (row["especie"], int(row["bin_index"]), round(float(row["offset_x_m"]), 6), int(row["repeticion"]))
+        # Misma clave de 5 elementos que combo_key() (fase incluida,
+        # 2026-09-16) -- organ_sweep_manifest.csv ya trae columna "fase"
+        # desde siempre (run_organ_sweep.py la escribe), no un dato nuevo.
+        key = (row["especie"], row["fase"], int(row["bin_index"]), round(float(row["offset_x_m"]), 6), int(row["repeticion"]))
         manifest_by_combo[key] = row
 
     imported, already_done, no_match, mismatched = 0, 0, 0, 0
@@ -103,8 +111,8 @@ def main():
             print(f"  omitido {key}: exit_code={manifest_row['exit_code']} en el manifiesto (no fue exitoso)")
             continue
 
-        species, bin_index, offset_x_m, repeticion = key
-        job = db.get_job_by_combo(species, bin_index, offset_x_m, repeticion)
+        species, phase, bin_index, offset_x_m, repeticion = key
+        job = db.get_job_by_combo(species, phase, bin_index, offset_x_m, repeticion)
         if job is None:
             no_match += 1
             print(f"  sin job en la cola para {key} -- corre seed_full_sweep.py primero, o revisa el offset")

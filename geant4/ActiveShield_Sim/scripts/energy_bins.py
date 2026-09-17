@@ -14,9 +14,27 @@ contribuyen una fraccion despreciable del flujo real. Se usa en cambio el
 rango que cubre >99.9% del flujo/fluencia integrado (percentiles calculados
 directamente de los CSV reales, no supuestos):
 
-    GCR_H  (gcr_proton_solarmin.csv):  10 - 1e5    MeV/amu  (cubre 99.911%)
-    GCR_He (gcr_alpha_solarmin.csv):   10 - 1e5    MeV/amu  (cubre 99.902%)
-    SEP_p  (sep_proton_solarmax.csv):  0.01 - 300  MeV      (cubre 99.983%)
+    GCR_H  min (gcr_proton_solarmin.csv):  10 - 1e5     MeV/amu  (cubre 99.911%)
+    GCR_H  max (gcr_proton_solarmax.csv):  30 - 3e5     MeV/amu  (cubre 99.906%)
+    GCR_He min (gcr_alpha_solarmin.csv):   10 - 1e5     MeV/amu  (cubre 99.902%)
+    GCR_He max (gcr_alpha_solarmax.csv):   10 - 1e5     MeV/amu  (cubre 99.912%)
+    SEP_p  max (sep_proton_solarmax.csv):  0.01 - 300   MeV      (cubre 99.983%)
+    SEP_p  min (sep_proton_solarmin.csv):  0.03 - 2500  MeV      (cubre 99.932%)
+
+Los 3 rangos de "min" (GCR_H, GCR_He) y "max" (SEP_p) son los originales,
+calculados el 2026-09-11 (ver arriba). Los 3 de "max" (GCR_H, GCR_He) y
+"min" (SEP_p) se agregaron el 2026-09-16 al expandir el barrido a las 6
+combinaciones especie x fase (antes cada especie corria en una sola fase
+fija) -- MISMO metodo exacto (busqueda del rango mas angosto, entre
+bordes candidatos en potencias redondas de 10, que cubra >=99.9% de la
+integral trapezoidal total del CSV), verificado reproduciendo primero los
+3 porcentajes ya documentados arriba antes de confiar en los 3 nuevos
+(coincidencia exacta hasta el tercer decimal). NO se asumio que el rango
+de la fase ya conocida sirviera para la fase nueva de la misma especie --
+la forma espectral difiere entre min/max (confirmado leyendo los CSV: el
+espectro SEP-min, por ejemplo, es mas "duro"/de cola mas pesada que
+SEP-max, ver AGENTS.md) asi que cada uno de los 6 rangos se calculo por
+separado contra su propio CSV.
 
 Bins log-espaciados (espaciado geometrico uniforme, estandar para espectros
 que caen varias decadas) dentro de ese rango; energia representativa de cada
@@ -35,14 +53,25 @@ completo (no llega al 100% del flujo, ver arriba) porque se recorta el
 """
 import math
 
-# (archivo_csv, energia_min, energia_max) -- ver docstring del modulo por el
-# razonamiento del rango. Mismas unidades nativas del CSV (MeV/amu para GCR,
-# MeV para SEP) -- SampleEnergy()/el override monoenergetico usan esa misma
-# convencion nativa, ver ICRP110PhantomPrimaryGeneratorAction.cc.
+# (species, phase) -> (archivo_csv, energia_min, energia_max) -- ver
+# docstring del modulo por el razonamiento del rango. Mismas unidades
+# nativas del CSV (MeV/amu para GCR, MeV para SEP) -- SampleEnergy()/el
+# override monoenergetico usan esa misma convencion nativa, ver
+# ICRP110PhantomPrimaryGeneratorAction.cc.
+#
+# Indexado por (species, phase), no solo species (2026-09-16, antes 1:1) --
+# necesario para las 3 combinaciones nuevas (GCR_H/max, GCR_He/max,
+# SEP_p/min) que expanden el barrido de 3 a 6 casos especie x fase. Las 3
+# entradas "min"/"max" ya en produccion (indices [0]) NO cambiaron de
+# valor -- mismo archivo/rango exacto que antes, solo la clave del dict
+# gano la dimension phase.
 SPECIES_RANGE = {
-    "GCR_H":  ("gcr_proton_solarmin.csv", 10.0, 1.0e5),
-    "GCR_He": ("gcr_alpha_solarmin.csv", 10.0, 1.0e5),
-    "SEP_p":  ("sep_proton_solarmax.csv", 0.01, 300.0),
+    ("GCR_H", "min"):  ("gcr_proton_solarmin.csv", 10.0, 1.0e5),
+    ("GCR_H", "max"):  ("gcr_proton_solarmax.csv", 30.0, 3.0e5),
+    ("GCR_He", "min"): ("gcr_alpha_solarmin.csv", 10.0, 1.0e5),
+    ("GCR_He", "max"): ("gcr_alpha_solarmax.csv", 10.0, 1.0e5),
+    ("SEP_p", "max"):  ("sep_proton_solarmax.csv", 0.01, 300.0),
+    ("SEP_p", "min"):  ("sep_proton_solarmin.csv", 0.03, 2500.0),
 }
 
 N_BINS_PER_SPECIES = 8  # decision 2026-09-11, ver AGENTS.md (opciones evaluadas: 5/8/10)
@@ -99,10 +128,13 @@ def bin_representative_energy(edge_lo, edge_hi):
 
 
 def build_bins(spectra_dir, n_bins=N_BINS_PER_SPECIES):
-    """{species: [(bin_index, energy_rep, integrated_flux_bin), ...]} para
-    las 3 especies de SPECIES_RANGE, leyendo sus CSV reales desde spectra_dir."""
-    bins_by_species = {}
-    for species, (filename, lo, hi) in SPECIES_RANGE.items():
+    """{(species, phase): [(bin_index, energy_rep, integrated_flux_bin), ...]}
+    para las 6 combinaciones de SPECIES_RANGE, leyendo sus CSV reales
+    desde spectra_dir. Indexado por (species, phase) desde 2026-09-16
+    (antes solo species, cuando cada especie tenia una unica fase fija) --
+    ver SPECIES_RANGE."""
+    bins_by_key = {}
+    for (species, phase), (filename, lo, hi) in SPECIES_RANGE.items():
         energies, fluxes = load_spectrum(spectra_dir / filename)
         edges = log_bin_edges(lo, hi, n_bins)
         bins = []
@@ -110,5 +142,5 @@ def build_bins(spectra_dir, n_bins=N_BINS_PER_SPECIES):
             e_rep = bin_representative_energy(edges[i], edges[i+1])
             flux_bin = integral_between(energies, fluxes, edges[i], edges[i+1])
             bins.append((i, e_rep, flux_bin))
-        bins_by_species[species] = bins
-    return bins_by_species
+        bins_by_key[(species, phase)] = bins
+    return bins_by_key

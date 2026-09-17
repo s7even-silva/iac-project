@@ -25,7 +25,7 @@ def temp_db(tmp_path, monkeypatch):
 
 def test_register_and_claim_single_job():
     db.upsert_worker("w1", "host1", 8, 16.0, "test")
-    job_id = db.insert_job("SEP_p", 0, 0.0, 0, 100)
+    job_id = db.insert_job("SEP_p", "min", 0, 0.0, 0, 100)
     assert job_id
 
     claimed = db.claim_next_job("w1")
@@ -41,7 +41,7 @@ def test_register_and_claim_single_job():
 def test_claim_is_atomic_under_concurrency():
     db.upsert_worker("w1", "h1", 8, 16.0, "")
     db.upsert_worker("w2", "h2", 8, 16.0, "")
-    job_id = db.insert_job("SEP_p", 0, 0.0, 0, 100)
+    job_id = db.insert_job("SEP_p", "min", 0, 0.0, 0, 100)
     assert job_id
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
@@ -53,7 +53,7 @@ def test_claim_is_atomic_under_concurrency():
 
 def test_full_cycle_pending_to_done():
     db.upsert_worker("w1", "h1", 8, 16.0, "")
-    job_id = db.insert_job("GCR_He", 7, 3.0, 0, 10000, priority=10)
+    job_id = db.insert_job("GCR_He", "min", 7, 3.0, 0, 10000, priority=10)
 
     job = db.claim_next_job("w1")
     assert job["job_id"] == job_id
@@ -76,7 +76,7 @@ def test_list_jobs_actual_duration_uses_most_recent_result():
     # subida MAS RECIENTE (submitted_at), que es la que corresponde al
     # estado actual del job, no la primera fila insertada.
     db.upsert_worker("w1", "h1", 8, 16.0, "")
-    job_id = db.insert_job("SEP_p", 2, 0.0, 0, 100)
+    job_id = db.insert_job("SEP_p", "min", 2, 0.0, 0, 100)
 
     db.claim_next_job("w1")
     db.record_result(job_id, "w1", duration_s=5.0, exit_code=1, n_rows=0,
@@ -92,7 +92,7 @@ def test_list_jobs_actual_duration_uses_most_recent_result():
 
 def test_list_jobs_actual_duration_none_without_any_result():
     db.upsert_worker("w1", "h1", 8, 16.0, "")
-    db.insert_job("SEP_p", 2, 0.0, 0, 100)
+    db.insert_job("SEP_p", "min", 2, 0.0, 0, 100)
     job = db.list_jobs(status="pending")[0]
     assert job["actual_duration_s"] is None
 
@@ -104,8 +104,8 @@ def test_claim_prefers_lower_repetition_over_higher_priority():
     # encontrado en produccion: repeticiones 1-4 arrancaban en paralelo
     # mientras la 0 seguia con trabajo pendiente.
     db.upsert_worker("w1", "h1", 8, 16.0, "")
-    low_rep_low_priority = db.insert_job("GCR_H", 0, 0.0, 0, 10000, priority=0)
-    db.insert_job("GCR_He", 7, 0.0, 1, 10000, priority=20)
+    low_rep_low_priority = db.insert_job("GCR_H", "min", 0, 0.0, 0, 10000, priority=0)
+    db.insert_job("GCR_He", "min", 7, 0.0, 1, 10000, priority=20)
 
     job = db.claim_next_job("w1")
     assert job["job_id"] == low_rep_low_priority
@@ -114,8 +114,8 @@ def test_claim_prefers_lower_repetition_over_higher_priority():
 
 def test_claim_still_orders_by_priority_within_same_repetition():
     db.upsert_worker("w1", "h1", 8, 16.0, "")
-    db.insert_job("GCR_H", 0, 0.0, 0, 10000, priority=0)
-    high_priority_same_rep = db.insert_job("GCR_He", 7, 0.0, 0, 10000, priority=20)
+    db.insert_job("GCR_H", "min", 0, 0.0, 0, 10000, priority=0)
+    high_priority_same_rep = db.insert_job("GCR_He", "min", 7, 0.0, 0, 10000, priority=20)
 
     job = db.claim_next_job("w1")
     assert job["job_id"] == high_priority_same_rep
@@ -128,8 +128,8 @@ def test_claim_fast_worker_prefers_heaviest_job_in_same_group():
     # mas pesado del grupo (GCR_He bin7, referencia ~18780s) en vez del
     # primero por job_id (GCR_H bin7, referencia ~4669.7s).
     db.upsert_worker("fast", "h1", 8, 16.0, "", cpu_score=db.REFERENCE_CPU_SCORE)
-    light_job = db.insert_job("GCR_H", 7, 0.0, 0, 10000, priority=7)
-    heavy_job = db.insert_job("GCR_He", 7, 0.0, 0, 10000, priority=7)
+    light_job = db.insert_job("GCR_H", "min", 7, 0.0, 0, 10000, priority=7)
+    heavy_job = db.insert_job("GCR_He", "min", 7, 0.0, 0, 10000, priority=7)
 
     job = db.claim_next_job("fast")
     assert job["job_id"] == heavy_job
@@ -138,8 +138,8 @@ def test_claim_fast_worker_prefers_heaviest_job_in_same_group():
 
 def test_claim_slow_worker_prefers_lightest_job_in_same_group():
     db.upsert_worker("slow", "h1", 8, 16.0, "", cpu_score=1.0)
-    light_job = db.insert_job("GCR_H", 7, 0.0, 0, 10000, priority=7)
-    db.insert_job("GCR_He", 7, 0.0, 0, 10000, priority=7)
+    light_job = db.insert_job("GCR_H", "min", 7, 0.0, 0, 10000, priority=7)
+    db.insert_job("GCR_He", "min", 7, 0.0, 0, 10000, priority=7)
 
     job = db.claim_next_job("slow")
     assert job["job_id"] == light_job
@@ -154,8 +154,8 @@ def test_claim_pairing_never_crosses_repetition_or_priority_group():
     # con un job pesado disponible en repeticion 1 igual debe recibir el
     # (unico) job de repeticion 0, aunque sea liviano.
     db.upsert_worker("fast", "h1", 8, 16.0, "", cpu_score=db.REFERENCE_CPU_SCORE)
-    light_rep0 = db.insert_job("GCR_H", 0, 0.0, 0, 10000, priority=0)
-    db.insert_job("GCR_He", 7, 0.0, 1, 10000, priority=20)
+    light_rep0 = db.insert_job("GCR_H", "min", 0, 0.0, 0, 10000, priority=0)
+    db.insert_job("GCR_He", "min", 7, 0.0, 1, 10000, priority=20)
 
     job = db.claim_next_job("fast")
     assert job["job_id"] == light_rep0
@@ -169,8 +169,8 @@ def test_claim_elite_worker_crosses_repetition_boundary():
     # rapido normal (test de arriba), este SI puede saltar a una
     # repeticion mas alta si ahi esta el trabajo mas caro.
     db.upsert_worker("elite", "h1", 8, 32.0, "", cpu_score=db.ELITE_WORKER_CPU_SCORE_THRESHOLD)
-    light_rep0 = db.insert_job("GCR_H", 0, 0.0, 0, 10000, priority=0)
-    heavy_rep1 = db.insert_job("GCR_He", 7, 0.0, 1, 10000, priority=20)
+    light_rep0 = db.insert_job("GCR_H", "min", 0, 0.0, 0, 10000, priority=0)
+    heavy_rep1 = db.insert_job("GCR_He", "min", 7, 0.0, 1, 10000, priority=20)
 
     job = db.claim_next_job("elite")
     assert job["job_id"] == heavy_rep1
@@ -182,9 +182,9 @@ def test_claim_elite_worker_picks_heaviest_among_multiple_repetitions():
     # mas alta -- el criterio es REFERENCE_TIMINGS_S real, no el numero
     # de repeticion ni el orden de insercion.
     db.upsert_worker("elite", "h1", 8, 32.0, "", cpu_score=db.ELITE_WORKER_CPU_SCORE_THRESHOLD)
-    db.insert_job("SEP_p", 0, 0.0, 3, 10000, priority=5)  # liviano, rep alta
-    heaviest = db.insert_job("GCR_He", 7, 0.0, 0, 10000, priority=20)  # pesado, rep baja
-    db.insert_job("GCR_H", 3, 0.0, 2, 10000, priority=3)  # intermedio
+    db.insert_job("SEP_p", "min", 0, 0.0, 3, 10000, priority=5)  # liviano, rep alta
+    heaviest = db.insert_job("GCR_He", "min", 7, 0.0, 0, 10000, priority=20)  # pesado, rep baja
+    db.insert_job("GCR_H", "min", 3, 0.0, 2, 10000, priority=3)  # intermedio
 
     job = db.claim_next_job("elite")
     assert job["job_id"] == heaviest
@@ -198,8 +198,8 @@ def test_claim_worker_without_cpu_score_is_never_treated_as_elite():
     # cpu_score real medido, el worker sigue el camino normal
     # (repeticion ASC), igual que antes de este cambio.
     db.upsert_worker("no_score", "h1", 8, 32.0, "")  # cpu_score=None
-    low_rep = db.insert_job("GCR_H", 0, 0.0, 0, 10000, priority=0)
-    db.insert_job("GCR_He", 7, 0.0, 1, 10000, priority=20)
+    low_rep = db.insert_job("GCR_H", "min", 0, 0.0, 0, 10000, priority=0)
+    db.insert_job("GCR_He", "min", 7, 0.0, 1, 10000, priority=20)
 
     job = db.claim_next_job("no_score")
     assert job["job_id"] == low_rep
@@ -211,8 +211,8 @@ def test_claim_elite_worker_still_respects_resource_thresholds():
     # pesado exige mas RAM de la que el worker tiene libre, asi que debe
     # recibir el siguiente mas pesado que si pueda satisfacer.
     db.upsert_worker("elite", "h1", 8, 32.0, "", cpu_score=db.ELITE_WORKER_CPU_SCORE_THRESHOLD, ram_free_gb=4.0)
-    db.insert_job("GCR_He", 7, 0.0, 0, 10000, priority=20, min_ram_gb=8.0)  # inalcanzable
-    reachable = db.insert_job("GCR_H", 6, 0.0, 1, 10000, priority=6, min_ram_gb=2.0)
+    db.insert_job("GCR_He", "min", 7, 0.0, 0, 10000, priority=20, min_ram_gb=8.0)  # inalcanzable
+    reachable = db.insert_job("GCR_H", "min", 6, 0.0, 1, 10000, priority=6, min_ram_gb=2.0)
 
     job = db.claim_next_job("elite")
     assert job["job_id"] == reachable
@@ -220,7 +220,7 @@ def test_claim_elite_worker_still_respects_resource_thresholds():
 
 def test_failed_result_requeues_until_max_attempts():
     db.upsert_worker("w1", "h1", 8, 16.0, "")
-    job_id = db.insert_job("SEP_p", 0, 0.0, 0, 100)
+    job_id = db.insert_job("SEP_p", "min", 0, 0.0, 0, 100)
 
     for _ in range(3):  # max_attempts default = 3
         job = db.claim_next_job("w1")
@@ -235,7 +235,7 @@ def test_failed_result_requeues_until_max_attempts():
 def test_result_rejected_if_not_claimed_by_that_worker():
     db.upsert_worker("w1", "h1", 8, 16.0, "")
     db.upsert_worker("w2", "h2", 8, 16.0, "")
-    job_id = db.insert_job("SEP_p", 0, 0.0, 0, 100)
+    job_id = db.insert_job("SEP_p", "min", 0, 0.0, 0, 100)
     db.claim_next_job("w1")
 
     with pytest.raises(PermissionError):
@@ -278,7 +278,7 @@ def test_requeue_respects_estimated_duration_beyond_fixed_timeout(monkeypatch):
     # job pese a que STALE_JOB_TIMEOUT_S ya haya vencido.
     monkeypatch.setattr(db, "STALE_JOB_TIMEOUT_S", 100.0)
     db.upsert_worker("fast", "h1", 8, 16.0, "", cpu_score=db.REFERENCE_CPU_SCORE)
-    job_id = db.insert_job("GCR_H", 7, 0.0, 0, 10000)
+    job_id = db.insert_job("GCR_H", "min", 7, 0.0, 0, 10000)
     db.claim_next_job("fast")
 
     stale_at = datetime.fromtimestamp(time.time() - 200, tz=timezone.utc).isoformat()
@@ -296,7 +296,7 @@ def test_requeue_still_uses_abandon_floor_when_estimate_is_short():
     # lag de red breve, aunque la estimacion*ABANDON_FACTOR sola diera un
     # numero mas chico.
     db.upsert_worker("fast", "h1", 8, 16.0, "", cpu_score=db.REFERENCE_CPU_SCORE)
-    job_id = db.insert_job("GCR_H", 0, 0.0, 0, 10000)
+    job_id = db.insert_job("GCR_H", "min", 0, 0.0, 0, 10000)
     db.claim_next_job("fast")
 
     stale_at = datetime.fromtimestamp(time.time() - 2, tz=timezone.utc).isoformat()
@@ -309,7 +309,7 @@ def test_requeue_still_uses_abandon_floor_when_estimate_is_short():
 
 def test_requeue_falls_back_to_fixed_timeout_without_cpu_score():
     db.upsert_worker("w1", "h1", 8, 16.0, "")  # sin cpu_score
-    job_id = db.insert_job("GCR_H", 7, 0.0, 0, 10000)
+    job_id = db.insert_job("GCR_H", "min", 7, 0.0, 0, 10000)
     db.claim_next_job("w1")
 
     with db.get_conn() as conn:
@@ -338,7 +338,7 @@ def test_requeue_bug_repro_short_estimate_no_longer_waits_fixed_floor():
     # estimacion -- bin6 (referencia 1820.4s=~0.5h) debe reencolarse por
     # abandono mucho antes de que STALE_JOB_TIMEOUT_S (5h) venza.
     db.upsert_worker("fast", "h1", 8, 16.0, "", cpu_score=db.REFERENCE_CPU_SCORE)
-    job_id = db.insert_job("GCR_H", 6, 0.0, 0, 10000)
+    job_id = db.insert_job("GCR_H", "min", 6, 0.0, 0, 10000)
     db.claim_next_job("fast")
 
     # Umbral de abandono real: clamp(1820.4*2, 3600, 36000) = 3640.8s (~1h).
@@ -355,7 +355,7 @@ def test_requeue_bug_repro_short_estimate_no_longer_waits_fixed_floor():
 
 def test_requeue_stale_jobs_without_heartbeat():
     db.upsert_worker("w1", "h1", 8, 16.0, "")
-    job_id = db.insert_job("SEP_p", 0, 0.0, 0, 100)
+    job_id = db.insert_job("SEP_p", "min", 0, 0.0, 0, 100)
     db.claim_next_job("w1")
 
     # Heartbeat "vencido": se fuerza escribiendo un valor viejo directo en DB
@@ -371,8 +371,8 @@ def test_requeue_stale_jobs_without_heartbeat():
 
 
 def test_unique_constraint_prevents_duplicate_job():
-    first = db.insert_job("GCR_H", 2, 1.0, 0, 10000)
-    second = db.insert_job("GCR_H", 2, 1.0, 0, 10000)  # misma combinacion exacta
+    first = db.insert_job("GCR_H", "min", 2, 1.0, 0, 10000)
+    second = db.insert_job("GCR_H", "min", 2, 1.0, 0, 10000)  # misma combinacion exacta
     assert first
     assert second is None or second == 0  # lastrowid no cambia si ON CONFLICT DO NOTHING no inserto
     assert len(db.list_jobs()) == 1
@@ -380,7 +380,7 @@ def test_unique_constraint_prevents_duplicate_job():
 
 def test_expired_job_exhausts_attempts():
     db.upsert_worker('w', 'host', 1, 1, '')
-    job = db.insert_job('SEP_p', 1, 1., 0, 100)
+    job = db.insert_job('SEP_p', "min", 1, 1., 0, 100)
     for attempt in range(3):
         assert db.claim_next_job('w')['job_id'] == job
         with db.get_conn() as conn:
@@ -396,7 +396,7 @@ def test_late_upload_cannot_overwrite_accepted_result(tmp_path, monkeypatch):
     import app
     monkeypatch.setattr(app, 'RESULTS_DIR', tmp_path/'results')
     db.upsert_worker('winner', 'host', 1, 1, '')
-    job = db.insert_job('SEP_p', 1, 1., 0, 100)
+    job = db.insert_job('SEP_p', "min", 1, 1., 0, 100)
     db.claim_next_job('winner')
     results = b'especie,bin_index,offset_x_m,repeticion,n_eventos\nSEP_p,1,1,0,100\n'
     manifest = b'especie,bin_index,offset_x_m,repeticion,n_events,exit_code\nSEP_p,1,1,0,100,0\n'
@@ -418,7 +418,7 @@ def test_late_upload_cannot_overwrite_accepted_result(tmp_path, monkeypatch):
 
 def test_start_requires_assigned_worker():
     db.upsert_worker('owner', 'host', 1, 1, '')
-    job = db.insert_job('SEP_p', 1, 1., 0, 100)
+    job = db.insert_job('SEP_p', "min", 1, 1., 0, 100)
     db.claim_next_job('owner')
     assert not db.mark_running(job, 'someone-else')
     assert db.mark_running(job, 'owner')
@@ -426,20 +426,20 @@ def test_start_requires_assigned_worker():
 
 def test_worker_below_min_ram_does_not_get_job():
     db.upsert_worker('small', 'host', 8, 4.0, '', ram_free_gb=1.0, cpu_load_pct=5.0)
-    job_id = db.insert_job('GCR_He', 7, 3.0, 0, 10000, min_ram_gb=8.0)
+    job_id = db.insert_job('GCR_He', "min", 7, 3.0, 0, 10000, min_ram_gb=8.0)
     assert db.claim_next_job('small') is None
     assert db.get_job(job_id)['status'] == 'pending'
 
 
 def test_worker_below_min_cpu_does_not_get_job():
     db.upsert_worker('weak', 'host', 2, 16.0, '', ram_free_gb=16.0)
-    db.insert_job('GCR_He', 7, 3.0, 0, 10000, min_cpu_count=4)
+    db.insert_job('GCR_He', "min", 7, 3.0, 0, 10000, min_cpu_count=4)
     assert db.claim_next_job('weak') is None
 
 
 def test_worker_meeting_requirements_gets_job():
     db.upsert_worker('strong', 'host', 16, 32.0, '', ram_free_gb=20.0, cpu_load_pct=10.0)
-    job_id = db.insert_job('GCR_He', 7, 3.0, 0, 10000, min_ram_gb=8.0, min_cpu_count=4)
+    job_id = db.insert_job('GCR_He', "min", 7, 3.0, 0, 10000, min_ram_gb=8.0, min_cpu_count=4)
     claimed = db.claim_next_job('strong')
     assert claimed is not None
     assert claimed['job_id'] == job_id
@@ -449,7 +449,7 @@ def test_worker_without_telemetry_falls_back_to_total_ram():
     # Registrado sin ram_free_gb (worker viejo o metrica no disponible) --
     # no debe bloquear jobs sin requisitos, cae a ram_gb total.
     db.upsert_worker('legacy', 'host', 8, 16.0, '')
-    job_id = db.insert_job('SEP_p', 1, 1.0, 0, 100, min_ram_gb=8.0)
+    job_id = db.insert_job('SEP_p', "min", 1, 1.0, 0, 100, min_ram_gb=8.0)
     claimed = db.claim_next_job('legacy')
     assert claimed is not None
     assert claimed['job_id'] == job_id
@@ -461,13 +461,13 @@ def test_worker_below_min_cpu_score_does_not_get_job():
     # alto) pero ser lenta por core (VM compartida, CPU vieja); esto
     # existe justamente para no confundir "muchos nucleos" con "rapido".
     db.upsert_worker('many_cores_slow', 'host', 16, 16.0, '', ram_free_gb=16.0, cpu_score=0.3)
-    db.insert_job('GCR_He', 7, 3.0, 0, 10000, min_cpu_score=1.0)
+    db.insert_job('GCR_He', "min", 7, 3.0, 0, 10000, min_cpu_score=1.0)
     assert db.claim_next_job('many_cores_slow') is None
 
 
 def test_worker_meeting_cpu_score_gets_job():
     db.upsert_worker('fast', 'host', 8, 16.0, '', ram_free_gb=16.0, cpu_score=1.5)
-    job_id = db.insert_job('GCR_He', 7, 3.0, 0, 10000, min_cpu_score=1.0)
+    job_id = db.insert_job('GCR_He', "min", 7, 3.0, 0, 10000, min_cpu_score=1.0)
     claimed = db.claim_next_job('fast')
     assert claimed is not None
     assert claimed['job_id'] == job_id
@@ -478,7 +478,7 @@ def test_worker_without_cpu_score_is_not_blocked():
     # propio worker fallo) -- no debe bloquear un job con min_cpu_score,
     # mismo criterio que ram_free_gb ausente cae a ram_gb total.
     db.upsert_worker('no_score', 'host', 8, 16.0, '', ram_free_gb=16.0)
-    job_id = db.insert_job('GCR_He', 7, 3.0, 0, 10000, min_cpu_score=1.0)
+    job_id = db.insert_job('GCR_He', "min", 7, 3.0, 0, 10000, min_cpu_score=1.0)
     claimed = db.claim_next_job('no_score')
     assert claimed is not None
     assert claimed['job_id'] == job_id
@@ -503,7 +503,7 @@ def test_heartbeat_without_telemetry_keeps_previous_values():
 
 def test_heartbeat_accrues_connected_s_to_claimed_job():
     db.upsert_worker('w', 'host', 8, 16.0, '')
-    job_id = db.insert_job("SEP_p", 0, 0.0, 0, 100)
+    job_id = db.insert_job("SEP_p", "min", 0, 0.0, 0, 100)
     db.claim_next_job('w')  # primer heartbeat implicito, sin heartbeat previo que acumular
 
     # Simula que el heartbeat anterior fue hace 10s -- el proximo touch_heartbeat
@@ -523,7 +523,7 @@ def test_heartbeat_accrual_capped_at_max_interval():
     # MAX_HEARTBEAT_ACCRUAL_S, porque ese hueco es una desconexion real,
     # no tiempo conectado.
     db.upsert_worker('w', 'host', 8, 16.0, '')
-    job_id = db.insert_job("SEP_p", 0, 0.0, 0, 100)
+    job_id = db.insert_job("SEP_p", "min", 0, 0.0, 0, 100)
     db.claim_next_job('w')
 
     long_ago = datetime.fromtimestamp(time.time() - 5 * 3600, tz=timezone.utc).isoformat()
@@ -537,7 +537,7 @@ def test_heartbeat_accrual_capped_at_max_interval():
 
 def test_connected_s_resets_when_job_returns_to_pending():
     db.upsert_worker('w', 'host', 8, 16.0, '', cpu_score=db.REFERENCE_CPU_SCORE)
-    job_id = db.insert_job("SEP_p", 7, 0.0, 0, 100)  # max_attempts=3 default
+    job_id = db.insert_job("SEP_p", "min", 7, 0.0, 0, 100)  # max_attempts=3 default
     db.claim_next_job('w')
 
     with db.get_conn() as conn:
@@ -564,7 +564,7 @@ def test_requeue_by_progress_exhausted_triggers_even_with_recent_heartbeat():
     # confirma el correcto: progress_exhausted reencola por si solo, sin
     # necesitar que el heartbeat tambien este vencido.
     db.upsert_worker("fast", "h1", 8, 16.0, "", cpu_score=db.REFERENCE_CPU_SCORE)
-    job_id = db.insert_job("GCR_H", 0, 0.0, 0, 10000)  # referencia ~20.9s
+    job_id = db.insert_job("GCR_H", "min", 0, 0.0, 0, 10000)  # referencia ~20.9s
     db.claim_next_job("fast")
 
     with db.get_conn() as conn:
@@ -585,10 +585,10 @@ def test_heartbeat_does_not_accrue_connected_s_to_orphaned_job():
     # solo trabajara en uno. No pasa con un simple corte de red (el mismo
     # proceso retoma el MISMO job_id al reconectar).
     db.upsert_worker('w', 'host', 8, 16.0, '')
-    db.insert_job("SEP_p", 0, 0.0, 0, 100)
+    db.insert_job("SEP_p", "min", 0, 0.0, 0, 100)
     db.claim_next_job('w')  # queda claimed/running bajo 'w'
 
-    real_id = db.insert_job("SEP_p", 1, 0.0, 0, 100)
+    real_id = db.insert_job("SEP_p", "min", 1, 0.0, 0, 100)
     with db.get_conn() as conn:
         # Simula el reinicio: el proceso nuevo reclama otro job sin que el
         # coordinator sepa que el anterior murio -- fuerza el estado
@@ -612,10 +612,10 @@ def test_heartbeat_requeues_orphaned_job_when_worker_claims_another():
     # en el momento en que el worker reclamo otro job. Se reencola de
     # inmediato, en el mismo heartbeat que revela la orfandad.
     db.upsert_worker('w', 'host', 8, 16.0, '')
-    orphan_id = db.insert_job("SEP_p", 0, 0.0, 0, 100)
+    orphan_id = db.insert_job("SEP_p", "min", 0, 0.0, 0, 100)
     db.claim_next_job('w')
 
-    real_id = db.insert_job("SEP_p", 1, 0.0, 0, 100)
+    real_id = db.insert_job("SEP_p", "min", 1, 0.0, 0, 100)
     with db.get_conn() as conn:
         conn.execute("UPDATE jobs SET status='running', claimed_by='w', claimed_at=? WHERE job_id=?",
                      (db.now_iso(), real_id))
@@ -637,12 +637,12 @@ def test_heartbeat_requeues_orphaned_job_when_worker_claims_another():
 
 def test_heartbeat_orphan_requeue_respects_max_attempts():
     db.upsert_worker('w', 'host', 8, 16.0, '')
-    orphan_id = db.insert_job("SEP_p", 0, 0.0, 0, 100)
+    orphan_id = db.insert_job("SEP_p", "min", 0, 0.0, 0, 100)
     db.claim_next_job('w')
     with db.get_conn() as conn:
         conn.execute("UPDATE jobs SET attempt=max_attempts WHERE job_id=?", (orphan_id,))
 
-    real_id = db.insert_job("SEP_p", 1, 0.0, 0, 100)
+    real_id = db.insert_job("SEP_p", "min", 1, 0.0, 0, 100)
     with db.get_conn() as conn:
         conn.execute("UPDATE jobs SET status='running', claimed_by='w', claimed_at=? WHERE job_id=?",
                      (db.now_iso(), real_id))
@@ -660,7 +660,7 @@ def test_heartbeat_without_active_job_id_does_not_requeue_anything():
     # su job real por este mecanismo -- mismo criterio conservador que
     # ram_free_gb/cpu_score ausentes en otras partes del coordinator.
     db.upsert_worker('w', 'host', 8, 16.0, '')
-    job_id = db.insert_job("SEP_p", 0, 0.0, 0, 100)
+    job_id = db.insert_job("SEP_p", "min", 0, 0.0, 0, 100)
     db.claim_next_job('w')
 
     result = db.touch_heartbeat('w')  # sin active_job_id
@@ -713,7 +713,7 @@ def test_heartbeat_persists_active_job_id():
 
 def test_request_job_cancel_marks_running_job():
     db.upsert_worker('w', 'host', 8, 16.0, '')
-    job_id = db.insert_job('GCR_He', 7, 3.0, 0, 10000)
+    job_id = db.insert_job('GCR_He', "min", 7, 3.0, 0, 10000)
     db.claim_next_job('w')
     db.mark_running(job_id, 'w')
 
@@ -729,7 +729,7 @@ def test_request_job_cancel_marks_running_job():
 
 def test_request_job_cancel_on_pending_job_returns_none():
     # Nada que cancelar si ningun worker lo tiene asignado todavia.
-    job_id = db.insert_job('GCR_He', 7, 3.0, 0, 10000)
+    job_id = db.insert_job('GCR_He', "min", 7, 3.0, 0, 10000)
     assert db.request_job_cancel(job_id) is None
     assert db.get_job(job_id)['cancel_requested'] == 0
 
@@ -741,7 +741,7 @@ def test_request_job_cancel_unknown_job_raises():
 
 def test_heartbeat_reports_cancel_job_id_for_claimed_job():
     db.upsert_worker('w', 'host', 8, 16.0, '')
-    job_id = db.insert_job('GCR_He', 7, 3.0, 0, 10000)
+    job_id = db.insert_job('GCR_He', "min", 7, 3.0, 0, 10000)
     db.claim_next_job('w')
     db.request_job_cancel(job_id)
 
@@ -751,7 +751,7 @@ def test_heartbeat_reports_cancel_job_id_for_claimed_job():
 
 def test_heartbeat_reports_no_cancel_when_not_requested():
     db.upsert_worker('w', 'host', 8, 16.0, '')
-    db.insert_job('GCR_He', 7, 3.0, 0, 10000)
+    db.insert_job('GCR_He', "min", 7, 3.0, 0, 10000)
     db.claim_next_job('w')
 
     result = db.touch_heartbeat('w')
@@ -760,7 +760,7 @@ def test_heartbeat_reports_no_cancel_when_not_requested():
 
 def test_request_job_log_marks_running_job():
     db.upsert_worker('w', 'host', 8, 16.0, '')
-    job_id = db.insert_job('GCR_He', 7, 3.0, 0, 10000)
+    job_id = db.insert_job('GCR_He', "min", 7, 3.0, 0, 10000)
     db.claim_next_job('w')
     db.mark_running(job_id, 'w')
 
@@ -772,7 +772,7 @@ def test_request_job_log_marks_running_job():
 
 
 def test_request_job_log_on_pending_job_returns_none():
-    job_id = db.insert_job('GCR_He', 7, 3.0, 0, 10000)
+    job_id = db.insert_job('GCR_He', "min", 7, 3.0, 0, 10000)
     assert db.request_job_log(job_id) is None
     assert db.get_job(job_id)['log_requested'] == 0
 
@@ -784,7 +784,7 @@ def test_request_job_log_unknown_job_raises():
 
 def test_heartbeat_reports_request_log_true_when_requested():
     db.upsert_worker('w', 'host', 8, 16.0, '')
-    job_id = db.insert_job('GCR_He', 7, 3.0, 0, 10000)
+    job_id = db.insert_job('GCR_He', "min", 7, 3.0, 0, 10000)
     db.claim_next_job('w')
     db.request_job_log(job_id)
 
@@ -796,7 +796,7 @@ def test_heartbeat_reports_request_log_true_when_requested():
 
 def test_save_job_log_tail_clears_request_flag():
     db.upsert_worker('w', 'host', 8, 16.0, '')
-    job_id = db.insert_job('GCR_He', 7, 3.0, 0, 10000)
+    job_id = db.insert_job('GCR_He', "min", 7, 3.0, 0, 10000)
     db.claim_next_job('w')
     db.request_job_log(job_id)
 
@@ -819,7 +819,7 @@ def test_save_job_log_tail_rejected_from_wrong_worker():
     # puede pisar el log de un intento mas reciente con una subida tardia.
     db.upsert_worker('a', 'host', 8, 16.0, '')
     db.upsert_worker('b', 'host', 8, 16.0, '')
-    job_id = db.insert_job('GCR_He', 7, 3.0, 0, 10000)
+    job_id = db.insert_job('GCR_He', "min", 7, 3.0, 0, 10000)
     db.claim_next_job('a')
     db.record_failure(job_id, 'a', 'requeued', 5.0)  # 'a' pierde el job
     db.claim_next_job('b')
@@ -836,7 +836,7 @@ def test_cancel_flag_clears_on_result_and_next_attempt_is_not_cancelled():
     # que el SIGUIENTE intento (mismo job_id, otro worker) no nazca ya
     # marcado para cancelar sin que nadie lo haya pedido para ese intento.
     db.upsert_worker('w', 'host', 8, 16.0, '')
-    job_id = db.insert_job('GCR_He', 7, 3.0, 0, 10000)
+    job_id = db.insert_job('GCR_He', "min", 7, 3.0, 0, 10000)
     db.claim_next_job('w')
     db.mark_running(job_id, 'w')
     db.request_job_cancel(job_id)
@@ -893,7 +893,7 @@ def test_token_middleware_health_endpoint_always_public(monkeypatch):
 
 def test_timeout_does_not_transfer_cancel_to_next_attempt():
     db.upsert_worker('w', 'host', 4, 8, '')
-    job_id = db.insert_job('SEP_p', 0, 0, 0, 100)
+    job_id = db.insert_job('SEP_p', "min", 0, 0, 0, 100)
     db.claim_next_job('w')
     db.request_job_cancel(job_id)
     with db.get_conn() as conn:
@@ -906,8 +906,8 @@ def test_timeout_does_not_transfer_cancel_to_next_attempt():
 
 def test_cancel_selects_reported_active_job_when_worker_has_multiple_claims():
     db.upsert_worker('w', 'host', 4, 8, '')
-    first = db.insert_job('SEP_p', 0, 0, 0, 100)
-    second = db.insert_job('SEP_p', 1, 0, 0, 100)
+    first = db.insert_job('SEP_p', "min", 0, 0, 0, 100)
+    second = db.insert_job('SEP_p', "min", 1, 0, 0, 100)
     assert db.force_claim_job(first, 'w')
     assert db.force_claim_job(second, 'w')
     db.request_job_cancel(first)
@@ -917,7 +917,7 @@ def test_cancel_selects_reported_active_job_when_worker_has_multiple_claims():
 
 def test_logs_are_bound_to_request_and_attempt_even_for_same_worker():
     db.upsert_worker('w', 'host', 8, 16, '')
-    job_id = db.insert_job('SEP_p', 0, 0, 0, 10)
+    job_id = db.insert_job('SEP_p', "min", 0, 0, 0, 10)
     db.claim_next_job('w')
     first = db.request_job_log(job_id, detailed=True)
     second = db.request_job_log(job_id, detailed=True)
