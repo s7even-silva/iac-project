@@ -629,10 +629,18 @@ def build_command(job: dict, build_dir=None) -> list[str]:
     # --only-bins/--only-species (agregados en run_organ_sweep.py el
     # 2026-09-12, ver AGENTS.md) dejan aislar exactamente una combinacion
     # de forma directa -- --limit 1 sigue como red de seguridad final.
+    # --only-phase (2026-09-16): necesario para el dia que SPECIES_PHASE
+    # tenga la misma especie en dos fases -- sin esto, --only-species solo
+    # ya no aislaria una combinacion unica (correria ambas fases de esa
+    # especie para el bin/offset pedido). job["phase"] siempre existe hoy
+    # (columna NOT NULL en jobs, ver db.py), asi que pasar esto no cambia
+    # nada mientras cada especie siga en una sola fase -- run_organ_sweep.py
+    # ya filtra correctamente aunque el flag sea redundante en ese caso.
     return [
         sys.executable, str(RUN_ORGAN_SWEEP),
         "--build-dir", str(build_dir or BUILD_DIR),
         "--only-species", job["species"],
+        "--only-phase", job["phase"],
         "--only-positions", f"{job['offset_x_m']:.3f}",
         "--only-bins", str(job["bin_index"]),
         "--limit", "1", "--repeats", "1",
@@ -657,6 +665,7 @@ def filter_results_csv(job: dict, build_dir=None) -> str:
     with open(results_path, newline="") as f:
         for row in csv.DictReader(f):
             if (row["especie"] == job["species"]
+                    and row["fase"] == job["phase"]
                     and int(row["bin_index"]) == job["bin_index"]
                     and abs(float(row["offset_x_m"]) - job["offset_x_m"]) < 1e-6
                     and int(row["repeticion"]) == job["repeticion"]):

@@ -140,7 +140,21 @@ DEFAULT_FIELD_MAP = (Path(__file__).resolve().parent.parent.parent.parent
 # shipRadius(4.5m)-hullThickness(1.5cm) menos el medio-ancho del fantoma en
 # X (~0.271m) = margen seguro ~4.2m; 4.0m ya se probo sin solapamientos.
 OFFSET_X_VALUES_M = [0.0, 1.0, 2.0, 3.0, 4.0]
-SPECIES_PHASE = {"GCR_H": "min", "GCR_He": "min", "SEP_p": "max"}
+
+# Lista de (species, phase), no dict -- hasta 2026-09-16 cada especie
+# corria en una sola fase fija (1:1 species->phase), asi que un dict
+# alcanzaba. Expandido a 6 casos (min Y max de cada especie): una lista de
+# tuplas permite que la misma especie aparezca dos veces sin perder
+# entradas (un dict {GCR_H: "min", GCR_H: "max"} colapsaria a una sola
+# clave). build_combinations() sigue iterando en el mismo orden estable
+# (insertion order), asi que el indice global de cada combinacion no
+# cambia para nadie que ya dependa de el (ver --only-positions) mientras
+# no se reordenen las entradas de esta lista -- agregar casos nuevos AL
+# FINAL preserva los indices de los 3 casos ya en produccion (600 corridas
+# reales, ver AGENTS.md); insertar en medio los desplazaria.
+SPECIES_PHASE = [
+    ("GCR_H", "min"), ("GCR_He", "min"), ("SEP_p", "max"),
+]
 
 BASE_SEED = sweep_config.BASE_SEED_ACTIVE_SHIELD_SIM
 
@@ -186,11 +200,11 @@ MACRO_TEMPLATE = """\
 
 
 def build_combinations(spectra_dir):
-    bins_by_species = energy_bins.build_bins(spectra_dir)
+    bins_by_key = energy_bins.build_bins(spectra_dir)
     combos = []
     index = 0
-    for species, phase in SPECIES_PHASE.items():
-        for bin_index, energy_rep, flux_bin in bins_by_species[species]:
+    for species, phase in SPECIES_PHASE:
+        for bin_index, energy_rep, flux_bin in bins_by_key[(species, phase)]:
             for offset_x_m in OFFSET_X_VALUES_M:
                 combos.append({
                     "index": index, "species": species, "phase": phase,
@@ -285,6 +299,14 @@ def main():
                          help="Lista separada por comas de especies a INCLUIR (GCR_H,GCR_He,SEP_p) -- para "
                               "correr solo una especie, ej. al retomar un bin saltado que resulto barato para "
                               "una especie pero no para otra.")
+    parser.add_argument("--only-phase", type=str, default=None,
+                         help="Lista separada por comas de fases a INCLUIR (min,max) -- 2026-09-16, "
+                              "para el worker (build_command() en worker.py) aislar exactamente la "
+                              "combinacion de un job (species+phase+bin_index+offset_x_m+repeticion), "
+                              "igual que ya hacen --only-species/--only-bins/--only-positions. Sin esto, "
+                              "si SPECIES_PHASE alguna vez tiene la misma especie en dos fases, --only-species "
+                              "solo no alcanza para aislar una combinacion -- --limit 1 sigue como red de "
+                              "seguridad final igual que con los otros filtros.")
     parser.add_argument("--limit", type=int, default=None,
                          help="Solo correr las primeras N combinaciones ya filtradas (piloto)")
     parser.add_argument("--repeats", type=int, default=1,
@@ -340,6 +362,9 @@ def main():
     if args.only_species is not None:
         wanted_species = set(args.only_species.split(","))
         combos = [c for c in combos if c["species"] in wanted_species]
+    if args.only_phase is not None:
+        wanted_phases = set(args.only_phase.split(","))
+        combos = [c for c in combos if c["phase"] in wanted_phases]
     if args.limit is not None:
         combos = combos[:args.limit]
 

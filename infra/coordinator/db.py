@@ -47,9 +47,24 @@ CREATE TABLE IF NOT EXISTS config (
     updated_at      TEXT NOT NULL
 );
 
+-- "phase" (min/max, ver SPECIES_PHASE en run_organ_sweep.py) se agrego
+-- DESPUES de que la produccion real ya tenia 600 filas con un UNIQUE de
+-- 4 columnas (species, bin_index, offset_x_m, repeticion) -- hasta
+-- 2026-09-16 cada especie corria en una sola fase fija (GCR_H/GCR_He=min,
+-- SEP_p=max), asi que phase era 1:1 con species y no hacia falta como
+-- columna propia. Expandir a los 6 casos (GCR_H/He en min Y max, SEP_p en
+-- max Y min) exige que el UNIQUE incluya phase -- si no, GCR_H-min-bin3-
+-- offset0-rep0 y GCR_H-max-bin3-offset0-rep0 colisionarian como "el mismo
+-- job" (mismo species/bin_index/offset_x_m/repeticion, el UNIQUE viejo no
+-- los distinguia). SQLite no permite ALTER TABLE para modificar un UNIQUE
+-- existente -- CREATE TABLE aqui ya incluye phase en el UNIQUE para una
+-- base de datos nueva; _migrate_jobs_add_phase() en init_db() maneja la
+-- migracion real (rename+recreate+copy+backfill) para una base de datos
+-- que ya tenia jobs con el esquema viejo, ver esa funcion.
 CREATE TABLE IF NOT EXISTS jobs (
     job_id          INTEGER PRIMARY KEY AUTOINCREMENT,
     species         TEXT NOT NULL,
+    phase           TEXT NOT NULL DEFAULT '',
     bin_index       INTEGER NOT NULL,
     offset_x_m      REAL NOT NULL,
     repeticion      INTEGER NOT NULL DEFAULT 0,
@@ -68,7 +83,13 @@ CREATE TABLE IF NOT EXISTS jobs (
     updated_at      TEXT NOT NULL,
     connected_s     REAL NOT NULL DEFAULT 0,
     cancel_requested INTEGER NOT NULL DEFAULT 0,
-    UNIQUE(species, bin_index, offset_x_m, repeticion)
+    log_request_id TEXT,
+    log_received_id TEXT,
+    log_attempt INTEGER,
+    log_requested INTEGER NOT NULL DEFAULT 0,
+    log_tail TEXT,
+    log_tail_updated_at TEXT,
+    UNIQUE(species, phase, bin_index, offset_x_m, repeticion)
 );
 
 CREATE TABLE IF NOT EXISTS results (
@@ -226,12 +247,120 @@ _MIGRATIONS = [
 ]
 
 
+# Especie -> fase que ya tenia CADA job existente en produccion antes de
+# este cambio (SPECIES_PHASE en run_organ_sweep.py era 1:1 species->phase
+# hasta 2026-09-16) -- usado SOLO para el backfill de _migrate_jobs_add_phase(),
+# nunca para decidir que fase corre un job nuevo (eso ya lo controla
+# run_organ_sweep.py/seed_full_sweep.py). Copiado aqui (no importado) por
+# el mismo motivo que seed_full_sweep.py ya copia SPECIES/OFFSET_X_VALUES_M:
+# ese script vive en un proyecto Geant4 que no es un paquete Python
+# instalable desde infra/.
+_LEGACY_SPECIES_PHASE = {"GCR_H": "min", "GCR_He": "min", "SEP_p": "max"}
+
+
+def _migrate_jobs_add_phase(conn) -> None:
+    """Agrega la columna `phase` a una tabla `jobs` que ya existia ANTES
+    de este cambio (sin phase, UNIQUE de 4 columnas) -- SQLite no permite
+    ALTER TABLE para agregar una columna a un UNIQUE existente ni para
+    modificar un UNIQUE ya creado, asi que la unica via es: crear una
+    tabla nueva con el esquema correcto, copiar las filas backfillando
+    `phase` desde `species` (_LEGACY_SPECIES_PHASE, valido porque CUALQUIER
+    job existente en produccion hasta ahora fue sembrado bajo el regimen
+    1:1 species->phase), borrar la vieja, renombrar. Todo dentro de la
+    transaccion que ya abre init_db() (BEGIN/COMMIT implicito de
+    get_conn()) -- si algo falla a mitad, sqlite3 hace rollback completo,
+    nunca deja la base de datos con una tabla a medio migrar.
+
+    No-op (detectado por PRAGMA table_info) si `phase` ya existe -- ej. en
+    una base de datos nueva creada directamente por SCHEMA (que ya incluye
+    phase), o si esta funcion ya corrio antes en esta misma base de datos.
+    Mismo criterio idempotente que _MIGRATIONS (llamable en cada init_db()
+    sin fallar ni duplicar trabajo)."""
+    cols = {row["name"] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()}
+    if "phase" in cols:
+        return
+    if not cols:
+        return  # la tabla jobs ni siquiera existe todavia -- SCHEMA la crea ya con phase, nada que migrar
+
+    print("Migrando tabla 'jobs': agregando columna 'phase' (recrea la tabla, ver _migrate_jobs_add_phase)")
+    conn.execute("ALTER TABLE jobs RENAME TO jobs_pre_phase_migration")
+    # Definicion explicita e independiente de SCHEMA -- parsear SCHEMA con
+    # split(";") es fragil (los comentarios SQL de varias lineas de ese
+    # bloque pueden contener texto que confunde un split ingenuo, como se
+    # encontro al probar esta migracion contra datos reales) y esta tabla
+    # solo necesita existir UNA VEZ para la migracion (no se vuelve a usar
+    # despues), asi que mantenerla en sincronia manual con el CREATE TABLE
+    # de SCHEMA es aceptable -- si SCHEMA agrega una columna nueva a jobs
+    # en el futuro, esta migracion ya no aplica de todos modos (phase ya
+    # existiria y _migrate_jobs_add_phase() seria un no-op).
+    conn.execute("""
+        CREATE TABLE jobs (
+            job_id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            species         TEXT NOT NULL,
+            phase           TEXT NOT NULL DEFAULT '',
+            bin_index       INTEGER NOT NULL,
+            offset_x_m      REAL NOT NULL,
+            repeticion      INTEGER NOT NULL DEFAULT 0,
+            n_events        INTEGER NOT NULL,
+            priority        INTEGER NOT NULL DEFAULT 0,
+            min_ram_gb      REAL NOT NULL DEFAULT 0,
+            min_cpu_count   INTEGER NOT NULL DEFAULT 0,
+            min_cpu_score   REAL NOT NULL DEFAULT 0,
+            status          TEXT NOT NULL DEFAULT 'pending',
+            claimed_by      TEXT REFERENCES workers(worker_id),
+            claimed_at      TEXT,
+            attempt         INTEGER NOT NULL DEFAULT 0,
+            max_attempts    INTEGER NOT NULL DEFAULT 3,
+            last_error      TEXT,
+            created_at      TEXT NOT NULL,
+            updated_at      TEXT NOT NULL,
+            connected_s     REAL NOT NULL DEFAULT 0,
+            cancel_requested INTEGER NOT NULL DEFAULT 0,
+            log_request_id TEXT,
+            log_received_id TEXT,
+            log_attempt INTEGER,
+            log_requested INTEGER NOT NULL DEFAULT 0,
+            log_tail TEXT,
+            log_tail_updated_at TEXT,
+            UNIQUE(species, phase, bin_index, offset_x_m, repeticion)
+        )
+    """)
+
+    old_cols = cols  # columnas reales de la tabla vieja, puede no traer log_*/connected_s/etc si es muy antigua
+    common_cols = [c for c in old_cols if c != "phase"]
+    select_cols = ", ".join(common_cols)
+    # CASE por especie -- exactamente _LEGACY_SPECIES_PHASE, expandido a
+    # SQL porque no hay forma de pasarle un dict de Python a una
+    # sentencia INSERT...SELECT en sqlite3 sin crear una tabla temporal
+    # aparte solo para eso.
+    phase_case = "CASE species " + " ".join(
+        f"WHEN '{species}' THEN '{phase}'" for species, phase in _LEGACY_SPECIES_PHASE.items()
+    ) + " ELSE '' END"
+    insert_cols = ", ".join(common_cols) + ", phase"
+    conn.execute(
+        f"INSERT INTO jobs ({insert_cols}) SELECT {select_cols}, {phase_case} FROM jobs_pre_phase_migration"
+    )
+    n_migrated = conn.execute("SELECT COUNT(*) AS n FROM jobs").fetchone()["n"]
+    n_unknown_species = conn.execute("SELECT COUNT(*) AS n FROM jobs WHERE phase=''").fetchone()["n"]
+    if n_unknown_species:
+        # No deberia pasar nunca con datos reales (toda especie sembrada
+        # hasta ahora esta en _LEGACY_SPECIES_PHASE) -- si pasa, se
+        # imprime pero NO se aborta la migracion: mejor una fila con
+        # phase='' visible y corregible a mano que perder la migracion
+        # completa por una sola fila inesperada.
+        print(f"ADVERTENCIA: {n_unknown_species} job(s) con especie no reconocida en "
+              f"_LEGACY_SPECIES_PHASE -- quedaron con phase='' tras la migracion, revisar a mano.")
+    conn.execute("DROP TABLE jobs_pre_phase_migration")
+    print(f"Migracion completa: {n_migrated} jobs con columna 'phase' agregada (backfill por especie).")
+
+
 def init_db() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     (DB_PATH.parent / "results").mkdir(parents=True, exist_ok=True)
     with get_conn() as conn:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.executescript(SCHEMA)
+        _migrate_jobs_add_phase(conn)
         for migration in _MIGRATIONS:
             try:
                 conn.execute(migration)
@@ -641,15 +770,15 @@ def get_job(job_id: int) -> sqlite3.Row | None:
         return conn.execute("SELECT * FROM jobs WHERE job_id=?", (job_id,)).fetchone()
 
 
-def get_job_by_combo(species: str, bin_index: int, offset_x_m: float, repeticion: int) -> sqlite3.Row | None:
-    """Busca un job por su clave natural (mismo UNIQUE que insert_job()) en
-    vez de por job_id -- util para scripts administrativos (ej.
-    import_local_results.py) que solo conocen la combinacion, no el id
-    interno asignado al sembrarla."""
+def get_job_by_combo(species: str, phase: str, bin_index: int, offset_x_m: float, repeticion: int) -> sqlite3.Row | None:
+    """Busca un job por su clave natural (mismo UNIQUE que insert_job(),
+    ahora de 5 columnas con `phase`, 2026-09-16) en vez de por job_id --
+    util para scripts administrativos (ej. import_local_results.py) que
+    solo conocen la combinacion, no el id interno asignado al sembrarla."""
     with get_conn() as conn:
         return conn.execute(
-            "SELECT * FROM jobs WHERE species=? AND bin_index=? AND ABS(offset_x_m - ?) < 1e-6 AND repeticion=?",
-            (species, bin_index, offset_x_m, repeticion),
+            "SELECT * FROM jobs WHERE species=? AND phase=? AND bin_index=? AND ABS(offset_x_m - ?) < 1e-6 AND repeticion=?",
+            (species, phase, bin_index, offset_x_m, repeticion),
         ).fetchone()
 
 
@@ -958,18 +1087,24 @@ def list_workers() -> list[sqlite3.Row]:
         return conn.execute("SELECT * FROM workers ORDER BY worker_id").fetchall()
 
 
-def insert_job(species: str, bin_index: int, offset_x_m: float, repeticion: int,
+def insert_job(species: str, phase: str, bin_index: int, offset_x_m: float, repeticion: int,
                n_events: int, priority: int = 0, min_ram_gb: float = 0, min_cpu_count: int = 0,
                min_cpu_score: float = 0) -> int:
+    """`phase` (min/max, 2026-09-16) es requerido, sin default -- forma
+    parte del UNIQUE real (species, phase, bin_index, offset_x_m,
+    repeticion), asi que un caller que "se olvide" de pasarlo y dependiera
+    de un default silencioso terminaria con jobs de fases distintas
+    colisionando bajo el mismo phase='' -- mejor que ese caso sea un
+    TypeError inmediato al llamar, no un bug silencioso de datos."""
     with get_conn() as conn:
         cur = conn.execute(
             """
-            INSERT INTO jobs (species, bin_index, offset_x_m, repeticion, n_events, priority,
+            INSERT INTO jobs (species, phase, bin_index, offset_x_m, repeticion, n_events, priority,
                                min_ram_gb, min_cpu_count, min_cpu_score, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(species, bin_index, offset_x_m, repeticion) DO NOTHING
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(species, phase, bin_index, offset_x_m, repeticion) DO NOTHING
             """,
-            (species, bin_index, offset_x_m, repeticion, n_events, priority, min_ram_gb, min_cpu_count,
+            (species, phase, bin_index, offset_x_m, repeticion, n_events, priority, min_ram_gb, min_cpu_count,
              min_cpu_score, now_iso(), now_iso()),
         )
         return cur.lastrowid

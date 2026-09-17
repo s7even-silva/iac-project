@@ -302,24 +302,40 @@ def main():
     source_radius_cm = math.sqrt(ship_radius_cm**2 + ship_half_length_cm**2) + args.hull_thickness_cm + 20.0
     area_cm2 = math.pi * source_radius_cm**2
 
-    # weight_by_key[(especie, bin_index)] = W[s,bin] -- mismos bins/rango que
-    # run_organ_sweep.py calculo al generar las macros (energy_bins.build_bins
+    # weight_by_key[(especie, fase, bin_index)] = W[s,bin] -- mismos bins/rango
+    # que run_organ_sweep.py calculo al generar las macros (energy_bins.build_bins
     # es determinista dado el mismo spectra_dir, asi que se recalcula aqui en
     # vez de leerlo de resultados_organo_sweep.csv).
-    bins_by_species = energy_bins.build_bins(spectra_dir)
+    #
+    # Indexado por (especie, fase, bin_index), no solo (especie, bin_index)
+    # -- 2026-09-16, agregado junto con el soporte de `phase` en el
+    # coordinator/run_organ_sweep.py/energy_bins.py. Antes, con cada
+    # especie en una sola fase fija, (especie,bin_index) nunca colisionaba
+    # -- pero el bin 3 de GCR_H/min y el bin 3 de GCR_H/max tienen energia
+    # representativa y peso fisico DISTINTOS (rangos de bin distintos, ver
+    # energy_bins.SPECIES_RANGE), asi que sin la fase en la clave, correr
+    # ambas fases de una misma especie mezclaria sus pesos bajo la misma
+    # entrada de weight_by_key -- bug silencioso de datos, no un error
+    # visible. species_phase_bins/run_key en el resto de este script
+    # agregan `phase` como un elemento EXPLICITO mas de la tupla (no
+    # empaquetado dentro de "species") -- mas verboso al desempaquetar
+    # pero mas legible que un valor compuesto oculto en la primera
+    # posicion.
+    bins_by_key = energy_bins.build_bins(spectra_dir)
     weight_by_key = {}
     print("Pesos fisicos W[s,bin] (primarios reales de esa franja de energia que cruzan la esfera fuente):")
-    for species, bins in bins_by_species.items():
+    for (species, phase), bins in bins_by_key.items():
         unit = "primarios/dia" if MODEL_OF[species] == "GCR" else "primarios en el evento completo"
         for bin_index, energy_rep, flux_bin in bins:
-            weight_by_key[(species, bin_index)] = area_cm2 * flux_bin
-            print(f"  W[{species},bin{bin_index} E={energy_rep:.3e}] = {weight_by_key[(species, bin_index)]:.6e} ({unit})")
+            weight_by_key[(species, phase, bin_index)] = area_cm2 * flux_bin
+            print(f"  W[{species}/{phase},bin{bin_index} E={energy_rep:.3e}] = "
+                  f"{weight_by_key[(species, phase, bin_index)]:.6e} ({unit})")
 
     def combine_bins(r_by_key_local):
-        """{(especie,bin_index): R} (Gy/primario) -> (D_abs_GCR, D_eq_GCR, D_abs_SEP, D_eq_SEP)."""
+        """{(especie,fase,bin_index): R} (Gy/primario) -> (D_abs_GCR, D_eq_GCR, D_abs_SEP, D_eq_SEP)."""
         d_abs_gcr = d_eq_gcr = d_abs_sep = d_eq_sep = 0.0
-        for (species, bin_index), r in r_by_key_local.items():
-            w = weight_by_key[(species, bin_index)]
+        for (species, phase, bin_index), r in r_by_key_local.items():
+            w = weight_by_key[(species, phase, bin_index)]
             contrib_abs = r * w
             contrib_eq = W_R[species] * contrib_abs
             if MODEL_OF[species] == "GCR":
@@ -348,7 +364,10 @@ def main():
         n = int(row["n_eventos"])
         if n == 0:
             continue
-        run_key = (row["especie"], int(row["bin_index"]), float(row["offset_x_m"]))
+        # run_key incluye fase (2026-09-16, ver weight_by_key arriba) --
+        # row["fase"] ya existe en resultados_organo_sweep.csv desde
+        # siempre (escrito por run_organ_sweep.py), solo no se usaba aqui.
+        run_key = (row["especie"], row["fase"], int(row["bin_index"]), float(row["offset_x_m"]))
         rep = int(row.get("repeticion", 0) or 0)
         edep_by_run[run_key][int(row["organo_id"])] += float(row["edep_J"])
         n_events_by_run_rep[(run_key, rep)] = n
@@ -363,18 +382,18 @@ def main():
     # corrida -- pool correcto via promedio ponderado por N: R_pooled =
     # sum(dose_gy_run_i * n_i) / sum(n_i) = sum(edep_i)/(masa*sum(n_i)),
     # sin necesitar la masa explicita aqui (se cancela en el promedio). ---
-    _dose_n_sum = defaultdict(lambda: [0.0, 0])  # (organo_id,offset,especie,bin) -> [sum(dose*n), sum(n)]
+    _dose_n_sum = defaultdict(lambda: [0.0, 0])  # (organo_id,offset,especie,fase,bin) -> [sum(dose*n), sum(n)]
     for row in iter_result_rows(results_paths):
         n = int(row["n_eventos"])
         if n == 0:
             continue
-        key4 = (int(row["organo_id"]), float(row["offset_x_m"]), row["especie"], int(row["bin_index"]))
-        acc = _dose_n_sum[key4]
+        key5 = (int(row["organo_id"]), float(row["offset_x_m"]), row["especie"], row["fase"], int(row["bin_index"]))
+        acc = _dose_n_sum[key5]
         acc[0] += float(row["dose_gy_run"]) * n
         acc[1] += n
-    r_by_key = defaultdict(dict)  # (organo_id, offset_x_m) -> {(species,bin_index): R}
-    for (organo_id, offset_x_m, especie, bin_index), (dose_n_sum, n_sum) in _dose_n_sum.items():
-        r_by_key[(organo_id, offset_x_m)][(especie, bin_index)] = dose_n_sum / n_sum
+    r_by_key = defaultdict(dict)  # (organo_id, offset_x_m) -> {(species,phase,bin_index): R}
+    for (organo_id, offset_x_m, especie, fase, bin_index), (dose_n_sum, n_sum) in _dose_n_sum.items():
+        r_by_key[(organo_id, offset_x_m)][(especie, fase, bin_index)] = dose_n_sum / n_sum
 
     out_fieldnames = ["organo_id", "offset_x_m",
                       "D_absorbida_GCR_Gy_dia", "D_equivalente_GCR_Sv_dia",
@@ -410,8 +429,8 @@ def main():
                 organ_masses_kg.get(oid, 0.0) * frac for oid, frac in rbm_organ_fractions.items()
             )
 
-        offsets = sorted({offset for (_species, _bin, offset) in edep_by_run})
-        species_bins = sorted({(species, bin_idx) for (species, bin_idx, _offset) in edep_by_run})
+        offsets = sorted({offset for (_species, _phase, _bin, offset) in edep_by_run})
+        species_phase_bins = sorted({(species, phase, bin_idx) for (species, phase, bin_idx, _offset) in edep_by_run})
         risk_fieldnames = ["categoria", "offset_x_m", "masa_kg"] + out_fieldnames[2:]
         with open(risk_out_path, "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=risk_fieldnames)
@@ -424,8 +443,8 @@ def main():
                     continue
                 for offset_x_m in offsets:
                     r_by_bin = {}
-                    for species, bin_idx in species_bins:
-                        run_key = (species, bin_idx, offset_x_m)
+                    for species, phase, bin_idx in species_phase_bins:
+                        run_key = (species, phase, bin_idx, offset_x_m)
                         if run_key not in edep_by_run:
                             continue
                         n = n_events_by_run[run_key]
@@ -436,7 +455,7 @@ def main():
                             )
                         else:
                             pooled_edep = sum(edep_by_run[run_key].get(oid, 0.0) for oid in organ_ids)
-                        r_by_bin[(species, bin_idx)] = (pooled_edep / mass_kg) / n
+                        r_by_bin[(species, phase, bin_idx)] = (pooled_edep / mass_kg) / n
                     d_abs_gcr, d_eq_gcr, d_abs_sep, d_eq_sep = combine_bins(r_by_bin)
                     writer.writerow({
                         "categoria": category, "offset_x_m": offset_x_m, "masa_kg": mass_kg,
@@ -461,22 +480,38 @@ def main():
                              "D_equivalente_GCR_Sv_dia_media", "D_equivalente_GCR_Sv_dia_std",
                              "D_equivalente_GCR_Sv_dia_sem", "D_equivalente_GCR_Sv_dia_ic95_low",
                              "D_equivalente_GCR_Sv_dia_ic95_high", "D_equivalente_GCR_Sv_dia_cv_pct",
+                             "D_equivalente_GCR_Sv_dia_ic95_half_width_pct",
                              "D_equivalente_SEP_Sv_evento_media", "D_equivalente_SEP_Sv_evento_std",
                              "D_equivalente_SEP_Sv_evento_sem", "D_equivalente_SEP_Sv_evento_ic95_low",
-                             "D_equivalente_SEP_Sv_evento_ic95_high", "D_equivalente_SEP_Sv_evento_cv_pct"]
+                             "D_equivalente_SEP_Sv_evento_ic95_high", "D_equivalente_SEP_Sv_evento_cv_pct",
+                             "D_equivalente_SEP_Sv_evento_ic95_half_width_pct"]
 
         def summarize(values):
-            """[valores por repeticion] -> (media, std, sem, ic95_low, ic95_high, cv_pct),
-            con "" para las que no se pueden calcular con n<2 (std/sem/ic95/cv)."""
+            """[valores por repeticion] -> (media, std, sem, ic95_low, ic95_high, cv_pct,
+            ic95_half_width_pct), con "" para las que no se pueden calcular con n<2
+            (std/sem/ic95/cv/half_width_pct).
+
+            ic95_half_width_pct = 100*semiancho_IC95/|media| -- la magnitud que el
+            criterio de aceptacion de precision (AGENTS.md, "Fase 1": H_% <= X)
+            necesita para decidir si una combinacion (categoria,offset) ya tiene
+            suficiente R, distinta de cv_pct (dispersion RELATIVA entre repeticiones,
+            std/media) y de ic95_low/high (limites ABSOLUTOS del intervalo, en Sv).
+            Con media~0 (dosis practicamente nula en esa combinacion) el cociente
+            explota igual que ya le pasa a cv_pct -- mismo criterio de "" solo por
+            n<2, sin proteccion adicional para media~0: es una limitacion conocida,
+            no un bug nuevo (ver AGENTS.md sobre H_%/CV inestables cerca de dosis
+            cero, que recomienda tolerancia absoluta para esos casos en vez de
+            relativa)."""
             n = len(values)
             mean = statistics.fmean(values) if n else float("nan")
             if n < 2:
-                return mean, "", "", "", "", ""
+                return mean, "", "", "", "", "", ""
             std = statistics.stdev(values)
             sem = std / math.sqrt(n)
             half_width = t_critical_95(n - 1) * sem
             cv_pct = (std / mean * 100.0) if mean else float("nan")
-            return mean, std, sem, mean - half_width, mean + half_width, cv_pct
+            half_width_pct = (half_width / abs(mean) * 100.0) if mean else float("nan")
+            return mean, std, sem, mean - half_width, mean + half_width, cv_pct, half_width_pct
 
         with open(stats_out_path, "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=stats_fieldnames)
@@ -491,7 +526,7 @@ def main():
                     n_complete_reps = 0
                     for rep in reps_seen:
                         # Una repeticion solo cuenta para el std/barra de
-                        # error si tiene TODAS las (especie,bin) de este
+                        # error si tiene TODAS las (especie,fase,bin) de este
                         # offset -- una repeticion parcial (ej. corriendo
                         # todavia, solo unos bins subidos) no debe mezclarse
                         # a medias con las completas: eso fue exactamente
@@ -499,13 +534,13 @@ def main():
                         # "n_repeticiones=4" con datos Frankenstein, cada
                         # repeticion usando solo los bins que le tocaron
                         # llegar, en vez de exigir la repeticion entera.
-                        run_keys = [(species, bin_idx, offset_x_m) for species, bin_idx in species_bins]
+                        run_keys = [(species, phase, bin_idx, offset_x_m) for species, phase, bin_idx in species_phase_bins]
                         if not all((rk, rep) in n_events_by_run_rep for rk in run_keys):
                             continue
                         n_complete_reps += 1
                         r_by_bin = {}
-                        for species, bin_idx in species_bins:
-                            run_key = (species, bin_idx, offset_x_m)
+                        for species, phase, bin_idx in species_phase_bins:
+                            run_key = (species, phase, bin_idx, offset_x_m)
                             key_rep = (run_key, rep)
                             n = n_events_by_run_rep[key_rep]
                             edep_this_rep = edep_by_run_rep[key_rep]
@@ -514,14 +549,14 @@ def main():
                                            for oid, frac in rbm_organ_fractions.items())
                             else:
                                 edep = sum(edep_this_rep.get(oid, 0.0) for oid in organ_ids)
-                            r_by_bin[(species, bin_idx)] = (edep / mass_kg) / n
+                            r_by_bin[(species, phase, bin_idx)] = (edep / mass_kg) / n
                         _d_abs_gcr, d_eq_gcr, _d_abs_sep, d_eq_sep = combine_bins(r_by_bin)
                         d_eq_gcr_by_rep.append(d_eq_gcr)
                         d_eq_sep_by_rep.append(d_eq_sep)
                     if n_complete_reps == 0:
                         continue
-                    gcr_stats = summarize(d_eq_gcr_by_rep) if d_eq_gcr_by_rep else (float("nan"),)*6
-                    sep_stats = summarize(d_eq_sep_by_rep) if d_eq_sep_by_rep else (float("nan"),)*6
+                    gcr_stats = summarize(d_eq_gcr_by_rep) if d_eq_gcr_by_rep else (float("nan"),)*7
+                    sep_stats = summarize(d_eq_sep_by_rep) if d_eq_sep_by_rep else (float("nan"),)*7
                     writer.writerow({
                         "categoria": category, "offset_x_m": offset_x_m,
                         "n_repeticiones": n_complete_reps,
@@ -531,17 +566,182 @@ def main():
                         "D_equivalente_GCR_Sv_dia_ic95_low": gcr_stats[3],
                         "D_equivalente_GCR_Sv_dia_ic95_high": gcr_stats[4],
                         "D_equivalente_GCR_Sv_dia_cv_pct": gcr_stats[5],
+                        "D_equivalente_GCR_Sv_dia_ic95_half_width_pct": gcr_stats[6],
                         "D_equivalente_SEP_Sv_evento_media": sep_stats[0],
                         "D_equivalente_SEP_Sv_evento_std": sep_stats[1],
                         "D_equivalente_SEP_Sv_evento_sem": sep_stats[2],
                         "D_equivalente_SEP_Sv_evento_ic95_low": sep_stats[3],
                         "D_equivalente_SEP_Sv_evento_ic95_high": sep_stats[4],
                         "D_equivalente_SEP_Sv_evento_cv_pct": sep_stats[5],
+                        "D_equivalente_SEP_Sv_evento_ic95_half_width_pct": sep_stats[6],
                     })
         print(f"Repeticiones vistas en los CSV de entrada: {len(reps_seen)} ({sorted(reps_seen)}) -- "
               f"cada fila de {stats_out_path} solo cuenta las que estaban COMPLETAS para ese "
               f"offset/categoria (ver n_repeticiones por fila), nunca una repeticion parcial.")
         print(f"Media/std/IC95% entre repeticiones (placeholder, ver AGENTS.md): {stats_out_path}")
+
+        # --- Vista adicional: IC95% por-bin con Welch-Satterthwaite, sin
+        # descartar una repeticion entera solo porque le falta UN bin. La
+        # vista de arriba (stats_out_path) exige las (especie,bin) completas
+        # de TODAS las combinaciones de la categoria en esa repeticion --
+        # correcto para evitar el bug de 2026-09-15 (repeticiones Frankenstein
+        # mezclando bins de repeticiones distintas DENTRO de una sola D_eq),
+        # pero deja en cero cualquier repeticion que solo le falte un bin
+        # caro (ej. GCR_He bin7) aunque los otros 7 bins de esa repeticion ya
+        # esten completos y sean datos validos.
+        #
+        # Aqui, en cambio, cada bin (especie,bin_index) se trata como su
+        # propio problema de Monte Carlo independiente (ver AGENTS.md,
+        # "Fase 2/3" del plan de precision): R_b = cuantas repeticiones
+        # tienen ESE bin especifico (para este offset/categoria), sin
+        # exigir nada de los demas bins. La dosis total sigue siendo
+        # D = sum_b W_b*Rbar_b (idéntica formula fisica que combine_bins),
+        # pero su varianza se propaga bin a bin:
+        #
+        #   V_b = W_b^2 * s_b^2 / R_b          (bins independientes: misma
+        #                                        especie/bin_index pero
+        #                                        semillas distintas por
+        #                                        repeticion -> sin covarianza)
+        #   Var(D) = sum_b V_b
+        #   SE_D = sqrt(Var(D))
+        #
+        # Grados de libertad efectivos (Welch-Satterthwaite, para el IC
+        # cuando los R_b difieren entre bins):
+        #
+        #   df_eff = (sum_b V_b)^2 / sum_b (V_b^2 / (R_b-1))
+        #
+        # con la convencion estandar de que un bin con R_b<2 no aporta a la
+        # suma del denominador (no tiene s_b) -- ver limitacion mas abajo.
+        # IC95% = D +- t(0.975, df_eff) * SE_D.
+        #
+        # Limitacion explicita (ya senalada en el plan, no resuelta aqui):
+        # un bin con R_b=1 no tiene s_b (no hay forma de estimar su
+        # varianza con una sola repeticion) -- ese bin se excluye del
+        # calculo de Var(D)/df_eff (no aporta incertidumbre, aunque SI
+        # aporta su contribucion a la media D via combine_bins), y se
+        # reporta explicitamente en bins_sin_varianza para que quede claro
+        # que el IC resultante es una SUBESTIMACION de la incertidumbre
+        # real mientras ese bin no tenga R_b>=2. Con R_b=0 (bin ausente en
+        # todas las repeticiones vistas) el bin no aporta ni a la media ni
+        # a la varianza -- D queda incompleta, marcada aparte.
+        by_bin_out_path = out_path.parent / "resultados_riesgo_estocastico_por_bin.csv"
+        by_bin_fieldnames = ["categoria", "offset_x_m",
+                              "D_equivalente_GCR_Sv_dia", "SE_D_equivalente_GCR_Sv_dia",
+                              "df_eff_GCR", "ic95_low_GCR", "ic95_high_GCR",
+                              "ic95_half_width_pct_GCR",
+                              "D_equivalente_SEP_Sv_evento", "SE_D_equivalente_SEP_Sv_evento",
+                              "df_eff_SEP", "ic95_low_SEP", "ic95_high_SEP",
+                              "ic95_half_width_pct_SEP",
+                              "bins_R1_sin_varianza", "bins_ausentes"]
+
+        def combine_bins_by_bin(r_values_by_bin):
+            """{(especie,fase,bin_index): [R_r1, R_r2, ...]} (lista de R por
+            repeticion donde ESE bin especifico esta presente, no exige
+            nada de otros bins) -> (D_gcr, se_gcr, df_gcr, D_sep, se_sep,
+            df_sep, bins_r1_sin_varianza, bins_ausentes).
+
+            D_gcr/D_sep: misma formula fisica que combine_bins() (suma de
+            W_b*Rbar_b), usando el promedio de R de cada bin sobre las
+            repeticiones donde esta presente -- no cambia el punto
+            estimado respecto a lo que ya calculaba la vista "completa"
+            (stats_out_path) para los bins que SI tenian todas las
+            combinaciones; la diferencia es que aqui un bin con R_b=3
+            aporta su media aunque otro bin de la misma categoria/offset
+            solo tenga R_b=1."""
+            d_gcr = d_sep = 0.0
+            var_gcr = var_sep = 0.0
+            welch_terms_gcr, welch_terms_sep = [], []
+            bins_r1, bins_ausentes = [], []
+            for (species, phase, bin_index), values in r_values_by_bin.items():
+                w = weight_by_key[(species, phase, bin_index)]
+                r_b = len(values)
+                if r_b == 0:
+                    bins_ausentes.append((species, phase, bin_index))
+                    continue
+                rbar = statistics.fmean(values)
+                contrib_abs = rbar * w
+                contrib_eq = W_R[species] * contrib_abs
+                is_gcr = MODEL_OF[species] == "GCR"
+                if is_gcr:
+                    d_gcr += contrib_eq
+                else:
+                    d_sep += contrib_eq
+                if r_b < 2:
+                    bins_r1.append((species, phase, bin_index))
+                    continue  # sin s_b -- no aporta a Var(D)/df_eff, ver docstring
+                s_b = statistics.stdev(values)
+                v_b = (W_R[species] * w) ** 2 * (s_b ** 2) / r_b
+                if is_gcr:
+                    var_gcr += v_b
+                    welch_terms_gcr.append((v_b, r_b))
+                else:
+                    var_sep += v_b
+                    welch_terms_sep.append((v_b, r_b))
+
+            def welch_satterthwaite(var_total, terms):
+                if var_total <= 0 or not terms:
+                    return float("nan")
+                denom = sum((v_b ** 2) / (r_b - 1) for v_b, r_b in terms)
+                if denom <= 0:
+                    return float("nan")
+                return (var_total ** 2) / denom
+
+            se_gcr = math.sqrt(var_gcr) if var_gcr > 0 else 0.0
+            se_sep = math.sqrt(var_sep) if var_sep > 0 else 0.0
+            df_gcr = welch_satterthwaite(var_gcr, welch_terms_gcr)
+            df_sep = welch_satterthwaite(var_sep, welch_terms_sep)
+            return d_gcr, se_gcr, df_gcr, d_sep, se_sep, df_sep, bins_r1, bins_ausentes
+
+        with open(by_bin_out_path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=by_bin_fieldnames)
+            writer.writeheader()
+            for category, organ_ids in {**category_organ_ids,
+                                         **({"red_bone_marrow": None} if rbm_organ_fractions else {})}.items():
+                mass_kg = pooled_mass_kg.get(category, 0.0)
+                if mass_kg <= 0:
+                    continue
+                for offset_x_m in offsets:
+                    r_values_by_bin = defaultdict(list)
+                    for species, phase, bin_idx in species_phase_bins:
+                        run_key = (species, phase, bin_idx, offset_x_m)
+                        for rep in reps_seen:
+                            key_rep = (run_key, rep)
+                            if key_rep not in n_events_by_run_rep:
+                                continue  # este bin no esta en esta repeticion -- no excluye la repeticion entera de OTROS bins
+                            n = n_events_by_run_rep[key_rep]
+                            edep_this_rep = edep_by_run_rep[key_rep]
+                            if category == "red_bone_marrow":
+                                edep = sum(edep_this_rep.get(oid, 0.0) * frac
+                                           for oid, frac in rbm_organ_fractions.items())
+                            else:
+                                edep = sum(edep_this_rep.get(oid, 0.0) for oid in organ_ids)
+                            r_values_by_bin[(species, phase, bin_idx)].append((edep / mass_kg) / n)
+                    if not r_values_by_bin:
+                        continue
+                    (d_gcr, se_gcr, df_gcr, d_sep, se_sep, df_sep,
+                     bins_r1, bins_ausentes) = combine_bins_by_bin(r_values_by_bin)
+                    t_gcr = t_critical_95(round(df_gcr)) if df_gcr and df_gcr == df_gcr else float("nan")
+                    t_sep = t_critical_95(round(df_sep)) if df_sep and df_sep == df_sep else float("nan")
+                    hw_gcr = t_gcr * se_gcr if t_gcr == t_gcr else float("nan")
+                    hw_sep = t_sep * se_sep if t_sep == t_sep else float("nan")
+                    writer.writerow({
+                        "categoria": category, "offset_x_m": offset_x_m,
+                        "D_equivalente_GCR_Sv_dia": d_gcr,
+                        "SE_D_equivalente_GCR_Sv_dia": se_gcr,
+                        "df_eff_GCR": df_gcr,
+                        "ic95_low_GCR": (d_gcr - hw_gcr) if hw_gcr == hw_gcr else "",
+                        "ic95_high_GCR": (d_gcr + hw_gcr) if hw_gcr == hw_gcr else "",
+                        "ic95_half_width_pct_GCR": (hw_gcr / abs(d_gcr) * 100.0) if hw_gcr == hw_gcr and d_gcr else "",
+                        "D_equivalente_SEP_Sv_evento": d_sep,
+                        "SE_D_equivalente_SEP_Sv_evento": se_sep,
+                        "df_eff_SEP": df_sep,
+                        "ic95_low_SEP": (d_sep - hw_sep) if hw_sep == hw_sep else "",
+                        "ic95_high_SEP": (d_sep + hw_sep) if hw_sep == hw_sep else "",
+                        "ic95_half_width_pct_SEP": (hw_sep / abs(d_sep) * 100.0) if hw_sep == hw_sep and d_sep else "",
+                        "bins_R1_sin_varianza": ";".join(f"{s}/{p}/{b}" for s, p, b in sorted(bins_r1)),
+                        "bins_ausentes": ";".join(f"{s}/{p}/{b}" for s, p, b in sorted(bins_ausentes)),
+                    })
+        print(f"IC95% por-bin (Welch-Satterthwaite, aprovecha reps parciales bin a bin): {by_bin_out_path}")
 
 
 if __name__ == "__main__":

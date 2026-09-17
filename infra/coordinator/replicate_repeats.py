@@ -66,10 +66,10 @@ def main():
     for job in base_jobs:
         for rep in range(args.base_repeticion + 1, args.base_repeticion + 1 + args.repeats):
             job_id = db.insert_job(
-                species=job["species"], bin_index=job["bin_index"], offset_x_m=job["offset_x_m"],
-                repeticion=rep, n_events=job["n_events"], priority=job["priority"],
-                min_ram_gb=job["min_ram_gb"], min_cpu_count=job["min_cpu_count"],
-                min_cpu_score=job["min_cpu_score"],
+                species=job["species"], phase=job["phase"], bin_index=job["bin_index"],
+                offset_x_m=job["offset_x_m"], repeticion=rep, n_events=job["n_events"],
+                priority=job["priority"], min_ram_gb=job["min_ram_gb"],
+                min_cpu_count=job["min_cpu_count"], min_cpu_score=job["min_cpu_score"],
             )
             if job_id:
                 created += 1

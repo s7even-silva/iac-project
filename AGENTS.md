@@ -48,12 +48,22 @@ enlaces:
 - **[`geant4/GCR_SEP_Sim/docs/checklist_espectros_reales.md`](geant4/GCR_SEP_Sim/docs/checklist_espectros_reales.md)**
   — checklist de los espectros OLTARIS usados como fuente física.
 - **[`docs/bitacora/validez_estadistica_runs.md`](docs/bitacora/validez_estadistica_runs.md)**
-  (2026-09-16/17) — por qué no hay justificación formal para N=5
-  repeticiones, tabla de IC95% por N, el acoplamiento real en
-  `aggregate_organ_doses.py` que impide N distinto por bin, y el estado
-  (sin implementar todavía) de expandir el barrido a las 6 combinaciones
-  especie/fase (hoy son solo 3, el peor caso por especie). **Sin decisión
-  final del equipo** — ver "Pendiente real" en ese documento.
+  (2026-09-16/17) — origen de la discusión: por qué no había justificación
+  formal para N=5 repeticiones, tabla de IC95% por N, y el hallazgo de que
+  `aggregate_organ_doses.py` no podía mezclar N distinto por bin (ya
+  corregido, ver el documento siguiente). Útil como contexto histórico de
+  cómo surgió el tema.
+- **[`docs/bitacora/plan_estadistico.md`](docs/bitacora/plan_estadistico.md)**
+  (2026-09-17) — plan completo de 21 fases, actualizado con el trabajo
+  real ya hecho (no solo propuesto): soporte de `phase` implementado en
+  `infra/coordinator/db.py`/`run_organ_sweep.py`/`energy_bins.py`/
+  `aggregate_organ_doses.py` (verificado que las 529 corridas ya hechas no
+  cambian de índice/semilla), columna `ic95_half_width_pct` y la vista
+  `resultados_riesgo_estocastico_por_bin.csv` (Welch-Satterthwaite, no
+  descarta una repetición entera por un solo bin faltante). **Nada de
+  esto desplegado en la VM de producción todavía, y el equipo no decidió
+  aún si expandir a los 6 casos especie/fase (hoy solo 3)** — ver "Decisión
+  recomendada hoy" y el checklist de despliegue (Fase 20) en ese documento.
 - **[`infra/README.md`](infra/README.md)**, **[`infra/deploy/README.md`](infra/deploy/README.md)**,
   **[`infra/GUIA_VOLUNTARIOS.md`](infra/GUIA_VOLUNTARIOS.md)**,
   **[`infra/GUIA_WORKER_LOCAL.md`](infra/GUIA_WORKER_LOCAL.md)** —
@@ -290,15 +300,35 @@ coordinación operativa, no más desarrollo.
 ## Pendientes conocidos
 
 - **Validez estadística de las 5 repeticiones y expansión a 6 combinaciones
-  especie/fase (2026-09-16/17, sin decidir).** El barrido de producción
-  (`run_organ_sweep.py`) usa 5 repeticiones sin justificación estadística
-  formal, y solo 3 de las 4 combinaciones físicas reales de OLTARIS (falta
-  GCR máximo solar y SEP mínimo/Feb1956) — el equipo indicó que necesita
-  los 6 casos (3 especies × 2 fases) para el paper, pero **no está
-  implementado todavía** (columna `phase` en el coordinator, filtro
-  `--only-phase`, imagen Docker nueva). Detalle completo, tabla de IC95%
-  por N, y plan propuesto (no aprobado) en
-  [`docs/bitacora/validez_estadistica_runs.md`](docs/bitacora/validez_estadistica_runs.md).
+  especie/fase (2026-09-16/17).** El barrido de producción usaba 5
+  repeticiones sin justificación estadística formal, y solo cubre 3 de las
+  4 combinaciones físicas reales de OLTARIS (falta GCR máximo solar y SEP
+  mínimo/Feb1956) — el equipo indicó que necesita los 6 casos (3 especies
+  × 2 fases) para el paper. **Soporte de código ya implementado
+  (2026-09-17), no solo diseñado:** columna `phase` en `infra/coordinator/
+  db.py` (con migración idempotente probada contra datos preexistentes
+  simulados, backfill correcto, `UNIQUE` de 5 columnas), `--only-phase` en
+  `run_organ_sweep.py`, `energy_bins.py`/`aggregate_organ_doses.py`
+  generalizados a `(species, phase, bin_index)`, `seed_full_sweep.py`/
+  `replicate_repeats.py`/`import_local_results.py`/`worker.py`
+  actualizados. **Verificado explícitamente que las 120 combinaciones/
+  índices/semillas de producción actual no cambian** con el código nuevo
+  mientras `SPECIES_PHASE` no se amplíe — las 529 corridas ya hechas
+  siguen siendo válidas. Si se amplía, las 3 combinaciones nuevas deben
+  agregarse **al final** de `SPECIES_PHASE`, nunca intercaladas (probado:
+  intercalarlas desplaza los índices existentes e invalidaría las
+  semillas ya usadas). También se agregó `ic95_half_width_pct` (el
+  semiancho del IC95% como % de la media, para aplicar un criterio de
+  precisión tipo "aceptamos N si H% < X") y una vista nueva
+  (`resultados_riesgo_estocastico_por_bin.csv`, Welch-Satterthwaite) que
+  ya no descarta una repetición entera por faltarle un solo bin — recupera
+  12 filas (offsets 0.0/1.0) que la vista anterior perdía por completo,
+  con el mismo punto estimado verificado bit a bit. Tests: 72/72
+  coordinator, 65/65 worker. **Nada de esto está desplegado en la VM de
+  producción, ni el equipo decidió si expandir a los 6 casos** — plan
+  completo de 21 fases (incluyendo incertidumbre intra-run, piloto de
+  convergencia, checklist de despliegue seguro) en
+  [`docs/bitacora/plan_estadistico.md`](docs/bitacora/plan_estadistico.md).
 - ~~Reemplazar los 6 CSV placeholder de `data/sources/` con espectros reales por fase solar.~~ **Hecho (2026-09-10), los 6 son reales.** Modelos: **Badhwar-O'Neill 2020** para GCR (mínimo 31/12/2019-01/01/2020, máximo 14-15/01/2023 — limitado por BON2020 en OLTARIS, ver nota arriba), **evento histórico** para SEP (Oct 1989 = máximo, Feb 1956 ajuste LaRC = mínimo — no el modelo probabilístico ESP-PSYCHIC). Detalle completo: [`docs/checklist_espectros_reales.md`](geant4/GCR_SEP_Sim/docs/checklist_espectros_reales.md).
 - **Dosis absoluta implementada en el piloto GCR_SEP_Sim (2026-09-09).** El
   scorer sigue calculando `dosis_Gy` (cruda, sin ponderar, por los N eventos

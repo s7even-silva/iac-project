@@ -66,7 +66,19 @@ import db  # noqa: E402
 # (SPECIES_PHASE, OFFSET_X_VALUES_M) y energy_bins.py (N_BINS_PER_SPECIES)
 # -- copiados aqui en vez de importados porque ese script vive en un
 # proyecto Geant4 que no es un paquete Python instalable desde infra/.
-SPECIES = ["GCR_H", "GCR_He", "SEP_p"]
+#
+# SPECIES_PHASE (2026-09-16, antes solo SPECIES sin fase): lista de
+# (species, phase), MISMAS 3 combinaciones que run_organ_sweep.py tiene
+# hoy en produccion (GCR_H/min, GCR_He/min, SEP_p/max) -- las 3
+# combinaciones nuevas (GCR_H/max, GCR_He/max, SEP_p/min) YA estan
+# soportadas por el esquema (jobs.phase, UNIQUE de 5 columnas) y por
+# energy_bins.py/run_organ_sweep.py, pero agregarlas AQUI sembraria 360
+# jobs nuevos en la cola de produccion real -- eso es una decision de
+# alcance del equipo (correr los 6 casos, no solo el peor caso por
+# especie), todavia no tomada al escribir este comentario. Agregar las 3
+# tuplas nuevas a esta lista (sin tocar nada mas de este archivo) es todo
+# lo que hace falta cuando se decida arrancar esas 360 combinaciones.
+SPECIES_PHASE = [("GCR_H", "min"), ("GCR_He", "min"), ("SEP_p", "max")]
 N_BINS_PER_SPECIES = 8
 OFFSET_X_VALUES_M = [0.0, 1.0, 2.0, 3.0, 4.0]
 
@@ -149,12 +161,12 @@ def main():
 
     db.init_db()
     created, skipped = 0, 0
-    for species in SPECIES:
+    for species, phase in SPECIES_PHASE:
         for bin_index in bin_indices:
             priority, min_ram, min_cpu, min_score = job_priority_and_requirements(species, bin_index)
             for offset_x_m in OFFSET_X_VALUES_M:
                 job_id = db.insert_job(
-                    species=species, bin_index=bin_index, offset_x_m=offset_x_m,
+                    species=species, phase=phase, bin_index=bin_index, offset_x_m=offset_x_m,
                     repeticion=args.repeticion, n_events=args.n_events, priority=priority,
                     min_ram_gb=min_ram, min_cpu_count=min_cpu, min_cpu_score=min_score,
                 )
@@ -163,8 +175,8 @@ def main():
                 else:
                     skipped += 1  # ya existia (UNIQUE constraint) -- no se toca
 
-    total = len(SPECIES) * len(bin_indices) * len(OFFSET_X_VALUES_M)
-    print(f"Sembrado: {total} combinaciones ({len(SPECIES)} especies x bins {bin_indices} x "
+    total = len(SPECIES_PHASE) * len(bin_indices) * len(OFFSET_X_VALUES_M)
+    print(f"Sembrado: {total} combinaciones ({len(SPECIES_PHASE)} especie/fase x bins {bin_indices} x "
           f"{len(OFFSET_X_VALUES_M)} posiciones), repeticion={args.repeticion}.")
     print(f"{created} jobs nuevos creados, {skipped} ya existian (sin tocar).")
 
