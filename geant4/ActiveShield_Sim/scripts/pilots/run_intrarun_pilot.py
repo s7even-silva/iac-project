@@ -107,19 +107,17 @@ Salida: pilots/results/intrarun_pilot_<timestamp>/
 import argparse
 import csv
 import math
-import re
 import statistics
-import subprocess
 import sys
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
-import sweep_config  # noqa: E402
-import energy_bins  # noqa: E402
 import run_organ_sweep as ros  # noqa: E402 -- reusa constantes de geometria/campo, sin duplicarlas
+import pilot_common as pc  # noqa: E402 -- 2026-09-19, ver ese modulo (extraido al agregar fases 8/9/10)
+import pilot_state  # noqa: E402
 
 # Puntos M a comparar (Fase 7 del plan, "M = 2500, 5000, 10000, 20000") --
 # cada uno es ahora una corrida INDEPENDIENTE completa, no un checkpoint
@@ -144,13 +142,12 @@ CHECKPOINTS_M = [2500, 5000, 10000, 20000]
 #     no especialmente exigente.
 DEFAULT_COMBOS = ["GCR_He/min/6", "SEP_p/min/0", "GCR_H/min/2"]
 
-# BASE_SEED propio del piloto, DISTINTO de sweep_config.BASE_SEED_ACTIVE_SHIELD_SIM
-# -- a proposito: las seeds de este piloto no deben poder colisionar nunca
-# con las de produccion (run_organ_sweep.py, seed1 = BASE_SEED_ACTIVE_SHIELD_SIM
-# + 1000*rep + 2*index, index en [0,119] hoy). Fecha de creacion de este
-# piloto como offset grande y memorable, sin relacion aritmetica con el
-# esquema de produccion.
-PILOT_BASE_SEED = 20260919_00
+# Offset de fase (2026-09-19, agregado al factorizar pilot_common.py):
+# cada fase (7,8,9,10) usa un multiplo de 10_000_000 distinto sumado a
+# pilot_common.PILOT_BASE_SEED, para que dos fases DISTINTAS nunca puedan
+# colisionar entre si aunque usen indices de combo/M/seed parecidos --
+# antes de esto solo habia una fase, asi que no hacia falta.
+PHASE_SEED_OFFSET = 0  # Fase 7 -- primera, offset 0
 
 
 def seed_for(combo_idx: int, m_idx: int, seed_idx: int) -> tuple[int, int]:
@@ -169,241 +166,8 @@ def seed_for(combo_idx: int, m_idx: int, seed_idx: int) -> tuple[int, int]:
     (combo,M,seed_idx) una semilla propia y distinguible -- evita
     cualquier ambigüedad de "es una coincidencia de diseño o data real"
     al revisar el manifest.csv despues."""
-    seed1 = PILOT_BASE_SEED + 100_000 * combo_idx + 1_000 * m_idx + 2 * seed_idx
+    seed1 = pc.PILOT_BASE_SEED + PHASE_SEED_OFFSET + 100_000 * combo_idx + 1_000 * m_idx + 2 * seed_idx
     return seed1, seed1 + 1
-
-
-PILOT_MACRO_TEMPLATE = """\
-/phantom/setPhantomSex male
-/phantom/setScoreWriterSex male
-/phantom/setPhantomSection full
-/phantom/setScoreWriterSection full
-
-/spacecraft/shipRadius {ship_radius_m} m
-/spacecraft/shipHalfLength {ship_half_length_m} m
-/spacecraft/worldHalfSize {world_half_size_m} m
-{coil_geometry_line}/spacecraft/fieldMap {field_map}
-/spacecraft/fieldScale 1.0
-/spacecraft/phantomOffsetX {offset_x_m} m
-/spacecraft/phantomOffsetY 0 m
-
-/run/numberOfThreads {n_threads}
-/run/initialize
-/random/setSeeds {seed1} {seed2}
-
-/control/verbose 1
-/tracking/verbose 0
-/run/verbose 0
-/event/verbose 0
-/run/printProgress {print_progress_every}
-
-/gun/species {species}
-/gun/phase {phase}
-/gun/fixedEnergyMeV {energy_mev}
-
-/score/create/boxMesh PhantomMesh
-/score/mesh/boxSize 271.399 135.6995 888. mm
-/score/mesh/nBin 254 127 222
-/score/mesh/translate/xyz 0. 0. 0. mm
-/score/quantity/energyDeposit energyDeposit
-/score/close
-
-/run/beamOn {n_events}
-/score/dumpQuantityToFile PhantomMesh energyDeposit PhantomMesh_Edep.txt
-/control/shell cp ICRP110.out {out_path}
-"""
-
-
-def build_macro(combo, offset_x_m, seed1, seed2, n_threads, print_progress_every,
-                 field_map, coil_geometry, n_events, out_path):
-    """Una sola corrida (un solo /run/beamOn) de n_events eventos --
-    ver la nota de diseño al inicio del modulo: cada M del piloto es
-    ahora una corrida independiente completa, no un checkpoint dentro de
-    una corrida mas grande."""
-    coil_geometry_line = (
-        f"/spacecraft/coilGeometry {coil_geometry}\n" if coil_geometry is not None else ""
-    )
-    return PILOT_MACRO_TEMPLATE.format(
-        ship_radius_m=ros.SHIP_RADIUS_M, ship_half_length_m=ros.SHIP_HALF_LENGTH_M,
-        world_half_size_m=ros.WORLD_HALF_SIZE_M, coil_geometry_line=coil_geometry_line,
-        field_map=field_map, offset_x_m=offset_x_m, n_threads=n_threads,
-        seed1=seed1, seed2=seed2, print_progress_every=print_progress_every,
-        species=combo["species"], phase=combo["phase"], energy_mev=combo["energy_mev"],
-        n_events=n_events, out_path=out_path,
-    )
-
-
-def parse_organ_table_full(out_path: Path):
-    """Como run_organ_sweep.parse_icrp110_out(), pero lee TAMBIEN las
-    columnas 4-7 (S1_J, S2_J2, N, SE_run_J) que agrega el scorer
-    instrumentado -- el parser original de produccion solo usa
-    parts[0]/parts[1] (Edep/Dose) a proposito, para no depender de un
-    formato que todavia no existia cuando se escribio. Devuelve
-    {organo_id: {edep_J, dose_Gy, s1_j, s2_j2, n, se_run_j}}."""
-    text = out_path.read_text()
-    marker = "ORGAN ENERGY DEPOSITIONS AND ABSORBED DOSE"
-    if marker not in text:
-        raise ValueError(f"{out_path}: no se encontro la seccion '{marker}'")
-    tail = text.split(marker, 1)[1]
-    rows = {}
-    in_table = False
-    for line in tail.splitlines():
-        if line.startswith("OrganID"):
-            in_table = True
-            continue
-        if not in_table:
-            continue
-        if line.startswith("Total energy"):
-            break
-        if "|" not in line:
-            continue
-        left, right = line.split("|", 1)
-        parts = right.split()
-        if len(parts) < 2:
-            continue
-        organo_id = int(left.strip())
-        entry = {"edep_J": float(parts[0]), "dose_Gy": float(parts[1])}
-        if len(parts) >= 6:
-            entry["s1_j"] = float(parts[2])
-            entry["s2_j2"] = float(parts[3])
-            entry["n"] = int(parts[4])
-            entry["se_run_j"] = float(parts[5])
-        rows[organo_id] = entry
-    return rows
-
-
-def check_scorer_has_intrarun_columns(build_dir: Path, binary_path: Path):
-    """Corrida minima (bin barato, pocos eventos) para confirmar que el
-    binario compilado YA tiene las columnas S1/S2/N/SE_run antes de
-    invertir horas en el piloto completo -- falla rapido y explicito en
-    vez de que el piloto entero corra y de resultados incompletos/erroneos
-    sin que nadie lo note hasta el analisis final."""
-    print("Verificando que el binario tiene las columnas intra-run (S1/S2/N/SE_run)...")
-    project_root = Path(__file__).resolve().parent.parent.parent
-    spectra_dir = project_root / "data" / "sources" / "oltaris"
-    combos = ros.build_combinations(spectra_dir)
-    combo = combos[0]  # GCR_H/min/bin0 -- el mas barato posible
-
-    check_dir = build_dir / "pilots_check"
-    check_dir.mkdir(parents=True, exist_ok=True)
-    check_out_path = check_dir / "check.out"
-    macro = PILOT_MACRO_TEMPLATE.format(
-        ship_radius_m=ros.SHIP_RADIUS_M, ship_half_length_m=ros.SHIP_HALF_LENGTH_M,
-        world_half_size_m=ros.WORLD_HALF_SIZE_M, coil_geometry_line="",
-        field_map=(project_root.parent.parent / "field" / "production" / "crewhat_elmer_fullscale.map"),
-        offset_x_m=0.0, n_threads=1, seed1=1, seed2=2, print_progress_every=1000,
-        species=combo["species"], phase=combo["phase"], energy_mev=combo["energy_mev"],
-        n_events=100, out_path=check_out_path,
-    )
-    macro_path = check_dir / "check.mac"
-    macro_path.write_text(macro)
-    result = subprocess.run([str(binary_path), str(macro_path)], cwd=build_dir,
-                             capture_output=True, text=True, timeout=300)
-    if result.returncode != 0:
-        sys.exit(f"ERROR: la corrida de verificacion fallo (exit {result.returncode}) -- "
-                  f"revisa que ActiveShield_Sim este compilado con el scorer instrumentado. "
-                  f"stderr:\n{result.stderr[-2000:]}")
-    out_path = check_dir / "check.out"
-    if not out_path.is_file():
-        sys.exit(f"ERROR: {out_path} no se genero -- revisa el log de la corrida de verificacion.")
-    rows = parse_organ_table_full(out_path)
-    if not rows or "se_run_j" not in next(iter(rows.values())):
-        sys.exit(
-            "ERROR: el binario compilado NO tiene las columnas intra-run (S1_J/S2_J2/N/SE_run_J) "
-            "en ICRP110.out -- este piloto requiere ICRP110UserScoreWriter.cc con los acumuladores "
-            "S1/S2/N agregados (Fase 7 del plan estadistico). Recompila ActiveShield_Sim con el "
-            "codigo actualizado antes de correr el piloto."
-        )
-    print("  OK: el binario tiene las columnas intra-run. Continuando con el piloto real.")
-
-
-def t_critical_95(df):
-    # Mismo criterio/tabla que aggregate_organ_doses.py (copiado, no
-    # importado -- ver ese archivo para por que).
-    T_TABLE_95 = {
-        1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7: 2.365,
-        8: 2.306, 9: 2.262, 10: 2.228,
-    }
-    if df <= 0:
-        return float("nan")
-    return T_TABLE_95.get(df, 1.96)
-
-
-_EVENT_PROGRESS_RE = re.compile(r"--> Event (\d+) starts")
-# Cada cuantos segundos, como maximo, reportar progreso -- Geant4 con
-# /run/printProgress imprime una linea por cada N eventos y por CADA hilo
-# worker (4 threads = 4 lineas por cada N eventos reales) -- sin este
-# throttle, una corrida con progress_every chico inundaria la terminal
-# igual que ya se evito evitando el echo linea por linea completo.
-_PROGRESS_REPORT_INTERVAL_S = 5.0
-
-
-def run_verbose(binary_path, macro_path, build_dir, log_path, out_path, n_events):
-    """Corre el binario con streaming EN VIVO a la terminal (no solo al
-    log) -- una sola corrida de este piloto puede tardar minutos a horas
-    segun el bin (ver tiempos estimados reales en infra/coordinator/db.py,
-    REFERENCE_TIMINGS_S), asi que esperar en silencio hasta el exit final
-    no es aceptable: se necesita saber que tan avanzada va la corrida
-    ahora mismo, no solo al terminar.
-
-    Progreso en vivo: parsea las lineas "--> Event N starts" que emite
-    Geant4 con /run/printProgress (ya en la macro), tomando el N mas alto
-    visto entre los hilos worker (en MT, cada thread reporta su propio
-    contador, no hay una sola linea "global" -- el maximo visto es una
-    cota inferior razonable del progreso real, nunca sobreestima). Se
-    limita a reportar como mucho una vez cada _PROGRESS_REPORT_INTERVAL_S
-    -- Geant4 imprime una linea por thread por cada N eventos, y sin
-    throttle eso inundaria la terminal en corridas con progress_every
-    chico.
-
-    Devuelve la duracion en segundos, o None si el proceso termino con
-    exit code distinto de 0 (fallo)."""
-    t0 = time.time()
-    last_report = t0
-    max_event_seen = -1
-
-    process = subprocess.Popen(
-        [str(binary_path), str(macro_path)], cwd=build_dir,
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
-    )
-    with open(log_path, "w") as logf:
-        while True:
-            line = process.stdout.readline()
-            if line:
-                logf.write(line)
-                match = _EVENT_PROGRESS_RE.search(line)
-                if match:
-                    max_event_seen = max(max_event_seen, int(match.group(1)))
-                now = time.time()
-                if max_event_seen >= 0 and (now - last_report) >= _PROGRESS_REPORT_INTERVAL_S:
-                    last_report = now
-                    pct = 100.0 * max_event_seen / n_events if n_events else 0.0
-                    elapsed = now - t0
-                    rate = max_event_seen / elapsed if elapsed > 0 else 0.0
-                    eta_str = f"{(n_events - max_event_seen) / rate:.0f}s" if rate > 0 else "?"
-                    print(f"    ... evento ~{max_event_seen}/{n_events} ({pct:5.1f}%), "
-                          f"{elapsed:6.1f}s transcurridos, ETA ~{eta_str}")
-                continue
-            if process.poll() is not None:
-                break
-    duration_s = time.time() - t0
-    if process.returncode != 0:
-        print(f"    !! Proceso termino con exit code {process.returncode} -- ver {log_path}")
-        return None
-
-    # Resultado inmediato apenas termina -- mismo principio que antes
-    # (feedback real, no solo "OK"): edep total y cuantos organos ya
-    # tienen señal, leido directo del .out recien generado.
-    try:
-        rows = parse_organ_table_full(out_path)
-        nonzero = [r for r in rows.values() if r["edep_J"] != 0]
-        total_edep = sum(r["edep_J"] for r in rows.values())
-        print(f"    resultado: {len(nonzero)}/{len(rows)} organos con edep!=0, "
-              f"edep total={total_edep:.4e} J")
-    except Exception as exc:  # noqa: BLE001 -- no tumbar el piloto solo por no poder mostrar el resumen
-        print(f"    (no se pudo leer el resumen de {out_path}: {exc})")
-
-    return duration_s
 
 
 def main():
@@ -433,19 +197,9 @@ def main():
     n_threads = args.threads or os.cpu_count()
 
     project_root = Path(__file__).resolve().parent.parent.parent
-    build_dir = (args.build_dir or (project_root / "build")).resolve()
-    binary_path = build_dir / "ICRP110phantoms"
-    field_map = args.field_map.resolve()
-    coil_geometry = None if args.no_coil_geometry else args.coil_geometry.resolve()
+    build_dir, binary_path, field_map, coil_geometry = pc.resolve_paths(args, project_root)
 
-    if not binary_path.is_file():
-        sys.exit(f"ERROR: no se encontro {binary_path}. Compila ActiveShield_Sim primero.")
-    if not field_map.is_file():
-        sys.exit(f"ERROR: no se encontro {field_map}.")
-    if coil_geometry is not None and not coil_geometry.is_file():
-        sys.exit(f"ERROR: no se encontro {coil_geometry}.")
-
-    check_scorer_has_intrarun_columns(build_dir, binary_path)
+    pc.check_scorer_has_intrarun_columns(build_dir, binary_path)
 
     out_dir = args.out_dir or (
         Path(__file__).resolve().parent / "results" /
@@ -492,7 +246,7 @@ def main():
                 run_n += 1
                 seed1, seed2 = seed_for(combo_idx, m_idx, seed_idx)
                 run_out_path = checkpoints_dir / f"run_{combo_label}_M{m}_seed{seed_idx}.out"
-                macro = build_macro(
+                macro = pc.build_macro(
                     combo, args.offset_x_m, seed1, seed2, n_threads, args.print_progress_every,
                     field_map, coil_geometry, m, run_out_path,
                 )
@@ -504,7 +258,7 @@ def main():
                       f"(species={combo['species']} phase={combo['phase']} bin={combo['bin_index']} "
                       f"E={combo['energy_mev']:.3e} MeV, seed1={seed1} seed2={seed2})")
                 print(f"    log completo en {log_path}")
-                duration_s = run_verbose(binary_path, macro_path, build_dir, log_path, run_out_path, m)
+                duration_s = pc.run_verbose(binary_path, macro_path, build_dir, log_path, run_out_path, m)
                 exit_code = 0 if duration_s is not None else 1
                 if duration_s is None:
                     duration_s = 0.0
@@ -551,7 +305,7 @@ def analyze(requested, n_seeds, checkpoints_dir, out_dir):
                 if not out_path.is_file():
                     print(f"  ADVERTENCIA: falta {out_path} -- corrida incompleta, se omite.")
                     continue
-                rows = parse_organ_table_full(out_path)
+                rows = pc.parse_organ_table_full(out_path)
                 for organo_id, entry in rows.items():
                     if "se_run_j" not in entry:
                         continue  # ya deberia haber fallado en check_scorer_has_intrarun_columns, defensivo
@@ -599,7 +353,7 @@ def analyze(requested, n_seeds, checkpoints_dir, out_dir):
                 ratio = (se_within_medio / s_between) if s_between > 0 else float("nan")
                 n = len(nonzero_edeps)
                 sem = s_between / math.sqrt(n)
-                hw = t_critical_95(n - 1) * sem
+                hw = pc.t_critical_95(n - 1) * sem
                 comparacion_rows.append({
                     "combo_label": combo_label, "M": m, "organo_id": organo_id, "n_seeds_con_datos": n,
                     "edep_medio_J": edep_medio, "s_between_J": s_between,
@@ -690,6 +444,78 @@ def analyze(requested, n_seeds, checkpoints_dir, out_dir):
     print(f"  Reporte: {reporte_path}")
     print()
     print(reporte_path.read_text())
+
+    write_fase7_state(comparacion_rows, n_seeds, out_dir, reporte_path)
+
+
+def write_fase7_state(comparacion_rows, n_seeds, out_dir, reporte_path):
+    """Escribe pilot_state.FaseResult para que el orquestador (Fase 22,
+    run_pilot_workflow.py) sepa si puede seguir solo a la Fase 8.
+
+    El plan NO da un umbral numerico para "SE_within compatible con
+    s_between" (a diferencia de la Fase 8, que si tiene B_8_16<=2.5pp) --
+    dice "aproximadamente compatibles", juicio del equipo. Por diseño
+    (ver pilot_state.py), esto significa que Fase 7 casi nunca puede dar
+    VERDICT_AUTO_CONTINUE por si sola -- el orquestador SIEMPRE se
+    detiene aqui para que una persona revise el reporte, salvo el caso
+    obvio de que la corrida fallara del todo (FALLO)."""
+    if not comparacion_rows:
+        result = pilot_state.FaseResult(
+            fase="fase7", veredicto=pilot_state.VERDICT_FALLO,
+            resumen="Sin datos comparables -- ninguna combinacion/organo/M tuvo edep!=0 en >=2 seeds.",
+            detalle={"n_filas_comparables": 0},
+            instrucciones_si_no_auto=(
+                "Revisar manifest.csv/logs/ del piloto para ver si alguna corrida fallo, o si las "
+                "combinaciones elegidas son demasiado baratas (pocos organos con señal real). "
+                "Volver a correr run_intrarun_pilot.py con --combos distintos o mas --n-seeds."
+            ),
+            out_dir=str(out_dir),
+        )
+        pilot_state.write_state(result)
+        print(f"\nEstado escrito: {pilot_state.STATE_DIR / 'fase7_estado.json'} (veredicto: FALLO)")
+        return
+
+    if n_seeds < 3:
+        result = pilot_state.FaseResult(
+            fase="fase7", veredicto=pilot_state.VERDICT_REVISAR,
+            resumen=(
+                f"n_seeds={n_seeds} < 3 -- s_between calculado con muy pocos puntos, no confiable "
+                "como validacion real (ver discusion estadistica del equipo: N=2 da un IC extremadamente "
+                "ancho). Esta corrida solo sirve para verificar que el mecanismo funciona, no como Piloto A real."
+            ),
+            detalle={"n_seeds": n_seeds, "n_filas_comparables": len(comparacion_rows)},
+            instrucciones_si_no_auto=(
+                f"Volver a correr: python3 pilots/run_intrarun_pilot.py --n-seeds 3 (o mas) con las "
+                f"combinaciones representativas por defecto antes de decidir si continuar a la Fase 8."
+            ),
+            out_dir=str(out_dir),
+        )
+        pilot_state.write_state(result)
+        print(f"\nEstado escrito: {pilot_state.STATE_DIR / 'fase7_estado.json'} (veredicto: REVISAR, n_seeds insuficiente)")
+        return
+
+    ratios = [r["ratio_se_within_sobre_s_between"] for r in comparacion_rows
+              if r["ratio_se_within_sobre_s_between"] == r["ratio_se_within_sobre_s_between"]]
+    mediana = statistics.median(ratios) if ratios else float("nan")
+    result = pilot_state.FaseResult(
+        fase="fase7", veredicto=pilot_state.VERDICT_REVISAR,
+        resumen=(
+            f"Piloto A completo con n_seeds={n_seeds}, {len(comparacion_rows)} filas comparables, "
+            f"ratio SE_within/s_between mediana={mediana:.3f}. El plan no fija un umbral numerico "
+            "para este criterio -- revisar el reporte antes de decidir si R=1 es defendible."
+        ),
+        detalle={"n_seeds": n_seeds, "n_filas_comparables": len(comparacion_rows), "ratio_mediana": mediana},
+        instrucciones_si_no_auto=(
+            f"Revisar {reporte_path} y {out_dir / 'comparacion_se_within_vs_s_between.csv'}. "
+            "Si el ratio es razonablemente cercano a 1.0 en los M grandes (10000-20000, mas "
+            "representativos de produccion), correr: python3 pilots/run_pilot_workflow.py --continue-to fase8. "
+            "Si el ratio es sistematicamente << 1, el diseño Camino B (S1/S2 por voxel) no es "
+            "suficiente -- no continuar a produccion con R=1 sin resolver esto primero."
+        ),
+        out_dir=str(out_dir),
+    )
+    pilot_state.write_state(result)
+    print(f"\nEstado escrito: {pilot_state.STATE_DIR / 'fase7_estado.json'} (veredicto: REVISAR)")
 
 
 if __name__ == "__main__":

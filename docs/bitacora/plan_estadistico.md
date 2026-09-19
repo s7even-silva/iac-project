@@ -663,6 +663,16 @@ Posibles causas:
 
 # Fase 8 — Convergencia del binning energético
 
+**Implementado (2026-09-19):** `geant4/ActiveShield_Sim/scripts/pilots/run_fase8_binning.py`
+— corre las grillas de 8 y 16 bins, calcula `epsilon_binning` (alcance
+reducido: dosis absoluta, no el endpoint `eta` completo — ver docstring
+del script) y escribe un veredicto automatizable (`auto_continue` /
+`limitrofe` / `revisar`) contra el presupuesto `B_8→16 ≤ 2.5 pp` de más
+abajo, vía `pilot_state.py`. Encadenable con la Fase 7 y las siguientes
+mediante `run_pilot_workflow.py`. Ver `pilots/README.md`. Verificado con
+una corrida de humo (1 combinación, pocos eventos) — sin resultado real
+del piloto todavía, eso queda pendiente de correr en una máquina rápida.
+
 ## Objetivo
 
 Determinar si la discretización actual de 8 bins es suficientemente precisa **antes** de optimizar `M_b` o comprobar la precisión de la comparación shield/control.
@@ -809,6 +819,13 @@ Debe recalibrarse:
 
 # Fase 9 — Calibración del número de eventos por bin
 
+**Implementado (2026-09-19):** `geant4/ActiveShield_Sim/scripts/pilots/run_fase9_calibracion_mb.py`
+— corre una corrida de sondeo por bin de la malla definitiva, mide
+`sigma_b` (vía `SE_within`), `W_b` y `c_b` (costo real medido en la
+máquina), y calcula `M_b` propuesto con la fórmula de abajo. Siempre
+termina en veredicto `revisar` (el plan exige documentar `M_b` como
+decisión de equipo, no automatizable). Ver `pilots/README.md`.
+
 ## Objetivo
 
 Una vez congelado el binning energético, determinar cuánto `M_b` necesita cada bin para que su contribución a la incertidumbre del endpoint final sea suficientemente pequeña.
@@ -883,6 +900,13 @@ Limitaciones:
 - los valores deben congelarse antes de producción para evitar decisiones post hoc.
 
 # Fase 10 — Comprobación de precisión del endpoint shield vs. control
+
+**Implementado (2026-09-19):** `geant4/ActiveShield_Sim/scripts/pilots/run_fase10_endpoint.py`
+— corre control (`field_scale=0`) y shield (`field_scale=1`) por bin con
+los `M_b` de la Fase 9, calcula `eta`, propaga `V(eta)` (sin CRN
+todavía — bins/configuraciones con semillas independientes) y compara
+`H_eta,95` contra `delta_eta/2=5pp`. Gate automatizable, mismo criterio
+que Fase 8. Ver `pilots/README.md`.
 
 ## Objetivo
 
