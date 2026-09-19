@@ -25,6 +25,42 @@ tardan horas, en una máquina de `cpu_score≈21` bajan a minutos.
 - `field/production/` ya presente en el checkout (versionado en git, no
   hace falta regenerarlo — ver `AGENTS.md`).
 
+## Workflow completo con gates (recomendado para uso normal)
+
+```bash
+# Primera vez, arranca en Fase 7:
+python3 pilots/run_pilot_workflow.py --n-seeds 3 --threads 20
+
+# Ver el estado actual sin correr nada:
+python3 pilots/run_pilot_workflow.py --status
+
+# Retomar despues de revisar un gate a mano (ver instrucciones que
+# imprime el propio orquestador al detenerse):
+python3 pilots/run_pilot_workflow.py --continue-to fase8
+```
+
+**Qué hace:** corre `run_faseN.py` (que ya hace correr+analizar sin
+intervención) para cada fase en secuencia. Después de cada una, lee el
+veredicto que esa fase escribió (`pilots/results/state/faseN_estado.json`,
+ver `pilot_state.py`) y decide:
+
+- **`auto_continue`**: el propio plan da un umbral numérico y el
+  resultado lo cumple claramente (solo pasa en Fase 8 y Fase 10, que sí
+  tienen un número — ver más abajo) → sigue solo a la fase siguiente,
+  sin parar.
+- **`limitrofe` / `revisar` / `fallo`**: el plan pide explícitamente
+  juicio humano en este caso (Fase 7 casi siempre cae aquí — el plan no
+  fija un umbral para "SE_within compatible con s_between") → el
+  orquestador **se detiene**, imprime el resumen + instrucciones exactas
+  de cómo continuar, y termina (no bloquea el terminal esperando input).
+
+Esto es deliberado, no una limitación: automatizar los 4 gates sin
+excepción significaría inventar umbrales que el plan nunca definió (ver
+la discusión del equipo al diseñar esto, 2026-09-19) — el objetivo era
+que **dentro** de cada fase, correr y analizar no requiera intervención
+manual, no que las 4 fases decidan solas algo que el plan dice
+explícitamente que requiere revisión.
+
 ## Fase 7 — Piloto A: validación del estimador de incertidumbre intra-run
 
 ```bash
@@ -91,11 +127,92 @@ deliberado, el equipo revisa el reporte y decide). Lectura general:
   "Camino A", no implementado).
 - ratio >> 1.0 → inesperado, investigar antes de continuar.
 
-## Fases 8, 9, 10 — no implementadas todavía
+## Fase 8 — Convergencia del binning energético
 
-Dependen del resultado real del Piloto A (ver la tabla de "Secuencia de
-validación" en `docs/bitacora/plan_estadistico.md`) — se diseñan e
-implementan después de tener un resultado real del Piloto A, no antes
-(decisión de equipo 2026-09-19: el plan es secuencial, diseñar las fases
-siguientes sobre un resultado que todavía no existe sería trabajo
-especulativo).
+```bash
+python3 pilots/run_fase8_binning.py
+python3 pilots/run_fase8_binning.py --combos "GCR_He/min,SEP_p/min"
+python3 pilots/run_fase8_binning.py --n-events 10000 --threads 20
+```
+
+**Qué hace:** por cada combinación `species/phase` (sin bin_index — corre
+**todos** los bins), corre la grilla de 8 bins y la de 16 bins
+(`energy_bins.build_bins(..., n_bins=16)`, ya soportado sin tocar ese
+módulo), calcula `D_8`/`D_16` (dosis total, misma fórmula que
+`aggregate_organ_doses.py`) y `epsilon_binning = |D_16-D_8|/|D_16|`.
+
+**Alcance reducido respecto del plan completo** (documentado en el
+docstring del script): el plan idealmente compara el *endpoint*
+`eta_16` vs `eta_8` (necesita el caso "control", `field_scale=0`) — este
+script compara `epsilon_binning` de la dosis absoluta como proxy, más
+simple, suficiente para descartar 8 bins si ya falla ahí.
+
+**Gate automatizable** — único de las 4 fases con un umbral 100% numérico
+del plan (`B_8→16 ≤ 2.5 pp`): `auto_continue` si claramente cumple,
+`revisar` si claramente no, `limitrofe` si está cerca del umbral (el plan
+pide comprobar 16→32 en ese caso, no implementado todavía).
+
+**Costo:** `n_combos × 24` corridas (8+16 bins). Con 3 combos: 72.
+
+## Fase 9 — Calibración de M_b por bin
+
+```bash
+python3 pilots/run_fase9_calibracion_mb.py
+python3 pilots/run_fase9_calibracion_mb.py --n-bins 16  # si Fase 8 dio 16
+```
+
+**Qué hace:** corre una corrida de **sondeo** (`--n-events-probe`, no el
+`M_b` final) por cada bin de la malla ya congelada por Fase 8, mide
+`sigma_b` (vía `SE_within`, el estimador ya validado en Fase 7),
+`W_b` (peso físico, `energy_bins.py`) y `c_b` (costo real medido,
+segundos/evento de *esta* máquina). Calcula `M_b ∝ |W_b|·σ_b/√c_b`
+(fórmula del plan) y ordena los bins por su contribución a la varianza
+total.
+
+**Siempre termina en `revisar`** (nunca `auto_continue`) — el plan exige
+explícitamente "documentar los `M_b` definitivos" como decisión de
+equipo (depende del presupuesto de cómputo real disponible, no solo de
+la fórmula).
+
+**Costo:** `n_combos × n_bins` corridas de sondeo. Con 3 combos, 8 bins,
+`n_events_probe=5000`: 24 corridas.
+
+## Fase 10 — Piloto B: precisión del endpoint shield vs. control
+
+```bash
+python3 pilots/run_fase10_endpoint.py --m-b-csv pilots/results/fase9_calibracion_mb_XXXX/m_b_propuesto.csv
+python3 pilots/run_fase10_endpoint.py --n-events 10000  # sin Fase 9 corrida, M_b parejo
+```
+
+**Qué hace:** corre **control** (`field_scale=0`, sin blindaje activo —
+mismo mapa de campo, escalado a cero) y **shield** (`field_scale=1`,
+diseño real) para cada bin, con los `M_b` de la Fase 9 (o un valor parejo
+si no se corrió esa fase). Calcula `eta = 1 - D_shield/D_control`,
+propaga `V(eta)` (fórmula del plan, asumiendo independencia — **sin
+common random numbers todavía**, ver docstring del script) y compara
+`H_eta,95` contra `delta_eta/2 = 5 pp` (criterio ya fijado en Fase 1).
+
+**Gate automatizable**: `auto_continue` si `H_eta,95 ≤ 5pp` en el peor
+caso — señal de que los `M_b` alcanzan para producción. Si falla, el
+plan prohíbe redefinir `delta_eta` — solo permite aumentar `M_b`
+selectivamente en los bins que dominan la varianza.
+
+**Costo:** `n_combos × n_bins × 2` (control+shield). Con 3 combos, 8
+bins: 48 corridas.
+
+## Módulos compartidos
+
+- `pilot_common.py` — geometría/macro/parsing/streaming en vivo, usado
+  por las 4 fases (extraído de `run_intrarun_pilot.py` al agregar las
+  fases 8-10, para no duplicar ~200 líneas 3 veces).
+- `pilot_state.py` — contrato `FaseResult`/`write_state`/`read_state`
+  (JSON en `pilots/results/state/faseN_estado.json`) que usa el
+  orquestador para decidir si avanza solo o se detiene.
+
+## Semillas: sin colisión entre fases ni con producción
+
+Cada fase reserva su propio rango vía `PHASE_SEED_OFFSET` (0 para Fase 7,
+`10_000_000` para Fase 8, `20_000_000` para Fase 9, `30_000_000` para
+Fase 10), sumado a `pilot_common.PILOT_BASE_SEED` — que a su vez es
+distinto de `sweep_config.BASE_SEED_ACTIVE_SHIELD_SIM` (producción). Ver
+el docstring de cada `seed_for()` para el detalle exacto de la fórmula.
