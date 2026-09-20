@@ -2138,3 +2138,76 @@ se reencola en el mismo heartbeat que lo revela; respeta
 de `db.py`/`app.py` — **no requiere imagen Docker nueva**, se despliega
 con el procedimiento normal (`git pull` + `systemctl restart
 geant4-coordinator`).
+
+### 7 procesos `ICRP110phantoms` huérfanos en `tania`, hasta 24h vivos, ~800% CPU sumado (2026-09-20)
+
+**Reportado por el usuario, vía el agente de la sesión del coordinator**
+(que tenía acceso al journal de `uvicorn` y a la DB, no a `tania`
+directamente): 7 PIDs del binario pesado de Geant4 seguían corriendo
+dentro del contenedor de `tania` — entre 1h y 24h vivos, sumando
+~800% CPU (8 núcleos completos) — pese a que el coordinator ya daba esos
+jobs por `failed`/cancelados. Mientras tanto, el job realmente activo en
+ese momento (148) solo podía usar los núcleos que sobraban, no los 10
+hilos pedidos (`--threads 10`).
+
+**Diagnóstico colaborativo entre dos sesiones (esta y la del
+coordinator), con evidencia real, no supuesta:**
+
+- `terminate_process_group()` en `worker.py` ya usaba `os.killpg()`
+  (mata el grupo de procesos completo, no solo el PID padre) desde antes
+  de este incidente — reproducido localmente con un árbol de 2 niveles
+  (proceso Python padre → `subprocess.run` hijo, `sleep` como sustituto
+  de `ICRP110phantoms`) y con un `SIGTERM` real interrumpiendo
+  `process.wait()`: en ambos casos el `killpg` mató correctamente todo
+  el árbol, sin dejar huérfanos. El diagnóstico inicial de "la
+  cancelación solo mata el proceso padre" **no reproduce** con el código
+  del repo.
+- La sesión del coordinator correlacionó los 7 timestamps de arranque de
+  esos jobs (del 15-sep) contra la edad real de cada PID huérfano — las
+  diferencias coinciden casi exactamente (616 vs. 618 min, 85 vs. 85 min,
+  etc.), y confirmó en el journal que el worker de `tania` SÍ mandó
+  `POST /fail` entre 4 y 31s después de cada `cancel`, lo cual solo pasa
+  después de que `terminate_process_group()`/`watcher.join()` ya
+  corrieron — es decir, el worker estaba vivo y completó la ruta de
+  cancelación, no murió a mitad de camino. Las demás causas de huérfanos
+  en otras máquinas (reinicios de worker, timeout de heartbeat) sí dejan
+  al binario limpio porque el contenedor entero termina.
+- Conclusión: el `killpg` sí se disparó en `tania` específicamente, pero
+  no alcanzó al nieto. Sospechoso, no confirmado con un `ps` real
+  todavía: `tania` corre **Podman rootless con `NetworkMode: pasta`**
+  (mismo incidente ya documentado arriba, "Auto-actualización con
+  Podman" — misma máquina, mismo digest de imagen vieja `639b183c...`),
+  que puede intercalar procesos de red en el árbol de forma que rompa la
+  asunción de que el nieto queda en el mismo grupo de sesión que
+  `run_organ_sweep.py`. Pendiente: comparar el `pgid` real de un
+  huérfano contra el `pgid`/`sid` de su `run_organ_sweep.py` padre
+  (`ps -o pid,ppid,pgid,sid,lstart,cmd`) para confirmar o descartar esto
+  — dato que solo puede traer quien tenga acceso directo a `tania`.
+
+**Fix aplicado, independiente del diagnóstico raíz exacto** (`worker.py`,
+`cleanup_orphaned_simulations()`): un barrido que mata cualquier
+`ICRP110phantoms` cuyo `cwd` (vía `/proc/<pid>/cwd`) está dentro de un
+directorio `geant4-job-*` — el prefijo único que solo `worker.py` crea
+(`tempfile.TemporaryDirectory` en `_run_job()`) para cada intento.
+Diseño revisado dos veces con el equipo antes de esta forma final:
+
+1. **No alcanza con correr esto solo al arrancar** — los 7 huérfanos de
+   `tania` se acumularon a lo largo de ~19h con el *mismo* proceso
+   worker vivo todo el tiempo (heartbeats continuos, sin reinicio). Por
+   eso corre también periódicamente, en cada vuelta del loop principal
+   en que este worker no tiene ningún job propio activo (`job is None`,
+   justo antes de dormir hasta el siguiente poll) — nunca compite con
+   una simulación legítima en curso de este mismo worker.
+2. **No filtrar solo por nombre de binario en toda la máquina** — en un
+   worker sin contenedor (`bryam-local` corre `worker.py` directo contra
+   su build ya compilado) eso mataría una corrida manual legítima del
+   usuario, ajena por completo al worker. Acotar por `cwd` dentro de
+   `geant4-job-*` evita ese falso positivo por diseño: ningún proceso
+   ajeno a este worker corre nunca ahí.
+
+Verificado con un test real (no simulado): un proceso `sleep` como
+sustituto del binario, uno dentro de `geant4-job-*` (debe morir) y otro
+en un directorio normal (nunca debe tocarse) — ambos casos se comportan
+como se espera. `infra/worker/test_worker.py`, 71 tests en total.
+Cambio puro de `worker.py` — no requiere imagen Docker nueva, aplica con
+el procedimiento normal de actualización del worker.

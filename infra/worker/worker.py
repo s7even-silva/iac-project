@@ -289,6 +289,98 @@ def terminate_process_group(process, grace_s):
     return True
 
 
+# Bug real de produccion encontrado 2026-09-20 (7 PID de ICRP110phantoms
+# huerfanos en tania, hasta 24h corriendo, ~800%% CPU sumado, ver
+# infra/OPERATIONS_LOG.md): terminate_process_group() ya usa os.killpg()
+# (mata el GRUPO de procesos completo, no solo el PID padre) y ya
+# funciona correctamente en un repro local con Docker/cgroups estandar --
+# el sospechoso es Podman rootless con NetworkMode=pasta en esa maquina
+# especifica (ver incidente "Auto-actualizacion con Podman" en
+# OPERATIONS_LOG.md, misma maquina), que puede intercalar procesos de
+# red en el arbol de forma que rompe la asuncion de que el nieto
+# (ICRP110phantoms) queda en el mismo grupo de sesion que
+# run_organ_sweep.py. Diagnostico raiz exacto AUN NO CONFIRMADO (falta
+# comparar pgid real de un huerfano contra el pgid que worker.py calculo
+# al matar, ver discusion con el equipo) -- esto es una RED DE SEGURIDAD
+# independiente de esa causa: sin importar POR QUE un ICRP110phantoms
+# quedo sin nadie vivo vigilandolo, esto lo detecta y lo mata.
+#
+# DOS correcciones al diseño original tras revision de equipo:
+#   1. NO alcanza con correr esto solo al arrancar worker.py -- los 7
+#      huerfanos de tania se acumularon a lo largo de ~19h con el MISMO
+#      proceso worker vivo (heartbeats continuos, sin registro nuevo).
+#      Por eso se llama tambien PERIODICAMENTE (ver el loop en
+#      run_worker_loop(), no solo en main()).
+#   2. NO filtrar por nombre de binario en TODA la maquina -- en un
+#      worker sin contenedor (bryam-local corre worker.py directo contra
+#      su build ya compilado) eso mataria una corrida manual legitima
+#      del usuario, ajena por completo al worker. En cambio, se acota a
+#      procesos cuyo cwd esta DENTRO de un directorio geant4-job-*
+#      (el prefijo EXACTO y UNICO que tempfile.TemporaryDirectory usa en
+#      _run_job(), ver mas abajo en este modulo) -- ningun proceso ajeno
+#      al worker corre ahi nunca.
+_ORPHAN_BINARY_NAME = "ICRP110phantoms"
+_ORPHAN_JOB_DIR_PREFIX = "geant4-job-"
+
+
+def _read_proc_cwd_realpath(pid: int) -> str:
+    try:
+        return os.path.realpath(f"/proc/{pid}/cwd")
+    except OSError:
+        return ""
+
+
+def _read_proc_cmdline(pid: int) -> str:
+    try:
+        return Path(f"/proc/{pid}/cmdline").read_text().replace("\x00", " ").strip()
+    except OSError:
+        return ""
+
+
+def cleanup_orphaned_simulations() -> list[int]:
+    """Mata cualquier proceso ICRP110phantoms cuyo directorio de trabajo
+    (cwd, via /proc/<pid>/cwd) esta dentro de un geant4-job-* -- el
+    prefijo unico que SOLO worker.py crea (tempfile.TemporaryDirectory en
+    _run_job()) para cada intento. Deliberadamente NO filtra por nombre
+    de binario solo: eso mataria una corrida manual del usuario en un
+    worker sin contenedor (ver correccion 2 arriba). Un ICRP110phantoms
+    corrido a mano por alguien, en cualquier otro directorio, nunca se
+    toca -- solo los que este worker mismo pudo haber lanzado.
+
+    Llamado (a) UNA VEZ al arrancar, dentro de worker_lock() en main()
+    -- cubre el caso simple (worker reiniciado, hijo huerfano de un
+    proceso anterior), y (b) PERIODICAMENTE dentro del loop principal
+    (ver run_worker_loop()) -- cubre el caso real de tania, donde el
+    mismo proceso worker sigue vivo dias enteros pero el killpg de un
+    intento especifico no alcanzo al nieto.
+
+    Nunca debe impedir que el worker arranque o siga corriendo: cualquier
+    fallo al leer /proc (permisos, race de que el proceso termine solo
+    mientras se inspecciona) se ignora en silencio para ESE pid. Devuelve
+    la lista de PIDs matados, para loguear."""
+    killed = []
+    try:
+        pids = [int(p) for p in os.listdir("/proc") if p.isdigit()]
+    except OSError:
+        return killed
+
+    for pid in pids:
+        if _ORPHAN_BINARY_NAME not in _read_proc_cmdline(pid):
+            continue
+        cwd = _read_proc_cwd_realpath(pid)
+        if _ORPHAN_JOB_DIR_PREFIX not in cwd:
+            continue
+        try:
+            os.killpg(os.getpgid(pid), signal.SIGTERM)
+            killed.append(pid)
+        except (ProcessLookupError, PermissionError):
+            continue
+    if killed:
+        print(f"[worker] limpieza: {len(killed)} proceso(s) {_ORPHAN_BINARY_NAME} huerfano(s) "
+              f"(cwd bajo {_ORPHAN_JOB_DIR_PREFIX}*, sin job activo de este worker) terminados: {killed}")
+    return killed
+
+
 def image_repository(reference: str) -> str:
     # Un puerto de registro (registry:5000/repo:tag) no es un tag.
     value = reference.split("@", 1)[0]
@@ -1368,6 +1460,13 @@ def main() -> None:
     prepare_replacement()
     with worker_lock():
         cleanup_retired_worker()
+        # Al arrancar tambien: cubre el caso simple de un worker que se
+        # reinicio (crash, --restart unless-stopped) dejando un
+        # ICRP110phantoms de un intento anterior sin nadie vivo
+        # vigilandolo -- ver cleanup_orphaned_simulations() para el
+        # llamado PERIODICO adicional (necesario para el caso real de
+        # tania, donde el mismo proceso worker sigue vivo dias enteros).
+        cleanup_orphaned_simulations()
         run_worker_loop()
 
 
@@ -1425,6 +1524,13 @@ def run_worker_loop() -> None:
             if job is None:
                 heartbeat(worker_id)
                 retry_pending_results()
+                # cleanup_orphaned_simulations() SOLO aqui, con job is None
+                # -- este worker no tiene NINGUN job propio corriendo en
+                # este momento (run_job() nunca corre en paralelo con este
+                # bloque, es secuencial), asi que cualquier ICRP110phantoms
+                # con cwd geant4-job-* que siga vivo es, por definicion,
+                # huerfano de un intento anterior -- nunca el job actual.
+                cleanup_orphaned_simulations()
                 time.sleep(POLL_INTERVAL_S)
                 continue
 

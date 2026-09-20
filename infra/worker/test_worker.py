@@ -86,6 +86,41 @@ def test_filter_results_csv_tolerates_extra_columns_for_v1(tmp_path):
     assert 's1_j' not in lines[0]  # header v1, sin las columnas nuevas
 
 
+def test_cleanup_orphaned_simulations_kills_only_job_dir_processes(tmp_path, monkeypatch):
+    # Bug real de produccion (2026-09-20, ver infra/OPERATIONS_LOG.md):
+    # procesos ICRP110phantoms huerfanos en tania, hasta 24h vivos.
+    # Verifica las DOS correcciones de diseño discutidas con el equipo:
+    # (a) el filtro es por cwd dentro de geant4-job-*, NO por nombre de
+    # binario solo -- un proceso con el mismo nombre en cualquier OTRO
+    # directorio (ej. una corrida manual del usuario en bryam-local)
+    # nunca se toca.
+    import subprocess
+    monkeypatch.setattr(worker, '_ORPHAN_BINARY_NAME', 'sleep')  # sustituto de ICRP110phantoms para el test
+
+    job_dir = tmp_path / 'geant4-job-abc123'
+    job_dir.mkdir()
+    orphan = subprocess.Popen(['sleep', '30'], cwd=job_dir, start_new_session=True)
+
+    normal_dir = tmp_path / 'manual-run'
+    normal_dir.mkdir()
+    manual = subprocess.Popen(['sleep', '30'], cwd=normal_dir, start_new_session=True)
+
+    try:
+        time.sleep(0.3)
+        killed = worker.cleanup_orphaned_simulations()
+        time.sleep(0.3)
+
+        assert orphan.pid in killed
+        assert manual.pid not in killed
+        assert orphan.poll() is not None, 'el huerfano en geant4-job-* debe matarse'
+        assert manual.poll() is None, 'una corrida en un directorio normal NUNCA debe tocarse'
+    finally:
+        for p in (orphan, manual):
+            if p.poll() is None:
+                p.terminate()
+                p.wait(timeout=5)
+
+
 @pytest.mark.parametrize("ignore_term", [False, True])
 def test_run_job_kills_subprocess_when_cancel_event_set(tmp_path, monkeypatch, ignore_term):
     # Reproduce el mecanismo de remote-kill de punta a punta: un
