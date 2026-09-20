@@ -65,7 +65,10 @@ import pilot_state  # noqa: E402
 
 PHASE_SEED_OFFSET = 30_000_000  # Fase 10
 
-DEFAULT_COMBOS = ["GCR_He/min", "SEP_p/min", "GCR_H/min"]
+# Las 3 combinaciones reales de produccion (run_organ_sweep.py:SPECIES_PHASE)
+# -- SEP_p es MAX/Oct1989, no min (corregido 2026-09-20, bug anterior
+# usaba SEP_p/min, que no es la fase que corre en produccion).
+DEFAULT_COMBOS = ["GCR_He/min", "SEP_p/max", "GCR_H/min"]
 
 # delta_eta/2, ya fijado en Fase 1 del plan (delta_eta=10pp, criterio
 # primario shield/control) -- NO redefinir aqui segun lo que salga del

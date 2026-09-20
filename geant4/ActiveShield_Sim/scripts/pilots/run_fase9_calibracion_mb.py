@@ -68,7 +68,10 @@ import pilot_state  # noqa: E402
 
 PHASE_SEED_OFFSET = 20_000_000  # Fase 9
 
-DEFAULT_COMBOS = ["GCR_He/min", "SEP_p/min", "GCR_H/min"]
+# Las 3 combinaciones reales de produccion (run_organ_sweep.py:SPECIES_PHASE)
+# -- SEP_p es MAX/Oct1989, no min (corregido 2026-09-20, bug anterior
+# usaba SEP_p/min, que no es la fase que corre en produccion).
+DEFAULT_COMBOS = ["GCR_He/min", "SEP_p/max", "GCR_H/min"]
 
 # Piso minimo de M_b -- "mantener un minimo de historias que evite
 # tallies patologicamente escasos" (checklist del plan). Mismo orden de
