@@ -1,25 +1,39 @@
 #!/usr/bin/env python3
 """Fase 8 del plan estadistico (docs/bitacora/plan_estadistico.md):
 convergencia del binning energetico -- determina si 8 bins son
-suficientemente precisos, comparando contra 16 bins, ANTES de calibrar
-M_b (Fase 9) o comprobar la precision shield/control (Fase 10). El
-problema es de discretizacion, no de ruido Monte Carlo -- aumentar M no
-lo arregla.
+suficientemente precisos, comparando contra 16 (y, si hace falta, contra
+32) bins, ANTES de calibrar M_b (Fase 9) o comprobar la precision
+shield/control (Fase 10). El problema es de discretizacion, no de ruido
+Monte Carlo -- aumentar M no lo arregla.
 
-Que hace, por cada combinacion representativa (--combos):
+Que hace, por cada combinacion representativa (--combos) y cada grilla
+de --n-bins-grid (default 8,16,32):
 
-  1. Corre TODOS los bins de la grilla de 8 (energy_bins.build_bins(...,
-     n_bins=8)) y de la grilla de 16 (n_bins=16), cada uno con --n-events
-     eventos, UNA sola vez (sin repeticiones -- esta fase mide error de
-     discretizacion, no ruido MC; el ruido MC ya se abordo en la Fase 7).
-  2. Calcula D_8 = suma_b W_b(8bins) * R_b y D_16 = suma_b W_b(16bins) * R_b
-     -- misma formula fisica que aggregate_organ_doses.py, reproducida
-     aqui porque ese script no esta estructurado como libreria reusable
+  1. Corre TODOS los bins de esa grilla (energy_bins.build_bins(...,
+     n_bins=N)), cada uno con --n-events eventos, UNA sola vez (sin
+     repeticiones -- esta fase mide error de discretizacion, no ruido
+     MC; el ruido MC ya se abordo en la Fase 7).
+  2. Calcula D_N = suma_b W_b(N bins) * R_b para cada grilla -- misma
+     formula fisica que aggregate_organ_doses.py, reproducida aqui
+     porque ese script no esta estructurado como libreria reusable
      (todo vive en su main()).
-  3. Calcula epsilon_binning = |D_16 - D_8| / |D_16| POR combinacion.
-  4. Compara epsilon_binning (agregado, la METRICA REAL disponible en
-     esta fase) contra el presupuesto B_8_16<=2.5pp del plan (ver mas
-     abajo la nota de alcance).
+  3. Calcula epsilon_binning = |D_hi - D_lo| / |D_hi| entre CADA PAR
+     CONSECUTIVO de grillas (8 vs 16, 16 vs 32, etc. -- no solo el
+     primer par, ver docstring de analyze()).
+  4. Compara epsilon_binning del par MAS FINO (el ultimo, ej. 16 vs 32)
+     contra el presupuesto B_8_16<=2.5pp del plan para decidir el
+     veredicto final (ver mas abajo la nota de alcance) -- un par mas
+     fino que converge es evidencia mas fuerte que solo el primero.
+
+DISEnO GENERALIZADO 2026-09-20 (antes: 8 y 16 hardcodeados en el codigo,
+sin forma de agregar 32 sin reescribir el script) -- --n-bins-grid
+acepta cualquier lista ordenada de enteros, no solo 2 valores. Con
+"8,16" el comportamiento es identico al de antes de este cambio (un solo
+par, un solo epsilon_binning). El plan pide explicitamente "si 8->16 es
+limitrofe o 16 no parece estable: comprobar 16->32 antes de decidir" --
+antes de este cambio, eso exigia correr el script dos veces con un
+--n-bins fijo distinto cada vez y comparar los CSV a mano; ahora una
+sola invocacion con la grilla completa da todos los pares de una vez.
 
 ALCANCE REDUCIDO respecto del plan completo, documentado explicitamente:
 la Fase 8 del plan pide idealmente comparar el ENDPOINT shield/control
@@ -30,16 +44,21 @@ epsilon_binning de la DOSIS ABSOLUTA (D_shield sola, sin dividir por
 D_control) -- una aproximacion mas simple, mencionada en el propio plan
 como la metrica "Para dosis" antes de la de "endpoint principal". El
 mismo presupuesto de 2.5pp se aplica aqui como proxy provisional -- si
-epsilon_binning(dosis) ya es alto, es evidencia suficiente de que 8 bins
-no alcanzan sin necesitar la comparacion completa con control.
+epsilon_binning(dosis) ya es alto, es evidencia suficiente de que la
+grilla mas gruesa del par no alcanza sin necesitar la comparacion
+completa con control.
 
 Uso:
     python3 pilots/run_fase8_binning.py
     python3 pilots/run_fase8_binning.py --combos GCR_He/min,SEP_p/max
     python3 pilots/run_fase8_binning.py --n-events 10000 --threads 20
+    python3 pilots/run_fase8_binning.py --n-bins-grid 16,32  # solo el par 16 vs 32
 
-Costo: n_combos * (8+16) corridas independientes = n_combos*24 corridas.
-Con los 3 combos default: 72 corridas.
+Costo: n_combos * suma(grilla) corridas independientes. Con la grilla
+default (8+16+32=56) y los 3 combos default: 168 corridas -- bastante
+mas caro que antes (72), ver --n-bins-grid para acotar a un subconjunto
+(ej. "16,32" si 8 ya se descarto en una corrida previa) si el costo
+completo no es necesario.
 """
 import argparse
 import csv
@@ -79,11 +98,30 @@ EPSILON_BUDGET_PCT = 2.5
 EPSILON_MARGIN_PCT = 0.5
 
 
+# Marcador de semilla por grilla -- FIJO por valor de n_bins, no por
+# posicion dentro de --n-bins-grid (asi 8 y 16 siguen dando EXACTAMENTE
+# las mismas semillas que antes de generalizar a mas de 2 grillas,
+# 2026-09-20 -- retrocompatible con corridas ya hechas/manifest.csv
+# existentes que dependen de esas semillas para el resume). Grillas mas
+# alla de las listadas (ej. 64, si algun dia hace falta) caen al
+# fallback determinista de abajo, sin colision con las ya asignadas.
+_SEED_MARKER_BY_N_BINS = {8: 0, 16: 1, 32: 2}
+
+
 def seed_for(combo_idx: int, n_bins: int, bin_index: int) -> tuple[int, int]:
     """Determinista, sin repeticiones (esta fase no mide ruido MC) --
-    n_bins (8 o 16) entra en la formula para que las corridas de las dos
-    grillas nunca compartan semilla, aunque compartan bin_index."""
-    n_bins_marker = 0 if n_bins == 8 else 1
+    n_bins entra en la formula para que corridas de grillas distintas
+    nunca compartan semilla, aunque compartan bin_index."""
+    if n_bins in _SEED_MARKER_BY_N_BINS:
+        n_bins_marker = _SEED_MARKER_BY_N_BINS[n_bins]
+    else:
+        # Fallback para una grilla no listada arriba -- determinista
+        # (mismo n_bins siempre da el mismo marcador) y sin colision con
+        # los marcadores fijos 0/1/2, pero SIN garantia de no colisionar
+        # entre si mismo si dos grillas no listadas caen en el mismo
+        # modulo -- agregar la grilla nueva a _SEED_MARKER_BY_N_BINS
+        # explicitamente si esto llega a usarse en produccion real.
+        n_bins_marker = 3 + (n_bins % 1000)
     seed1 = pc.PILOT_BASE_SEED + PHASE_SEED_OFFSET + 100_000 * combo_idx + 10_000 * n_bins_marker + 2 * bin_index
     return seed1, seed1 + 1
 
@@ -95,6 +133,13 @@ def main():
                               "A diferencia de Fase 7, NO se fija un bin_index -- esta fase corre "
                               "TODOS los bins de cada grilla (8 y 16) para esa especie/fase. "
                               f"Default: {[c.rsplit('/', 1)[0] for c in DEFAULT_COMBOS]}")
+    parser.add_argument("--n-bins-grid", type=str, default="8,16,32",
+                         help="Lista ordenada de grillas a comparar, separadas por comas (default 8,16,32 -- "
+                              "el plan pide 'si 8->16 es limitrofe o 16 no parece estable, comprobar 16->32 "
+                              "antes de decidir'). epsilon_binning se calcula entre CADA PAR CONSECUTIVO "
+                              "(8 vs 16, 16 vs 32, ...), y el veredicto final usa el ULTIMO par (el mas fino). "
+                              "Pasar solo 2 valores (ej. '16,32') para acotar a un unico par -- util para "
+                              "retomar/extender una corrida que ya descarto 8 bins en una invocacion previa.")
     parser.add_argument("--offset-x-m", type=float, default=0.0)
     parser.add_argument("--n-events", type=int, default=10000,
                          help="Eventos por corrida (default 10000, el mismo n_events de produccion -- "
@@ -136,6 +181,18 @@ def main():
         species, phase = parts
         combos_spec.append((species, phase))
 
+    try:
+        n_bins_grid = [int(x) for x in args.n_bins_grid.split(",")]
+    except ValueError:
+        sys.exit(f"ERROR: --n-bins-grid '{args.n_bins_grid}' invalido -- debe ser una lista de enteros "
+                  "separados por comas, ej. '8,16,32'.")
+    if len(n_bins_grid) < 2:
+        sys.exit("ERROR: --n-bins-grid necesita al menos 2 valores para poder comparar un par "
+                  "(epsilon_binning se calcula entre grillas consecutivas).")
+    if any(n <= 0 for n in n_bins_grid) or n_bins_grid != sorted(n_bins_grid):
+        sys.exit(f"ERROR: --n-bins-grid '{args.n_bins_grid}' debe ser una lista ORDENADA de enteros "
+                  "positivos (ej. '8,16,32', no '16,8' ni '8,0,16').")
+
     out_dir, resuming = pc.resolve_out_dir(args, Path(__file__).resolve().parent, "fase8_binning")
     out_dir.mkdir(parents=True, exist_ok=True)
     macros_dir = out_dir / "macros"
@@ -156,15 +213,15 @@ def main():
 
     # runs[(species, phase, n_bins)] = {bin_index: out_path}
     runs = {}
-    total_runs = sum(8 + 16 for _ in combos_spec)
+    total_runs = sum(sum(n_bins_grid) for _ in combos_spec)
     run_n = 0
 
     # Plan de trabajo completo (para el ETA total) -- work_unit identifica
     # la corrida de forma comparable entre invocaciones (mismo criterio
-    # que la clave de reference_key()): "n_bins=8|16/bin=N".
+    # que la clave de reference_key()): "n_bins=N/bin=N".
     all_work = []
     for combo_idx, (species, phase) in enumerate(combos_spec):
-        for n_bins in (8, 16):
+        for n_bins in n_bins_grid:
             bins = energy_bins.build_bins(spectra_dir, n_bins=n_bins)[(species, phase)]
             for bin_index, _energy_rep, _flux_bin in bins:
                 key = (species, phase, str(n_bins), str(bin_index))
@@ -183,7 +240,7 @@ def main():
               f"pendientes en esta maquina -- se ira midiendo y mostrando desde la primera.")
 
     for combo_idx, (species, phase) in enumerate(combos_spec):
-        for n_bins in (8, 16):
+        for n_bins in n_bins_grid:
             bins = energy_bins.build_bins(spectra_dir, n_bins=n_bins)[(species, phase)]
             for bin_index, energy_rep, _flux_bin in bins:
                 run_n += 1
@@ -253,7 +310,7 @@ def main():
     # ros.SHIP_RADIUS_M/SHIP_HALF_LENGTH_M -- mismo escenario fijo de
     # produccion (ver run_organ_sweep.py), sin flag propio: esta fase no
     # cambia geometria de nave, solo el binning energetico.
-    analyze(combos_spec, runs, spectra_dir, args.n_events,
+    analyze(combos_spec, runs, spectra_dir, args.n_events, n_bins_grid,
             ros.SHIP_RADIUS_M, ros.SHIP_HALF_LENGTH_M, out_dir)
 
 
@@ -293,44 +350,84 @@ def total_dose_for_grid(species, phase, n_bins, runs, spectra_dir, area_cm2, n_e
     return total_d, missing
 
 
-def analyze(combos_spec, runs, spectra_dir, n_events, ship_radius_m, ship_half_length_m, out_dir):
+def analyze(combos_spec, runs, spectra_dir, n_events, n_bins_grid, ship_radius_m, ship_half_length_m, out_dir):
+    """Calcula D_N para cada grilla de n_bins_grid, y epsilon_binning
+    entre CADA PAR CONSECUTIVO (n_bins_grid[i] vs n_bins_grid[i+1]) --
+    una fila por (combo, par) en vez de una columna fija D_8bins/D_16bins
+    como antes de generalizar a mas de 2 grillas (2026-09-20). Con
+    n_bins_grid=[8,16] da exactamente 1 fila por combo, igual que antes."""
     area_cm2 = source_area_cm2(ship_radius_m, ship_half_length_m)
 
-    resultado_rows = []
-    resultado_fieldnames = ["species", "phase", "D_8bins", "D_16bins",
-                             "epsilon_binning_pct", "bins_faltantes_8", "bins_faltantes_16"]
+    # Dosis por (combo, n_bins) -- calculada una sola vez por grilla,
+    # reusada en los dos pares consecutivos que la involucran (ej. D_16
+    # entra tanto en el par 8vs16 como en el par 16vs32).
+    dose_by_combo_and_n = {}
     for species, phase in combos_spec:
-        d8, missing8 = total_dose_for_grid(species, phase, 8, runs, spectra_dir, area_cm2, n_events)
-        d16, missing16 = total_dose_for_grid(species, phase, 16, runs, spectra_dir, area_cm2, n_events)
-        eps_pct = (abs(d16 - d8) / abs(d16) * 100.0) if d16 != 0 else float("nan")
-        resultado_rows.append({
-            "species": species, "phase": phase, "D_8bins": d8, "D_16bins": d16,
-            "epsilon_binning_pct": eps_pct,
-            "bins_faltantes_8": ";".join(map(str, missing8)),
-            "bins_faltantes_16": ";".join(map(str, missing16)),
-        })
+        for n_bins in n_bins_grid:
+            dose_by_combo_and_n[(species, phase, n_bins)] = total_dose_for_grid(
+                species, phase, n_bins, runs, spectra_dir, area_cm2, n_events)
+
+    resultado_rows = []
+    resultado_fieldnames = ["species", "phase", "n_bins_lo", "n_bins_hi", "D_lo", "D_hi",
+                             "epsilon_binning_pct", "bins_faltantes_lo", "bins_faltantes_hi"]
+    for species, phase in combos_spec:
+        for n_lo, n_hi in zip(n_bins_grid, n_bins_grid[1:]):
+            d_lo, missing_lo = dose_by_combo_and_n[(species, phase, n_lo)]
+            d_hi, missing_hi = dose_by_combo_and_n[(species, phase, n_hi)]
+            eps_pct = (abs(d_hi - d_lo) / abs(d_hi) * 100.0) if d_hi != 0 else float("nan")
+            resultado_rows.append({
+                "species": species, "phase": phase, "n_bins_lo": n_lo, "n_bins_hi": n_hi,
+                "D_lo": d_lo, "D_hi": d_hi, "epsilon_binning_pct": eps_pct,
+                "bins_faltantes_lo": ";".join(map(str, missing_lo)),
+                "bins_faltantes_hi": ";".join(map(str, missing_hi)),
+            })
 
     resultado_path = out_dir / "epsilon_binning_por_combo.csv"
     with open(resultado_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=resultado_fieldnames)
         writer.writeheader()
         writer.writerows(resultado_rows)
-    print(f"  epsilon_binning por combo: {resultado_path}")
+    print(f"  epsilon_binning por combo/par: {resultado_path}")
 
-    write_fase8_state(resultado_rows, out_dir)
+    write_fase8_state(resultado_rows, n_bins_grid, out_dir)
 
 
-def write_fase8_state(resultado_rows, out_dir):
+def write_fase8_state(resultado_rows, n_bins_grid, out_dir):
     """Gate AUTOMATIZABLE (a diferencia de Fase 7): el plan da un numero
     concreto (B_8_16<=2.5pp). Se aplica ese mismo umbral aqui a
     epsilon_binning(dosis) -- ver nota de alcance reducido en el
-    docstring del modulo."""
-    valid_rows = [r for r in resultado_rows if r["epsilon_binning_pct"] == r["epsilon_binning_pct"]]  # filtra NaN
+    docstring del modulo.
+
+    Con mas de 2 grillas (2026-09-20): el veredicto FINAL se basa en el
+    PAR MAS FINO (el ultimo de n_bins_grid, ej. 16 vs 32) -- es la
+    evidencia mas fuerte de si la discretizacion ya convergio o si
+    todavia hace falta subdividir mas. Los pares anteriores (ej. 8 vs 16)
+    se resumen aparte, para contexto (ej. "8 vs 16 ya habia dado
+    limitrofe, 16 vs 32 confirma que converge" es una historia distinta
+    de "8 vs 16 parecia limitrofe, pero 16 vs 32 sigue sin converger --
+    seguir subdividiendo")."""
+    n_bins_lo_final, n_bins_hi_final = n_bins_grid[-2], n_bins_grid[-1]
+    final_pair_rows = [r for r in resultado_rows if r["n_bins_hi"] == n_bins_hi_final]
+    valid_rows = [r for r in final_pair_rows if r["epsilon_binning_pct"] == r["epsilon_binning_pct"]]  # filtra NaN
+
+    # Resumen legible de pares anteriores (si los hay) -- no decide el
+    # veredicto, solo da contexto en el resumen/detalle.
+    earlier_pairs_summary = []
+    earlier_pairs = list(zip(n_bins_grid[:-2], n_bins_grid[1:-1])) if len(n_bins_grid) > 2 else []
+    for n_lo, n_hi in earlier_pairs:
+        pair_rows = [r for r in resultado_rows
+                     if r["n_bins_lo"] == n_lo and r["n_bins_hi"] == n_hi
+                     and r["epsilon_binning_pct"] == r["epsilon_binning_pct"]]
+        if pair_rows:
+            max_eps_pair = max(r["epsilon_binning_pct"] for r in pair_rows)
+            earlier_pairs_summary.append(f"{n_lo} vs {n_hi}: max={max_eps_pair:.3f}%")
+
     if not valid_rows:
         result = pilot_state.FaseResult(
             fase="fase8", veredicto=pilot_state.VERDICT_FALLO,
-            resumen="Sin epsilon_binning valido para ninguna combinacion -- revisar corridas fallidas.",
-            detalle={"filas": resultado_rows},
+            resumen=(f"Sin epsilon_binning valido para el par final ({n_bins_lo_final} vs "
+                     f"{n_bins_hi_final}) en ninguna combinacion -- revisar corridas fallidas."),
+            detalle={"filas": resultado_rows, "pares_anteriores": earlier_pairs_summary},
             instrucciones_si_no_auto="Revisar manifest.csv/logs/ de esta corrida para ver que fallo.",
             out_dir=str(out_dir),
         )
@@ -340,34 +437,41 @@ def write_fase8_state(resultado_rows, out_dir):
 
     max_eps = max(r["epsilon_binning_pct"] for r in valid_rows)
     peor = max(valid_rows, key=lambda r: r["epsilon_binning_pct"])
+    contexto = f" (pares anteriores: {'; '.join(earlier_pairs_summary)})" if earlier_pairs_summary else ""
 
     if max_eps <= EPSILON_BUDGET_PCT - EPSILON_MARGIN_PCT:
         veredicto = pilot_state.VERDICT_AUTO_CONTINUE
-        resumen = (f"epsilon_binning maximo={max_eps:.3f}% (peor caso: {peor['species']}/{peor['phase']}), "
-                   f"claramente <= presupuesto {EPSILON_BUDGET_PCT}pp -- 8 bins suficientes.")
-        instrucciones = "Continuar a Fase 9 (calibracion de M_b) con 8 bins, sin comprobar 16 bins."
+        resumen = (f"epsilon_binning({n_bins_lo_final} vs {n_bins_hi_final}) maximo={max_eps:.3f}% "
+                   f"(peor caso: {peor['species']}/{peor['phase']}), claramente <= presupuesto "
+                   f"{EPSILON_BUDGET_PCT}pp -- {n_bins_lo_final} bins ya son suficientes{contexto}.")
+        instrucciones = (f"Continuar a Fase 9 (calibracion de M_b) con {n_bins_lo_final} bins, "
+                          f"sin necesidad de {n_bins_hi_final}.")
     elif max_eps >= EPSILON_BUDGET_PCT + EPSILON_MARGIN_PCT:
         veredicto = pilot_state.VERDICT_REVISAR
-        resumen = (f"epsilon_binning maximo={max_eps:.3f}% (peor caso: {peor['species']}/{peor['phase']}), "
-                   f"claramente > presupuesto {EPSILON_BUDGET_PCT}pp -- 8 bins NO suficientes.")
-        instrucciones = ("Adoptar 16 bins como candidato (ver Fase 8 del plan, 'Si 8 bins no cumplen'). "
-                          "Puede hacer falta comprobar 16->32 tambien -- correr un script equivalente "
-                          "comparando 16 vs 32 antes de congelar el binning definitivo (no implementado "
-                          "todavia, extender run_fase8_binning.py con --n-bins-pair 16,32 si hace falta).")
+        resumen = (f"epsilon_binning({n_bins_lo_final} vs {n_bins_hi_final}) maximo={max_eps:.3f}% "
+                   f"(peor caso: {peor['species']}/{peor['phase']}), claramente > presupuesto "
+                   f"{EPSILON_BUDGET_PCT}pp -- ni siquiera {n_bins_hi_final} bins alcanzan{contexto}.")
+        instrucciones = (f"Adoptar {n_bins_hi_final} bins como candidato de todos modos NO es seguro -- "
+                          f"el error de discretizacion sigue por encima del presupuesto incluso en el par "
+                          f"mas fino corrido. Extender --n-bins-grid con un valor mayor (ej. "
+                          f"'{n_bins_lo_final},{n_bins_hi_final},{n_bins_hi_final*2}') y volver a correr.")
     else:
         veredicto = pilot_state.VERDICT_LIMITROFE
-        resumen = (f"epsilon_binning maximo={max_eps:.3f}% (peor caso: {peor['species']}/{peor['phase']}), "
-                   f"cerca del presupuesto {EPSILON_BUDGET_PCT}pp (dentro de +-{EPSILON_MARGIN_PCT}pp) -- "
-                   "limitrofe, el plan pide comprobar 16->32 en este caso.")
-        instrucciones = ("Ver Fase 8 del plan, 'Si 8->16 es limitrofe o 16 no parece estable': "
-                          "comprobar 16->32 antes de decidir. No implementado todavia en este script -- "
-                          "extender run_fase8_binning.py o correr manualmente con --combos y una grilla de 32.")
+        resumen = (f"epsilon_binning({n_bins_lo_final} vs {n_bins_hi_final}) maximo={max_eps:.3f}% "
+                   f"(peor caso: {peor['species']}/{peor['phase']}), cerca del presupuesto "
+                   f"{EPSILON_BUDGET_PCT}pp (dentro de +-{EPSILON_MARGIN_PCT}pp) -- limitrofe incluso en "
+                   f"el par mas fino corrido{contexto}.")
+        instrucciones = (f"Ver Fase 8 del plan, 'Si 8->16 es limitrofe o 16 no parece estable': seguir "
+                          f"subdividiendo. Correr de nuevo con --n-bins-grid "
+                          f"'{n_bins_lo_final},{n_bins_hi_final},{n_bins_hi_final*2}' para comprobar "
+                          f"{n_bins_hi_final} vs {n_bins_hi_final*2} antes de decidir.")
 
     result = pilot_state.FaseResult(
         fase="fase8", veredicto=veredicto, resumen=resumen,
         detalle={"epsilon_binning_max_pct": max_eps, "peor_caso": f"{peor['species']}/{peor['phase']}",
+                 "par_final": f"{n_bins_lo_final} vs {n_bins_hi_final}",
                  "presupuesto_pct": EPSILON_BUDGET_PCT, "margen_pct": EPSILON_MARGIN_PCT,
-                 "filas": valid_rows},
+                 "pares_anteriores": earlier_pairs_summary, "filas": valid_rows},
         instrucciones_si_no_auto=instrucciones,
         out_dir=str(out_dir),
     )
