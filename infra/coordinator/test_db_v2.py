@@ -106,3 +106,16 @@ def test_jobs_v1_untouched_by_v2_operations():
     assert v1_row is not None
     assert v1_row["status"] == "pending"
     assert db.counts_by_status() == {"pending": 1}
+
+
+def test_timeout_requires_dead_worker_and_respects_attempt_limit():
+    db.upsert_worker('w', 'host', 8, 16, 'test')
+    job = db_v2.insert_job_v2('SEP_p', 'max', 0, 8, 0, 0, 1)
+    db_v2.claim_next_job_v2('w')
+    with db_v2.get_conn() as conn:
+        conn.execute("UPDATE jobs_v2 SET updated_at='2000-01-01', attempt=max_attempts")
+    assert db_v2.requeue_stale_jobs_v2() == []
+    with db_v2.get_conn() as conn:
+        conn.execute("UPDATE workers SET last_heartbeat='2000-01-01'")
+    assert db_v2.requeue_stale_jobs_v2() == [job]
+    assert db_v2.get_job_v2(job)['status'] == 'failed'

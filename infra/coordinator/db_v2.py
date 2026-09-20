@@ -156,6 +156,13 @@ def claim_next_job_v2(worker_id: str) -> sqlite3.Row | None:
         if worker is None:
             return None
         available_ram = worker["ram_free_gb"] if worker["ram_free_gb"] is not None else worker["ram_gb"]
+        # float("inf") -- mismo criterio que claim_next_job() en db.py:
+        # un worker sin cpu_score real (version vieja del worker, o el
+        # benchmark de arranque fallo) NUNCA debe bloquearse por
+        # min_cpu_score -- 0.0 aqui era un bug real (encontrado en
+        # revision, 2026-09-20): invertia ese criterio, bloqueando
+        # exactamente al worker que menos informacion tiene sobre si
+        # mismo de cualquier job que pidiera min_cpu_score > 0.
         worker_cpu_score = worker["cpu_score"] if worker["cpu_score"] is not None else float("inf")
 
         candidate = conn.execute(
@@ -255,20 +262,21 @@ def requeue_stale_jobs_v2() -> list[int]:
     especifica de la grilla de 8 bins de produccion v1, no valida sin mas
     para una grilla de n_bins arbitrario)."""
     from datetime import datetime, timezone
-    cutoff = (datetime.now(timezone.utc).timestamp() - STALE_JOB_TIMEOUT_S)
-    cutoff_iso = datetime.fromtimestamp(cutoff, tz=timezone.utc).isoformat()
+    cutoff_iso = datetime.fromtimestamp(datetime.now(timezone.utc).timestamp() - db.STALE_JOB_TIMEOUT_S, tz=timezone.utc).isoformat()
     with get_conn() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         rows = conn.execute(
-            "SELECT job_id FROM jobs_v2 WHERE status IN ('claimed','running') AND updated_at < ?",
-            (cutoff_iso,),
+            "SELECT j.job_id FROM jobs_v2 j LEFT JOIN workers w ON w.worker_id=j.claimed_by "
+            "WHERE j.status IN ('claimed','running') AND j.updated_at < ? "
+            "AND (w.last_heartbeat IS NULL OR w.last_heartbeat < ?)",
+            (cutoff_iso, cutoff_iso),
         ).fetchall()
         ids = [r["job_id"] for r in rows]
-        if ids:
-            conn.executemany(
-                "UPDATE jobs_v2 SET status='pending', claimed_by=NULL, claimed_at=NULL, connected_s=0, "
-                "updated_at=? WHERE job_id=?",
-                [(now_iso(), i) for i in ids],
-            )
+        conn.executemany(
+            "UPDATE jobs_v2 SET status=CASE WHEN attempt < max_attempts THEN 'pending' ELSE 'failed' END, "
+            "claimed_by=NULL, claimed_at=NULL, connected_s=0, last_error='heartbeat expired', "
+            "updated_at=? WHERE job_id=?", [(now_iso(), i) for i in ids],
+        )
         return ids
 
 

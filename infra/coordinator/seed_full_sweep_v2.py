@@ -66,6 +66,8 @@ def main():
                          help="Lista separada por comas de bin_index a sembrar. Default: todos (0..n_bins-1).")
     args = parser.parse_args()
 
+    if args.n_bins < 1 or args.n_events < 1 or args.repeticion < 0:
+        parser.error("n-bins/n-events deben ser positivos y repeticion no negativa")
     if args.bins:
         bin_indices = [int(b) for b in args.bins.split(",")]
         for b in bin_indices:

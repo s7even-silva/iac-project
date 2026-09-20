@@ -2211,3 +2211,33 @@ en un directorio normal (nunca debe tocarse) — ambos casos se comportan
 como se espera. `infra/worker/test_worker.py`, 71 tests en total.
 Cambio puro de `worker.py` — no requiere imagen Docker nueva, aplica con
 el procedimiento normal de actualización del worker.
+
+### Revisión previa al push de jobs_v2 (2026-09-20)
+
+Corregidos: arranque v2 enviado por error a `/jobs/{id}/start`; colisiones de
+outbox/fallos entre IDs v1/v2 (v2 usa prefijo propio, legados v1 conservados);
+heartbeat de v2 que podía recibir cancelación/log de v1 con el mismo ID;
+reencolado v2 basado en updated_at aun con heartbeat vivo, sin transacción
+ni límite de intentos. Ahora exige heartbeat vencido y respeta max_attempts.
+Resultados v2 verifican también fase. Seed valida bins/eventos positivos.
+
+**Bug propio introducido en esta misma revisión, encontrado y corregido
+antes de comitear:** `claim_next_job_v2()` había quedado con el fallback de
+`cpu_score` desconocido en `0.0` en vez de `float("inf")` — invertía el
+criterio ya establecido en `db.py` v1 (`claim_next_job()`, comentario
+explícito ahí: "un worker sin `cpu_score` real... no debe bloquearse por
+`min_cpu_score`"). Con `0.0`, exactamente el worker que menos telemetría
+tiene de sí mismo (versión vieja, o el benchmark de arranque falló)
+quedaba bloqueado de cualquier job que pidiera `min_cpu_score > 0` — al
+revés de lo previsto. Revertido a `float("inf")`, mismo criterio que v1.
+
+La limpieza global por cwd `geant4-job-*` quedó desactivada: no prueba propiedad
+ni que otro worker haya terminado. Sigue la terminación del grupo subprocess
+propio por cancelación. Para recuperar limpieza automática se necesita un registro
+persistente de propietario e identidad de proceso (incluido starttime), no un
+filtro por nombre. El contador no suma señales no verificadas.
+
+El barrido rechaza resume sobre CSV con esquema antiguo o grilla diferente antes
+de escribir, evitando columnas corridas y saltar combinaciones de otra grilla.
+Conservar esas salidas y usar otro directorio; no se migran ni borran resultados.
+Revisión local: no despliegue, cambios de jobs ni push.
