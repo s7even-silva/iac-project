@@ -7,11 +7,17 @@ posterior; este worker ejecuta únicamente el lanzador Geant4 existente.
 
 ## Producción (en vivo)
 
-- **Coordinator:** `http://34.134.100.224:8000` (VM `e2-micro` en GCP,
-  Always Free Tier, `us-central1-a` — ver `infra/deploy/`. Azure quedó
-  bloqueado por una restricción de plataforma en la suscripción del
-  usuario, no algo resoluble desde este repo; el script de Azure sigue
-  listo para cuando eso se resuelva).
+- **Coordinator:** `https://coordinator.vlaboratory.org` (VM `e2-micro` en
+  GCP, Always Free Tier, `us-central1-a` — ver `infra/deploy/`. Azure
+  quedó bloqueado por una restricción de plataforma en la suscripción
+  del usuario, no algo resoluble desde este repo; el script de Azure
+  sigue listo para cuando eso se resuelva). HTTPS vía Caddy/Let's
+  Encrypt, puerto 8000 HTTP directo sigue abierto en paralelo. **La IP
+  pública de la VM es efímera, no estática** (confirmado 2026-09-18:
+  cambió tras un reinicio de la VM, de `34.134.100.224` a
+  `35.253.238.197`, dejando el DNS desactualizado hasta corregirlo a
+  mano) — no hardcodear la IP en ningún lado, usar siempre el dominio;
+  pendiente reservarla como estática para que esto no se repita.
 - **Imagen del worker:** `ghcr.io/s7even-silva/iac-project/geant4-worker:latest`.
 - **Para reclutar gente que preste CPU (sin el proyecto instalado):** ver
   [`infra/GUIA_VOLUNTARIOS.md`](GUIA_VOLUNTARIOS.md) — Docker, un solo
