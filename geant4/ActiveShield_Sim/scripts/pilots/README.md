@@ -100,11 +100,11 @@ viejas + nuevas), no solo sobre las nuevas.
   simplemente empieza una corrida nueva ahí (no hace falta que exista).
 - `--no-resume` fuerza rehacer todo desde cero aunque el directorio ya
   tenga corridas exitosas (mismo flag que `run_organ_sweep.py`).
-- Si no se pasa `--out-dir`, cada invocación crea un directorio nuevo con
-  timestamp — **no hay resume implícito**: para reanudar hay que apuntar
-  explícitamente al `--out-dir` de la corrida cortada (el propio script lo
-  imprime apenas arranca, y también queda en la ruta que reportan los
-  logs).
+- Si no se pasa `--out-dir` al script de una fase directamente (no al
+  orquestador, ver más abajo), cada invocación crea un directorio nuevo
+  con timestamp — para reanudar así, apuntar explícitamente al `--out-dir`
+  que imprimió la corrida cortada (queda también en la ruta que reportan
+  los logs).
 - `--out-dir` debe existir dentro del checkout (relativo o absoluto, da
   igual — el script lo resuelve a ruta absoluta internamente); un
   `--out-dir` relativo **sí funcionaba mal antes de 2026-09-20** (rompía
@@ -112,12 +112,26 @@ viejas + nuevas), no solo sobre las nuevas.
   trabajo, con un crash `-11` sin mensaje claro) — ya corregido en
   `pilot_common.resolve_out_dir()`.
 
-El orquestador (`run_pilot_workflow.py --continue-to faseN`) delega en
-estos mismos scripts, así que hereda esta robustez automáticamente: para
-reanudar una fase cortada a través del orquestador, pasale el mismo
-`--out-dir` como argumento adicional (se reenvía tal cual a la fase, ver
-`parse_known_args()` en `run_pilot_workflow.py`) — el orquestador en sí
-no guarda ni infiere ese directorio por su cuenta.
+**El orquestador (`run_pilot_workflow.py`) retoma solo, sin que le pases
+`--out-dir`:** antes de correr cada fase, busca en `results/` el
+directorio más reciente con el prefijo de esa fase que tenga
+`manifest.csv` (`pilot_common.find_latest_out_dir()`) y, si existe, se lo
+pasa automáticamente al script de esa fase — que salta lo ya hecho igual
+que si se lo hubieras pasado a mano. No hace falta que el usuario
+recuerde ni copie ningún directorio; basta con volver a invocar
+
+```bash
+python3 pilots/run_pilot_workflow.py --continue-to fase8 --combos "GCR_H/min" --n-events 200 --threads 4
+```
+
+y encuentra sola la corrida de Fase 8 cortada anteriormente (verificado:
+`Resume automatico: retomando .../fase8_binning_<timestamp>/` seguido de
+saltar las 24/24 combinaciones ya hechas). Para forzar una corrida nueva
+desde cero (ignorando cualquier directorio anterior de esa fase), pasar
+`--no-resume` — el orquestador lo detecta y no inyecta ningún
+`--out-dir`, dejando que la fase cree uno nuevo con timestamp como
+siempre. Pasar `--out-dir` explícito a mano también sigue funcionando
+(tiene prioridad sobre la búsqueda automática).
 
 ## Fase 7 — Piloto A: validación del estimador de incertidumbre intra-run
 

@@ -318,6 +318,27 @@ def _utc_timestamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
+def find_latest_out_dir(pilots_dir: Path, prefix: str) -> Path | None:
+    """Busca el directorio mas reciente results/<prefix>_<timestamp>/ que
+    tenga un manifest.csv (senal de que al menos arranco a correr, no solo
+    se creo vacio). Devuelve None si no hay ninguno.
+
+    2026-09-20, agregado para que run_pilot_workflow.py pueda retomar una
+    fase cortada SIN que el usuario tenga que pasar --out-dir a mano --
+    el orquestador corre las 4 fases en secuencia, asi que un --out-dir
+    global no serviria (cada fase necesita el suyo propio). El nombre
+    incluye timestamp UTC (ver _utc_timestamp()), asi que ordenar por
+    nombre de directorio es equivalente a ordenar por fecha de creacion."""
+    results_dir = pilots_dir / "results"
+    if not results_dir.is_dir():
+        return None
+    candidates = sorted(
+        d for d in results_dir.glob(f"{prefix}_*")
+        if d.is_dir() and (d / "manifest.csv").is_file()
+    )
+    return candidates[-1] if candidates else None
+
+
 def add_resume_arg(parser):
     """Comun a todos los run_faseN.py -- --no-resume fuerza rehacer todo
     desde cero, mismo patron/nombre que run_organ_sweep.py (donde resume

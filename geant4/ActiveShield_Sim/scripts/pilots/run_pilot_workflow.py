@@ -35,6 +35,17 @@ Uso:
 
 Argumentos especificos de cada fase (--n-events, --n-bins, --m-b-csv,
 etc.) se pasan tal cual a cada run_faseN.py -- ver --help de cada uno.
+
+RESUME AUTOMATICO (2026-09-20): si la fase que le toca correr tiene un
+results/<prefix>_<timestamp>/ con manifest.csv de una corrida anterior
+(completa o cortada a mitad, ej. por fin de sesion) y no se paso
+--out-dir explicito en los argumentos, este orquestador encuentra solo
+el mas reciente (pilot_common.find_latest_out_dir()) y se lo pasa a la
+fase -- que a su vez salta las combinaciones ya exitosas (ver
+pilot_common.resolve_out_dir()/add_resume_arg()). No hace falta que el
+usuario recuerde ni pase el directorio a mano. Para forzar una corrida
+nueva desde cero en vez de retomar, pasar --no-resume (se reenvia tal
+cual a la fase).
 """
 import argparse
 import subprocess
@@ -42,6 +53,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import pilot_common as pc  # noqa: E402
 import pilot_state  # noqa: E402
 
 FASES = ["fase7", "fase8", "fase9", "fase10"]
@@ -50,6 +62,12 @@ SCRIPT_BY_FASE = {
     "fase8": "run_fase8_binning.py",
     "fase9": "run_fase9_calibracion_mb.py",
     "fase10": "run_fase10_endpoint.py",
+}
+OUT_DIR_PREFIX_BY_FASE = {
+    "fase7": "intrarun_pilot",
+    "fase8": "fase8_binning",
+    "fase9": "fase9_calibracion_mb",
+    "fase10": "fase10_endpoint",
 }
 PILOTS_DIR = Path(__file__).resolve().parent
 
@@ -70,10 +88,23 @@ def print_status():
 
 def run_fase(fase: str, extra_args: list[str]) -> pilot_state.FaseResult | None:
     script = PILOTS_DIR / SCRIPT_BY_FASE[fase]
+    args = list(extra_args)
+
+    # Resume automatico: si el llamador no paso --out-dir a mano y hay una
+    # corrida anterior de esta fase (completa o cortada), la reusamos --
+    # ver docstring del modulo. "--no-resume" en extra_args deshabilita
+    # esto explicitamente (se reenvia igual a la fase, que empieza de cero
+    # en el mismo directorio nuevo que hubiera generado sin este bloque).
+    if "--out-dir" not in args and "--no-resume" not in args:
+        latest = pc.find_latest_out_dir(PILOTS_DIR, OUT_DIR_PREFIX_BY_FASE[fase])
+        if latest is not None:
+            print(f"Resume automatico: retomando {latest}")
+            args = ["--out-dir", str(latest)] + args
+
     print(f"\n{'='*70}")
     print(f"Corriendo {fase} ({script.name})...")
     print(f"{'='*70}\n")
-    result = subprocess.run([sys.executable, str(script)] + extra_args, cwd=PILOTS_DIR)
+    result = subprocess.run([sys.executable, str(script)] + args, cwd=PILOTS_DIR)
     if result.returncode != 0:
         print(f"\n!! {script.name} termino con exit code {result.returncode} -- "
               f"revisar salida arriba, no se genero estado valido.")
