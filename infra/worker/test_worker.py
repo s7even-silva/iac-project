@@ -30,6 +30,62 @@ def test_header_only_is_not_result(tmp_path):
     assert worker.filter_results_csv(job, tmp_path) == ''
 
 
+def test_build_command_includes_n_bins_when_present():
+    # jobs_v2 (2026-09-20): un job que trae n_bins debe pasarlo como
+    # --n-bins a run_organ_sweep.py -- ver db_v2.py.
+    job = dict(species='GCR_H', phase='min', bin_index=3, n_bins=16, offset_x_m=0., repeticion=0, n_events=200)
+    cmd = worker.build_command(job)
+    assert cmd[cmd.index('--n-bins')+1] == '16'
+
+
+def test_build_command_omits_n_bins_when_absent():
+    # Un job v1 (sin la key 'n_bins') NUNCA debe agregar --n-bins -- el
+    # comando construido para v1 no cambia en absoluto (protege
+    # test_exact_repetition, que no espera --n-bins en el comando).
+    job = dict(species='GCR_H', phase='min', bin_index=3, offset_x_m=0., repeticion=0, n_events=200)
+    cmd = worker.build_command(job)
+    assert '--n-bins' not in cmd
+
+
+def test_results_fieldnames_v2_includes_stat_columns():
+    for col in ('n_bins', 's1_j', 's2_j2', 'n', 'se_run_j'):
+        assert col in worker.RESULTS_FIELDNAMES_V2
+
+
+def test_filter_results_csv_v2_filters_by_n_bins(tmp_path):
+    # bin_index=3 de una grilla de 8 y bin_index=3 de una grilla de 16 NO
+    # son el mismo job -- filter_results_csv debe distinguirlos cuando el
+    # job trae n_bins (ver db_v2.py, UNIQUE incluye n_bins).
+    header = ','.join(worker.RESULTS_FIELDNAMES_V2)
+    rows = [
+        'GCR_H,min,3,8,100.0,0.0,0,1,1e-10,1e-12,200,1e-10,1e-20,100,1e-19',
+        'GCR_H,min,3,16,100.0,0.0,0,1,2e-10,2e-12,200,2e-10,2e-20,200,2e-19',
+    ]
+    (tmp_path/'resultados_organo_sweep.csv').write_text(header + '\n' + '\n'.join(rows) + '\n')
+
+    job = dict(species='GCR_H', phase='min', bin_index=3, n_bins=16, offset_x_m=0., repeticion=0)
+    result = worker.filter_results_csv(job, tmp_path, worker.RESULTS_FIELDNAMES_V2)
+    lines = [l for l in result.splitlines() if l]
+    assert len(lines) == 2  # header + 1 fila (solo la de n_bins=16)
+    assert ',16,' in lines[1]
+
+
+def test_filter_results_csv_tolerates_extra_columns_for_v1(tmp_path):
+    # Bug real encontrado 2026-09-20: resultados_organo_sweep.csv ahora
+    # SIEMPRE trae n_bins/s1_j/s2_j2/n/se_run_j (ver run_organ_sweep.py) --
+    # un job v1 (fieldnames=RESULTS_FIELDNAMES, sin esas columnas) no debe
+    # fallar por eso (extrasaction='ignore').
+    header = ','.join(worker.RESULTS_FIELDNAMES_V2)
+    row = 'GCR_H,min,0,8,10.0,0.0,0,1,1e-10,1e-12,200,1e-10,1e-20,100,1e-19'
+    (tmp_path/'resultados_organo_sweep.csv').write_text(header + '\n' + row + '\n')
+
+    job = dict(species='GCR_H', phase='min', bin_index=0, offset_x_m=0., repeticion=0)  # sin n_bins -- job v1
+    result = worker.filter_results_csv(job, tmp_path)  # fieldnames default = RESULTS_FIELDNAMES (v1)
+    lines = [l for l in result.splitlines() if l]
+    assert len(lines) == 2
+    assert 's1_j' not in lines[0]  # header v1, sin las columnas nuevas
+
+
 @pytest.mark.parametrize("ignore_term", [False, True])
 def test_run_job_kills_subprocess_when_cancel_event_set(tmp_path, monkeypatch, ignore_term):
     # Reproduce el mecanismo de remote-kill de punta a punta: un
@@ -47,7 +103,7 @@ def test_run_job_kills_subprocess_when_cancel_event_set(tmp_path, monkeypatch, i
     with patch.object(worker.SESSION, 'post', return_value=start_response):
         failure = {}
 
-        def fake_report_failure(worker_id, job_id, error, duration_s):
+        def fake_report_failure(worker_id, job_id, error, duration_s, api_version='v1'):
             failure.update(worker_id=worker_id, job_id=job_id, error=error, duration_s=duration_s)
 
         monkeypatch.setattr(worker, 'report_failure', fake_report_failure)
@@ -190,7 +246,7 @@ def test_run_job_kills_stalled_subprocess_via_watchdog(tmp_path, monkeypatch):
     with patch.object(worker.SESSION, 'post', return_value=start_response):
         failure = {}
         monkeypatch.setattr(worker, 'report_failure',
-                             lambda worker_id, job_id, error, duration_s: failure.update(error=error))
+                             lambda worker_id, job_id, error, duration_s, api_version='v1': failure.update(error=error))
         monkeypatch.setattr(worker, 'report_result', lambda *a, **k: pytest.fail('no debe reportarse como exitoso'))
 
         started = time.monotonic()

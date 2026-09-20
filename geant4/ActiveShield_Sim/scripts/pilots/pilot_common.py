@@ -101,43 +101,21 @@ def build_macro(combo, offset_x_m, seed1, seed2, n_threads, print_progress_every
     )
 
 
-def parse_organ_table_full(out_path: Path):
-    """Como run_organ_sweep.parse_icrp110_out(), pero lee TAMBIEN las
-    columnas 4-7 (S1_J, S2_J2, N, SE_run_J) que agrega el scorer
-    instrumentado -- el parser original de produccion solo usa
-    parts[0]/parts[1] (Edep/Dose) a proposito, para no depender de un
-    formato que todavia no existia cuando se escribio. Devuelve
-    {organo_id: {edep_J, dose_Gy, s1_j, s2_j2, n, se_run_j}}."""
-    text = out_path.read_text()
-    marker = "ORGAN ENERGY DEPOSITIONS AND ABSORBED DOSE"
-    if marker not in text:
-        raise ValueError(f"{out_path}: no se encontro la seccion '{marker}'")
-    tail = text.split(marker, 1)[1]
-    rows = {}
-    in_table = False
-    for line in tail.splitlines():
-        if line.startswith("OrganID"):
-            in_table = True
-            continue
-        if not in_table:
-            continue
-        if line.startswith("Total energy"):
-            break
-        if "|" not in line:
-            continue
-        left, right = line.split("|", 1)
-        parts = right.split()
-        if len(parts) < 2:
-            continue
-        organo_id = int(left.strip())
-        entry = {"edep_J": float(parts[0]), "dose_Gy": float(parts[1])}
-        if len(parts) >= 6:
-            entry["s1_j"] = float(parts[2])
-            entry["s2_j2"] = float(parts[3])
-            entry["n"] = int(parts[4])
-            entry["se_run_j"] = float(parts[5])
-        rows[organo_id] = entry
-    return rows
+# parse_organ_table_full: 2026-09-20, dejo de tener copia propia --
+# antes duplicaba (identico caracter a caracter, salvo nombres de
+# variable) lo que ahora vive como run_organ_sweep.parse_icrp110_out(),
+# reescrita para incluir S1/S2/N/SE_run tambien (agregado ahi para que
+# jobs_v2 del coordinator pueda subir estos estadisticos). Alias, no
+# reimplementacion -- una sola fuente de verdad para este parseo. Unica
+# diferencia de comportamiento: la version de run_organ_sweep.py lanza
+# ValueError si la tabla de organos quedo completamente vacia (0 lineas
+# parseadas) en vez de devolver {} silenciosamente -- verificado que
+# check_scorer_has_intrarun_columns() de mas abajo sigue funcionando bien
+# con esto (su chequeo real es "las columnas S1/S2/N faltan en filas que
+# SI existen", un caso distinto que ValueError no intercepta) y que
+# run_verbose() (la otra llamada real) ya envuelve esta funcion en un
+# try/except generico.
+parse_organ_table_full = ros.parse_icrp110_out
 
 
 def check_scorer_has_intrarun_columns(build_dir: Path, binary_path: Path):
