@@ -337,6 +337,67 @@ def _read_proc_cmdline(pid: int) -> str:
         return ""
 
 
+# CLK_TCK -- casi siempre 100 en Linux (verificable con os.sysconf('SC_CLK_TCK'),
+# se consulta en vivo en vez de asumir el valor tipico, sin costo real: una
+# sola syscall, cacheada por el propio SO).
+def _read_proc_diagnostics(pid: int) -> dict | None:
+    """Snapshot de /proc/<pid>/stat + cwd para loguear ANTES de matar --
+    2026-09-20, pedido explicito del equipo tras el incidente de tania:
+    si el problema reaparece (misma maquina u otra, imagen nueva o vieja),
+    el dato que faltó esa vez (ppid/pgid/sid reales del huerfano) queda
+    registrado sin que nadie tenga que entrar a la maquina a sacarlo a
+    mano. Debe leerse ANTES de matar el proceso -- una vez muerto, /proc
+    ya no tiene nada que leer."""
+    try:
+        text = Path(f"/proc/{pid}/stat").read_text()
+        # comm (campo 2) va entre parentesis y PUEDE contener espacios/
+        # parentesis -- se busca desde el ULTIMO ')', como en cualquier
+        # parser de /proc/*/stat correcto.
+        after_comm = text.rsplit(")", 1)[1].split()
+        # Campos POSTERIORES a comm, 0-indexados: [0]=state, [1]=ppid,
+        # [2]=pgrp, [3]=session, ..., [19]=starttime (indice real del
+        # campo 22 de /proc/pid/stat, menos los 3 primeros ya consumidos
+        # por pid/comm/state).
+        ppid, pgid, sid = int(after_comm[1]), int(after_comm[2]), int(after_comm[3])
+        starttime_ticks = int(after_comm[19])
+        clk_tck = os.sysconf("SC_CLK_TCK")
+        boot_time = _system_boot_time_s()
+        age_s = None
+        if boot_time is not None:
+            age_s = max(0.0, time.time() - (boot_time + starttime_ticks / clk_tck))
+        return {"pid": pid, "ppid": ppid, "pgid": pgid, "sid": sid,
+                "age_s": age_s, "cwd": _read_proc_cwd_realpath(pid)}
+    except (OSError, IndexError, ValueError):
+        return None
+
+
+_SYSTEM_BOOT_TIME_S = None  # cacheado -- no cambia mientras el worker corre
+
+
+def _system_boot_time_s() -> float | None:
+    global _SYSTEM_BOOT_TIME_S
+    if _SYSTEM_BOOT_TIME_S is not None:
+        return _SYSTEM_BOOT_TIME_S
+    try:
+        for line in Path("/proc/stat").read_text().splitlines():
+            if line.startswith("btime "):
+                _SYSTEM_BOOT_TIME_S = float(line.split()[1])
+                return _SYSTEM_BOOT_TIME_S
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+# Contador acumulado de huerfanos matados en la vida de este proceso --
+# 2026-09-20, pedido explicito del equipo: visible desde el coordinator
+# sin necesitar entrar a la maquina (ver heartbeat(), que lo manda en
+# cada heartbeat igual que ram_free_gb/cpu_load_pct). Se resetea a 0 en
+# cada reinicio del proceso worker -- es un contador de ESTE proceso, no
+# un total historico persistente (no hay donde persistirlo del lado del
+# worker sin agregar estado nuevo solo para esto).
+_orphans_killed_total = 0
+
+
 def cleanup_orphaned_simulations() -> list[int]:
     """Mata cualquier proceso ICRP110phantoms cuyo directorio de trabajo
     (cwd, via /proc/<pid>/cwd) esta dentro de un geant4-job-* -- el
@@ -358,6 +419,7 @@ def cleanup_orphaned_simulations() -> list[int]:
     fallo al leer /proc (permisos, race de que el proceso termine solo
     mientras se inspecciona) se ignora en silencio para ESE pid. Devuelve
     la lista de PIDs matados, para loguear."""
+    global _orphans_killed_total
     killed = []
     try:
         pids = [int(p) for p in os.listdir("/proc") if p.isdigit()]
@@ -370,14 +432,25 @@ def cleanup_orphaned_simulations() -> list[int]:
         cwd = _read_proc_cwd_realpath(pid)
         if _ORPHAN_JOB_DIR_PREFIX not in cwd:
             continue
+        # Snapshot ANTES de matar -- una vez muerto, /proc/<pid> ya no
+        # tiene nada que leer (ver _read_proc_diagnostics()).
+        diag = _read_proc_diagnostics(pid)
         try:
             os.killpg(os.getpgid(pid), signal.SIGTERM)
             killed.append(pid)
+            _orphans_killed_total += 1
+            if diag is not None:
+                age_str = f"{diag['age_s']:.0f}s" if diag["age_s"] is not None else "?"
+                print(f"[worker] limpieza: matado pid={diag['pid']} ppid={diag['ppid']} "
+                      f"pgid={diag['pgid']} sid={diag['sid']} edad={age_str} cwd={diag['cwd']}")
+            else:
+                print(f"[worker] limpieza: matado pid={pid} (no se pudo leer /proc antes de matar)")
         except (ProcessLookupError, PermissionError):
             continue
     if killed:
         print(f"[worker] limpieza: {len(killed)} proceso(s) {_ORPHAN_BINARY_NAME} huerfano(s) "
-              f"(cwd bajo {_ORPHAN_JOB_DIR_PREFIX}*, sin job activo de este worker) terminados: {killed}")
+              f"(cwd bajo {_ORPHAN_JOB_DIR_PREFIX}*, sin job activo de este worker) terminados: {killed} "
+              f"(total acumulado en este proceso: {_orphans_killed_total})")
     return killed
 
 
@@ -677,7 +750,12 @@ def heartbeat(worker_id: str) -> int | None:
         resp = SESSION.post(
             f"{COORDINATOR_URL}/api/v1/workers/{worker_id}/heartbeat",
             json={"ram_free_gb": ram_free_gb(), "cpu_load_pct": cpu_load_pct(),
-                  "image_digest": self_image_digest(), "active_job_id": active_job_id},
+                  "image_digest": self_image_digest(), "active_job_id": active_job_id,
+                  # 2026-09-20, ver cleanup_orphaned_simulations(): visible
+                  # desde el coordinator (GET /api/v1/workers) sin necesitar
+                  # acceso directo a la maquina -- si el problema de tania
+                  # reaparece en otra maquina, se nota desde el dashboard.
+                  "orphans_killed_total": _orphans_killed_total},
             timeout=15,
         )
         resp.raise_for_status()

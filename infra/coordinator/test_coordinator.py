@@ -501,6 +501,25 @@ def test_heartbeat_without_telemetry_keeps_previous_values():
     assert workers[0]['cpu_load_pct'] == 20.0
 
 
+def test_heartbeat_reports_and_keeps_orphans_killed_total():
+    # 2026-09-20, ver cleanup_orphaned_simulations() en worker.py -- el
+    # contador debe quedar visible via GET /api/v1/workers (row_to_dict
+    # ya expone todas las columnas de workers, sin cambios en app.py).
+    db.upsert_worker('w', 'host', 8, 16.0, '')
+    db.touch_heartbeat('w', orphans_killed_total=3)
+    assert db.list_workers()[0]['orphans_killed_total'] == 3
+
+    # Un heartbeat SIN el campo (worker viejo que no lo manda todavia)
+    # no debe borrar el ultimo valor conocido -- COALESCE, no NULL directo.
+    db.touch_heartbeat('w')
+    assert db.list_workers()[0]['orphans_killed_total'] == 3
+
+    # Un worker que se reinicio y volvio a 0 SI debe reflejarse -- 0 es
+    # un valor real (int), no None, asi que COALESCE(0, previo) = 0.
+    db.touch_heartbeat('w', orphans_killed_total=0)
+    assert db.list_workers()[0]['orphans_killed_total'] == 0
+
+
 def test_heartbeat_accrues_connected_s_to_claimed_job():
     db.upsert_worker('w', 'host', 8, 16.0, '')
     job_id = db.insert_job("SEP_p", "min", 0, 0.0, 0, 100)

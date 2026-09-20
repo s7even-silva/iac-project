@@ -23,6 +23,10 @@ class HeartbeatIn(BaseModel):
     ram_free_gb: float | None = None
     cpu_load_pct: float | None = None
     image_digest: str | None = None
+    # orphans_killed_total (2026-09-20, ver cleanup_orphaned_simulations()
+    # en worker.py): contador acumulado DE ESTE PROCESO worker, no un
+    # total historico -- None para un worker viejo que no lo manda todavia.
+    orphans_killed_total: int | None = None
 
 
 class JobOut(BaseModel):
