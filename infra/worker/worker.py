@@ -471,6 +471,15 @@ if os.environ.get("WORKER_TOKEN"):
 RESULTS_FIELDNAMES = ["especie", "fase", "bin_index", "energy_mev", "offset_x_m", "repeticion",
                        "organo_id", "edep_J", "dose_gy_run", "n_eventos"]
 
+# jobs_v2 (2026-09-20, ver infra/coordinator/db_v2.py): agrega n_bins
+# (grilla de energia parametrizable por job, a diferencia de v1 que
+# siempre asume la grilla de 8 fija) y los estadisticos intra-run
+# S1/S2/N/SE_run que el scorer ya calcula (ICRP110UserScoreWriter.cc) --
+# ver run_organ_sweep.py:parse_icrp110_out() para el formato exacto.
+RESULTS_FIELDNAMES_V2 = ["especie", "fase", "bin_index", "n_bins", "energy_mev", "offset_x_m",
+                          "repeticion", "organo_id", "edep_J", "dose_gy_run", "n_eventos",
+                          "s1_j", "s2_j2", "n", "se_run_j"]
+
 
 def get_or_create_worker_id() -> str:
     if WORKER_ID_FILE.is_file():
@@ -622,7 +631,28 @@ def poll_next_job(worker_id: str) -> dict | None:
     if resp.status_code == 204:
         return None
     resp.raise_for_status()
-    return resp.json()
+    job = resp.json()
+    job["_api_version"] = "v1"
+    return job
+
+
+def poll_next_job_v2(worker_id: str) -> dict | None:
+    """jobs_v2 (2026-09-20, ver infra/coordinator/db_v2.py) -- funcion
+    SEPARADA de poll_next_job() (no parametrizada por version) a
+    proposito: varios tests existentes monkeypatchean poll_next_job por
+    nombre/firma exacta, y no hay motivo real para arriesgar eso por una
+    diferencia de un solo path. job["_api_version"]="v2" es lo que hace
+    que el resto del flujo (_run_job/build_command/filter_results_csv/
+    report_result/report_failure) tome las decisiones correctas sin
+    necesitar mas cambios en run_worker_loop() que llamar a esta funcion
+    ademas de la v1."""
+    resp = SESSION.post(f"{COORDINATOR_URL}/api/v1/jobs/v2/next", json={"worker_id": worker_id}, timeout=15)
+    if resp.status_code == 204:
+        return None
+    resp.raise_for_status()
+    job = resp.json()
+    job["_api_version"] = "v2"
+    return job
 
 
 def build_command(job: dict, build_dir=None) -> list[str]:
@@ -636,7 +666,7 @@ def build_command(job: dict, build_dir=None) -> list[str]:
     # (columna NOT NULL en jobs, ver db.py), asi que pasar esto no cambia
     # nada mientras cada especie siga en una sola fase -- run_organ_sweep.py
     # ya filtra correctamente aunque el flag sea redundante en ese caso.
-    return [
+    cmd = [
         sys.executable, str(RUN_ORGAN_SWEEP),
         "--build-dir", str(build_dir or BUILD_DIR),
         "--only-species", job["species"],
@@ -648,22 +678,47 @@ def build_command(job: dict, build_dir=None) -> list[str]:
         "--threads", str(WORKER_THREADS), "--no-resume",
         "--n-events", str(job["n_events"]),
     ]
+    # n_bins (2026-09-20, jobs_v2): SOLO si el job lo trae -- un job v1
+    # (siempre la grilla de 8 fija) nunca tiene esta key, asi que el
+    # comando construido para v1 no cambia en absoluto (protege
+    # test_exact_repetition, que no espera --n-bins).
+    if "n_bins" in job:
+        cmd += ["--n-bins", str(job["n_bins"])]
+    return cmd
 
 
-def filter_results_csv(job: dict, build_dir=None) -> str:
+def filter_results_csv(job: dict, build_dir=None, fieldnames=None) -> str:
     """Lee build/resultados_organo_sweep.csv y devuelve solo las filas de
     este job como texto CSV. El archivo se acumula entre jobs (resume del
-    propio script), asi que nunca se sube completo."""
+    propio script), asi que nunca se sube completo.
+
+    fieldnames (2026-09-20, jobs_v2): default RESULTS_FIELDNAMES (v1) --
+    pasar RESULTS_FIELDNAMES_V2 para incluir n_bins/s1_j/s2_j2/n/se_run_j.
+    Si el job trae 'n_bins', tambien filtra por esa columna ademas de las
+    de siempre (bin_index=3 de la grilla de 8 y bin_index=3 de la grilla
+    de 16 no son el mismo job, ver db_v2.py)."""
+    if fieldnames is None:
+        fieldnames = RESULTS_FIELDNAMES
     results_path = (build_dir or BUILD_DIR) / "resultados_organo_sweep.csv"
     if not results_path.is_file():
         return ""
 
     out = io.StringIO()
-    writer = csv.DictWriter(out, fieldnames=RESULTS_FIELDNAMES)
+    # extrasaction="ignore" (2026-09-20, bug real encontrado probando este
+    # cambio): resultados_organo_sweep.csv ahora SIEMPRE trae n_bins/s1_j/
+    # s2_j2/n/se_run_j (ver run_organ_sweep.py, agregado para jobs_v2) --
+    # sin esto, un worker filtrando para un job v1 (fieldnames=
+    # RESULTS_FIELDNAMES, que NO declara esas columnas) fallaria con
+    # ValueError "dict contains fields not in fieldnames" apenas
+    # run_organ_sweep.py nuevo generara ese CSV, incluso para un job que
+    # nunca pidio n_bins.
+    writer = csv.DictWriter(out, fieldnames=fieldnames, extrasaction="ignore")
     writer.writeheader()
     n_matched = 0
     with open(results_path, newline="") as f:
         for row in csv.DictReader(f):
+            if "n_bins" in job and int(row.get("n_bins", -1)) != job["n_bins"]:
+                continue
             if (row["especie"] == job["species"]
                     and row["fase"] == job["phase"]
                     and int(row["bin_index"]) == job["bin_index"]
@@ -735,8 +790,17 @@ def get_stale_job_timeout_s() -> float:
     return _stale_job_timeout_s
 
 
-def _post_result(job_id: int, data: dict, files: dict) -> dict:
-    resp = SESSION.post(f"{COORDINATOR_URL}/api/v1/jobs/{job_id}/result", data=data, files=files, timeout=60)
+def _result_path(job_id: int, api_version: str) -> str:
+    # jobs_v2 (2026-09-20): path propio /api/v1/jobs/v2/{id}/result, ver
+    # infra/coordinator/app.py. api_version default "v1" en todo lo que
+    # llama a esto -- un job v1 nunca cambia de endpoint.
+    if api_version == "v2":
+        return f"{COORDINATOR_URL}/api/v1/jobs/v2/{job_id}/result"
+    return f"{COORDINATOR_URL}/api/v1/jobs/{job_id}/result"
+
+
+def _post_result(job_id: int, data: dict, files: dict, api_version: str = "v1") -> dict:
+    resp = SESSION.post(_result_path(job_id, api_version), data=data, files=files, timeout=60)
     resp.raise_for_status()
     return resp.json()
 
@@ -778,8 +842,13 @@ def archive_pending_result(job_dir: Path, reason: str) -> None:
 
 
 def report_result(worker_id: str, job_id: int, exit_code: int, duration_s: float,
-                   results_csv_text: str, manifest_csv_text: str) -> None:
-    data = {"worker_id": worker_id, "exit_code": str(exit_code), "duration_s": str(duration_s)}
+                   results_csv_text: str, manifest_csv_text: str, api_version: str = "v1") -> None:
+    # api_version viaja DENTRO de data (persistido en data.json) -- no solo
+    # como parametro de esta llamada -- para que retry_pending_results()
+    # sepa a que endpoint reintentar un resultado guardado en disco tras
+    # un reinicio del worker (2026-09-20, ver ese metodo mas abajo).
+    data = {"worker_id": worker_id, "exit_code": str(exit_code), "duration_s": str(duration_s),
+            "api_version": api_version}
     # Persistir PRIMERO, antes de cualquier intento de red -- si el
     # proceso se cae o se corta la luz a mitad de los reintentos de
     # abajo, el resultado ya esta a salvo en disco de todos modos.
@@ -791,7 +860,7 @@ def report_result(worker_id: str, job_id: int, exit_code: int, duration_s: float
     }
     while True:
         try:
-            result = _post_result(job_id, data, files)
+            result = _post_result(job_id, data, files, api_version)
             print(f"[worker] job {job_id} reportado: {result}")
             shutil.rmtree(job_dir, ignore_errors=True)
             return
@@ -847,12 +916,17 @@ def retry_pending_results() -> None:
             archive_pending_result(job_dir, "Plazo local vencido; estado del intento NO confirmado por el servidor")
             continue
 
+        # api_version (2026-09-20): default "v1" para data.json guardado
+        # ANTES de este cambio (nunca tuvo esa key) -- retomarlo como v1
+        # es correcto, esos resultados solo pudieron haberse generado por
+        # un job v1 (jobs_v2 no existia todavia cuando se guardaron).
+        api_version = data.get("api_version", "v1")
         files = {
             "results_csv": ("results.csv", results_csv_text.encode("utf-8"), "text/csv"),
             "manifest_csv": ("manifest.csv", manifest_csv_text.encode("utf-8"), "text/csv"),
         }
         try:
-            result = _post_result(job_id, data, files)
+            result = _post_result(job_id, data, files, api_version)
             print(f"[worker] job {job_id} (pendiente de una caida de red anterior) reportado: {result}")
             shutil.rmtree(job_dir, ignore_errors=True)
         except requests.HTTPError as exc:
@@ -873,8 +947,12 @@ def retry_pending_failures() -> bool:
         data = json.loads(path.read_text())
         job_id = data["job_id"]
         try:
-            resp = SESSION.post(f"{COORDINATOR_URL}/api/v1/jobs/{job_id}/fail",
-                                json=data["payload"], timeout=15)
+            # api_version (2026-09-20): default "v1" por el mismo motivo
+            # que retry_pending_results() -- un .json guardado antes de
+            # este cambio nunca tiene esta key.
+            fail_path = (f"{COORDINATOR_URL}/api/v1/jobs/v2/{job_id}/fail" if data.get("api_version") == "v2"
+                         else f"{COORDINATOR_URL}/api/v1/jobs/{job_id}/fail")
+            resp = SESSION.post(fail_path, json=data["payload"], timeout=15)
             if resp.status_code not in (404, 409):
                 resp.raise_for_status()
             # 409: ya no es nuestro intento activo, incluido ACK perdido.
@@ -885,11 +963,12 @@ def retry_pending_failures() -> bool:
     return complete
 
 
-def report_failure(worker_id: str, job_id: int, error: str, duration_s: float) -> None:
+def report_failure(worker_id: str, job_id: int, error: str, duration_s: float, api_version: str = "v1") -> None:
     directory = WORKER_ID_FILE.parent / "pending_failures"
     directory.mkdir(parents=True, exist_ok=True)
     write_update_state(directory / f"{job_id}.json", {
         "job_id": job_id,
+        "api_version": api_version,
         "payload": {"worker_id": worker_id, "error": error[-2000:], "duration_s": duration_s},
     })
     retry_pending_failures()
@@ -1193,14 +1272,21 @@ def _run_job(worker_id: str, job: dict, cancel_event) -> tuple[bool, float]:
                 detail = logs[-1].read_text(errors="replace")[-4000:] if logs else ""
                 stdout_tail = tail_log(stdout_path) or ""
                 raise RuntimeError(f"exit_code={process.returncode}\n{stdout_tail[-1000:]}\n{detail}")
-            results = filter_results_csv(job, work)
+            # _api_version (2026-09-20): marcador inyectado por
+            # poll_next_job_v2()/poll_next_job() (ver mas abajo), NO una
+            # columna real del job en la DB -- decide fieldnames/endpoint
+            # correctos sin que _run_job necesite saber nada mas sobre
+            # jobs_v2 que este flag.
+            api_version = job.get("_api_version", "v1")
+            fieldnames = RESULTS_FIELDNAMES_V2 if api_version == "v2" else RESULTS_FIELDNAMES
+            results = filter_results_csv(job, work, fieldnames)
             if not results:
                 raise RuntimeError("Simulation produced no rows matching this job")
-            report_result(worker_id, job_id, 0, duration, results, read_manifest_csv(work))
+            report_result(worker_id, job_id, 0, duration, results, read_manifest_csv(work), api_version)
             return True, duration
     except (OSError, RuntimeError, requests.RequestException) as exc:
         fail_duration = time.monotonic()-start
-        report_failure(worker_id, job_id, str(exc), fail_duration)
+        report_failure(worker_id, job_id, str(exc), fail_duration, job.get("_api_version", "v1"))
         return False, fail_duration
 
 
@@ -1319,8 +1405,18 @@ def run_worker_loop() -> None:
                 stop.set()
                 return
 
+            # jobs_v2 (2026-09-20): v1 siempre se intenta primero -- un
+            # coordinator sin ningun job_v2 sembrado (el caso normal hoy)
+            # da 204 en poll_next_job_v2() indefinidamente, cayendo
+            # siempre al sleep normal, asi que este cambio no altera el
+            # comportamiento de un worker que nunca ve trabajo v2. Ningun
+            # cambio de configuracion hace falta para que un worker
+            # empiece a atender ambas colas -- "correr el piloto con los
+            # workers sin que se den cuenta de nada" (pedido explicito).
             try:
                 job = poll_next_job(worker_id)
+                if job is None:
+                    job = poll_next_job_v2(worker_id)
             except requests.RequestException as exc:
                 print(f"[worker] error consultando el coordinator (reintentando): {exc}")
                 time.sleep(POLL_INTERVAL_S)
