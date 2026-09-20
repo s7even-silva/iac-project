@@ -90,7 +90,7 @@ Uso:
     # ver check_scorer_has_intrarun_columns()).
 
     python3 pilots/run_intrarun_pilot.py
-    python3 pilots/run_intrarun_pilot.py --combos GCR_He/min/6,SEP_p/min/0
+    python3 pilots/run_intrarun_pilot.py --combos GCR_He/min/6,SEP_p/max/0
     python3 pilots/run_intrarun_pilot.py --n-seeds 3 --threads 20
 
 Costo: n_combos * n_seeds * 4 corridas independientes de Geant4 (una por
@@ -129,18 +129,21 @@ CHECKPOINTS_M = [2500, 5000, 10000, 20000]
 # aquellas con R>=3 historico"): con R>=3 historico NO disponible
 # localmente (verificado 2026-09-19: todos los CSV locales tienen solo
 # rep0 para toda combinacion), se elige por criterio fisico explicito, no
-# arbitrario:
+# arbitrario. LAS 3 SON LAS 3 COMBINACIONES REALES DE PRODUCCION
+# (run_organ_sweep.py:SPECIES_PHASE, verificado 2026-09-20 -- un comentario
+# anterior aqui decia erroneamente "SEP_p/min... la fase NUEVA, no la de
+# produccion actual": produccion usa SEP_p/MAX, no SEP_p/min; corregido):
 #   - GCR_He/min/6: bin caro (referencia real ~7321s en cpu_score=4.461,
 #     ~1789s=~30min en cpu_score=21 -- caso "dificil" que el plan pide).
-#   - SEP_p/min/0: la fase NUEVA (min, no la de produccion actual) con
-#     mayor sospecha de comportamiento distinto (ver AGENTS.md, espectro
-#     "duro" de Feb1956 vs. Oct1989) -- bin0 elegido porque a esta fase el
-#     patron de costo de SEP_p esta INVERTIDO (barato en bins altos, caro
-#     en bins bajos, ver REFERENCE_TIMINGS_S en infra/coordinator/db.py).
+#   - SEP_p/max/0: Oct 1989, el evento SEP de produccion -- bin0 elegido
+#     porque en esta fase el patron de costo de SEP_p esta INVERTIDO
+#     (barato en bins altos, caro en bins bajos, ver REFERENCE_TIMINGS_S
+#     en infra/coordinator/db.py), asi que bin0 es el caso mas caro/dificil
+#     de esta especie, no el mas barato.
 #   - GCR_H/min/2: caso "tipico" de costo medio-bajo, ya en produccion
 #     (fase min, bin2), para tener un punto de comparacion contra un caso
 #     no especialmente exigente.
-DEFAULT_COMBOS = ["GCR_He/min/6", "SEP_p/min/0", "GCR_H/min/2"]
+DEFAULT_COMBOS = ["GCR_He/min/6", "SEP_p/max/0", "GCR_H/min/2"]
 
 # Offset de fase (2026-09-19, agregado al factorizar pilot_common.py):
 # cada fase (7,8,9,10) usa un multiplo de 10_000_000 distinto sumado a
@@ -174,7 +177,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--combos", type=str, default=",".join(DEFAULT_COMBOS),
                          help="Lista separada por comas de 'species/phase/bin_index', "
-                              f"ej. 'GCR_He/min/6,SEP_p/min/0'. Default: {DEFAULT_COMBOS}")
+                              f"ej. 'GCR_He/min/6,SEP_p/max/0'. Default: {DEFAULT_COMBOS}")
     parser.add_argument("--offset-x-m", type=float, default=0.0,
                          help="Offset radial del fantoma (default 0.0 -- un solo offset, el piloto "
                               "valida el estimador, no el efecto de posicion).")

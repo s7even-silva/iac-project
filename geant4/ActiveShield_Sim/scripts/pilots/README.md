@@ -253,7 +253,7 @@ deliberado, el equipo revisa el reporte y decide). Lectura general:
 
 ```bash
 python3 pilots/run_fase8_binning.py
-python3 pilots/run_fase8_binning.py --combos "GCR_He/min,SEP_p/min"
+python3 pilots/run_fase8_binning.py --combos "GCR_He/min,SEP_p/max"
 python3 pilots/run_fase8_binning.py --n-events 10000 --threads 20
 ```
 

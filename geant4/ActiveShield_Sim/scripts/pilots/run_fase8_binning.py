@@ -35,7 +35,7 @@ no alcanzan sin necesitar la comparacion completa con control.
 
 Uso:
     python3 pilots/run_fase8_binning.py
-    python3 pilots/run_fase8_binning.py --combos GCR_He/min/6,SEP_p/min/0
+    python3 pilots/run_fase8_binning.py --combos GCR_He/min,SEP_p/max
     python3 pilots/run_fase8_binning.py --n-events 10000 --threads 20
 
 Costo: n_combos * (8+16) corridas independientes = n_combos*24 corridas.
@@ -59,8 +59,11 @@ import pilot_state  # noqa: E402
 PHASE_SEED_OFFSET = 10_000_000  # Fase 8 -- distinto del offset 0 de Fase 7
 
 # Mismas combinaciones representativas que Fase 7, por consistencia --
-# ver run_intrarun_pilot.py para el razonamiento de por que estas 3.
-DEFAULT_COMBOS = ["GCR_He/min/6", "SEP_p/min/0", "GCR_H/min/2"]
+# ver run_intrarun_pilot.py para el razonamiento de por que estas 3 (son
+# las 3 combinaciones REALES de produccion, run_organ_sweep.py:SPECIES_PHASE
+# -- SEP_p es MAX/Oct1989 aqui, no min; corregido 2026-09-20, un bug
+# anterior tenia esto invertido).
+DEFAULT_COMBOS = ["GCR_He/min/6", "SEP_p/max/0", "GCR_H/min/2"]
 
 # Presupuesto de error de discretizacion, ver Fase 8 del plan (linea
 # "usar provisionalmente como presupuesto de error de discretizacion:
@@ -88,7 +91,7 @@ def seed_for(combo_idx: int, n_bins: int, bin_index: int) -> tuple[int, int]:
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--combos", type=str, default=",".join(DEFAULT_COMBOS),
-                         help="Lista separada por comas de 'species/phase', ej. 'GCR_He/min,SEP_p/min'. "
+                         help="Lista separada por comas de 'species/phase', ej. 'GCR_He/min,SEP_p/max'. "
                               "A diferencia de Fase 7, NO se fija un bin_index -- esta fase corre "
                               "TODOS los bins de cada grilla (8 y 16) para esa especie/fase. "
                               f"Default: {[c.rsplit('/', 1)[0] for c in DEFAULT_COMBOS]}")
