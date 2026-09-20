@@ -108,7 +108,8 @@ def register_worker(body: WorkerRegister):
 
 @app.post("/api/v1/workers/{worker_id}/heartbeat")
 def heartbeat(worker_id: str, body: HeartbeatIn = HeartbeatIn()):
-    result = db.touch_heartbeat(worker_id, body.ram_free_gb, body.cpu_load_pct, body.image_digest, body.active_job_id)
+    result = db.touch_heartbeat(worker_id, body.ram_free_gb, body.cpu_load_pct, body.image_digest,
+                                 body.active_job_id, body.orphans_killed_total)
     if result is None:
         raise HTTPException(404, f"worker {worker_id} no registrado")
     # cancel_job_id/request_log viajan aqui (no en un endpoint de polling

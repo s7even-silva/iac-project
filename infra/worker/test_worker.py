@@ -121,6 +121,59 @@ def test_cleanup_orphaned_simulations_kills_only_job_dir_processes(tmp_path, mon
                 p.wait(timeout=5)
 
 
+def test_cleanup_orphaned_simulations_increments_counter_and_logs_diagnostics(tmp_path, monkeypatch, capsys):
+    # Pedido explicito del equipo tras el incidente de tania (2026-09-20):
+    # si el problema reaparece, el dato que faltó esa vez (pid/ppid/pgid/
+    # sid/cwd reales del huerfano) debe quedar registrado sin que nadie
+    # tenga que entrar a la maquina a sacarlo a mano -- y el conteo
+    # acumulado debe quedar visible sin acceso directo (ver heartbeat()).
+    import subprocess
+    monkeypatch.setattr(worker, '_ORPHAN_BINARY_NAME', 'sleep')
+    monkeypatch.setattr(worker, '_orphans_killed_total', 0)
+
+    job_dir = tmp_path / 'geant4-job-diag'
+    job_dir.mkdir()
+    orphan = subprocess.Popen(['sleep', '30'], cwd=job_dir, start_new_session=True)
+    try:
+        time.sleep(0.3)
+        killed = worker.cleanup_orphaned_simulations()
+        assert orphan.pid in killed
+        assert worker._orphans_killed_total == 1
+
+        out = capsys.readouterr().out
+        assert f'pid={orphan.pid}' in out
+        assert 'ppid=' in out and 'pgid=' in out and 'sid=' in out
+        assert str(job_dir) in out
+        assert 'total acumulado en este proceso: 1' in out
+    finally:
+        if orphan.poll() is None:
+            orphan.terminate()
+            orphan.wait(timeout=5)
+
+
+def test_heartbeat_reports_orphans_killed_total(monkeypatch):
+    # El contador debe viajar en el payload del heartbeat -- ver
+    # db.touch_heartbeat()/GET /api/v1/workers del lado del coordinator.
+    monkeypatch.setattr(worker, '_orphans_killed_total', 3)
+    monkeypatch.setattr(worker, 'ram_free_gb', lambda: None)
+    monkeypatch.setattr(worker, 'cpu_load_pct', lambda: None)
+    monkeypatch.setattr(worker, 'self_image_digest', lambda: None)
+
+    captured = {}
+
+    def fake_post(url, json=None, timeout=None):
+        captured['json'] = json
+        resp = MagicMock()
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = {}
+        return resp
+
+    with patch.object(worker.SESSION, 'post', side_effect=fake_post):
+        worker.heartbeat('w1')
+
+    assert captured['json']['orphans_killed_total'] == 3
+
+
 @pytest.mark.parametrize("ignore_term", [False, True])
 def test_run_job_kills_subprocess_when_cancel_event_set(tmp_path, monkeypatch, ignore_term):
     # Reproduce el mecanismo de remote-kill de punta a punta: un
