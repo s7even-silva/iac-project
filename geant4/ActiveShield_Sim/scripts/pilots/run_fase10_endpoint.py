@@ -113,7 +113,9 @@ def main():
     parser.add_argument("--build-dir", type=Path, default=None)
     parser.add_argument("--threads", type=int, default=None)
     parser.add_argument("--print-progress-every", type=int, default=500)
-    parser.add_argument("--out-dir", type=Path, default=None)
+    parser.add_argument("--out-dir", type=Path, default=None,
+                         help="Reusar un directorio de una corrida anterior para retomarla -- ver --no-resume.")
+    pc.add_resume_arg(parser)
     args = parser.parse_args()
 
     import os
@@ -136,19 +138,21 @@ def main():
             sys.exit(f"ERROR: '{spec}' invalido -- Fase 10 espera 'species/phase'.")
         combos_spec.append(tuple(parts))
 
-    out_dir = args.out_dir or (
-        Path(__file__).resolve().parent / "results" /
-        f"fase10_endpoint_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
-    )
+    out_dir, resuming = pc.resolve_out_dir(args, Path(__file__).resolve().parent, "fase10_endpoint")
     out_dir.mkdir(parents=True, exist_ok=True)
     macros_dir, logs_dir, outs_dir = out_dir / "macros", out_dir / "logs", out_dir / "outs"
     for d in (macros_dir, logs_dir, outs_dir):
         d.mkdir(parents=True, exist_ok=True)
 
-    manifest_rows = []
     manifest_path = out_dir / "manifest.csv"
     manifest_fieldnames = ["species", "phase", "bin_index", "config", "m_b", "energy_mev",
                             "flux_bin", "seed1", "seed2", "exit_code", "duration_s", "out_path"]
+    key_fields = ["species", "phase", "bin_index", "config"]
+    done_keys = pc.load_done_keys(manifest_path, key_fields) if resuming else set()
+    manifest_rows = pc.read_existing_manifest_rows(manifest_path) if resuming else []
+    if resuming:
+        print(f"Retomando {out_dir} -- {len(done_keys)} corrida(s) ya exitosa(s), se saltan "
+              f"(usar --no-resume para rehacer todo).")
 
     # runs[(species,phase,config)][bin_index] = {...}
     runs = {}
@@ -162,8 +166,15 @@ def main():
             for bin_index, energy_rep, flux_bin in bins:
                 run_n += 1
                 m_b = mb_by_bin.get((species, phase, bin_index), args.n_events)
-                seed1, seed2 = seed_for(combo_idx, bin_index, is_shield=(config == "shield"))
                 out_path = outs_dir / f"{species}_{phase}_bin{bin_index}_{config}.out"
+                key = (species, phase, str(bin_index), config)
+                if key in done_keys:
+                    print(f"\n[{run_n}/{total_runs}] {species}/{phase} bin={bin_index} {config} "
+                          f"-- YA HECHA (retomando), se salta")
+                    runs[(species, phase, config)][bin_index] = {"out_path": out_path, "m_b": m_b, "flux_bin": flux_bin}
+                    continue
+
+                seed1, seed2 = seed_for(combo_idx, bin_index, is_shield=(config == "shield"))
                 combo = {"species": species, "phase": phase, "energy_mev": energy_rep}
                 macro = pc.build_macro(
                     combo, args.offset_x_m, seed1, seed2, n_threads, args.print_progress_every,

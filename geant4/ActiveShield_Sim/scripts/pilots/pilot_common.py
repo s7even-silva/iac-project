@@ -8,6 +8,7 @@ Todo lo que vive aqui es especifico de "correr una sola simulacion de
 ActiveShield_Sim con streaming en vivo y leer su .out instrumentado" --
 NO especifico de ninguna fase en particular (eso vive en cada
 run_faseN.py/analyze_faseN.py)."""
+import csv
 import re
 import subprocess
 import sys
@@ -274,3 +275,83 @@ def resolve_paths(args, project_root):
     if coil_geometry is not None and not coil_geometry.is_file():
         sys.exit(f"ERROR: no se encontro {coil_geometry}.")
     return build_dir, binary_path, field_map, coil_geometry
+
+
+def resolve_out_dir(args, pilots_dir: Path, prefix: str) -> tuple[Path, bool]:
+    """Comun a todos los run_faseN.py -- resuelve el directorio de salida
+    y dice si es una corrida NUEVA o una que se esta RETOMANDO.
+
+    2026-09-20, agregado tras un corte real de una corrida de prueba (la
+    sesion que la lanzo termino a mitad, dejando 22 de 24 corridas
+    hechas) -- antes de esto, cada run_faseN.py generaba un directorio
+    NUEVO con timestamp en cada invocacion (fase8_binning_<timestamp>/),
+    asi que relanzar el mismo comando NUNCA podia apuntar al directorio
+    anterior -- no habia forma de retomar, solo de volver a empezar de
+    cero (perdiendo las corridas ya hechas, potencialmente horas de
+    computo en una maquina remota).
+
+    Con --out-dir explicito (el mismo que imprimio la corrida cortada),
+    args.resume (default True, ver add_resume_arg()) decide si esta
+    funcion reporta "retomando" (True) o si el llamador debe limpiar el
+    directorio y empezar de cero (False, --no-resume). Sin --out-dir, es
+    siempre una corrida nueva (no hay nada que retomar).
+
+    SIEMPRE resuelve a ruta ABSOLUTA (.resolve()) -- bug real encontrado
+    probando el resume (2026-09-20): un --out-dir RELATIVO (ej.
+    'results/fase8_binning_XXXX', tal como se escribe comodamente en la
+    terminal) se pasaba tal cual a macros_dir/logs_dir/outs_dir, pero el
+    subprocess de Geant4 corre con cwd=build_dir (no el directorio desde
+    donde se invoco este script) -- las rutas relativas resultantes no
+    resolvian ahi, dando 'ERROR: Can not open a macro file' y el proceso
+    terminaba con SIGSEGV (exit -11) en vez de un error claro. Resolver
+    aqui, una sola vez, evita que cada run_faseN.py tenga que acordarse
+    de hacerlo por separado."""
+    if args.out_dir is not None:
+        out_dir = args.out_dir.resolve()
+        return out_dir, args.resume and out_dir.is_dir()
+    out_dir = pilots_dir / "results" / f"{prefix}_{_utc_timestamp()}"
+    return out_dir, False
+
+
+def _utc_timestamp() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def add_resume_arg(parser):
+    """Comun a todos los run_faseN.py -- --no-resume fuerza rehacer todo
+    desde cero, mismo patron/nombre que run_organ_sweep.py (donde resume
+    ya esta activado por defecto)."""
+    parser.add_argument("--no-resume", dest="resume", action="store_false", default=True,
+                         help="Rehacer desde cero incluso las corridas ya exitosas (exit_code 0) -- "
+                              "por defecto, si --out-dir ya existe con un manifest.csv, se saltan "
+                              "las combinaciones que ya tengan exit_code=0 ahi.")
+
+
+def load_done_keys(manifest_path: Path, key_fields: list[str]) -> set[tuple]:
+    """Lee un manifest.csv ya existente (de una corrida cortada) y
+    devuelve el set de tuplas `key_fields` que ya tienen exit_code=0 --
+    cada run_faseN.py arma su propia clave (ej. (species,phase,n_bins,
+    bin_index) para Fase 8) segun que columnas identifican una corrida
+    unica en su manifiesto. Vacio (no como error) si el archivo no
+    existe todavia -- primera corrida, nada que retomar."""
+    if not manifest_path.is_file():
+        return set()
+    done = set()
+    with open(manifest_path, newline="") as f:
+        for row in csv.DictReader(f):
+            if int(row["exit_code"]) == 0:
+                done.add(tuple(row[k] for k in key_fields))
+    return done
+
+
+def read_existing_manifest_rows(manifest_path: Path) -> list[dict]:
+    """Filas ya escritas de un manifest.csv existente, para no perderlas
+    al reabrir el archivo en modo escritura (los run_faseN.py reescriben
+    el CSV completo en cada fila nueva, ver manifest_rows.append() +
+    writer.writerows(manifest_rows) -- hace falta precargar lo viejo para
+    no truncarlo)."""
+    if not manifest_path.is_file():
+        return []
+    with open(manifest_path, newline="") as f:
+        return list(csv.DictReader(f))
