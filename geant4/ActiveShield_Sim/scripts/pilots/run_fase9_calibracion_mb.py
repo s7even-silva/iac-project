@@ -131,6 +131,11 @@ def main():
     import os
     n_threads = args.threads or os.cpu_count()
 
+    print(f"Benchmark de esta maquina ({n_threads} procesos)...")
+    score = pc.cpu_score(n_threads)
+    print(f"  cpu_score={score}" if score is not None
+          else "  cpu_score no disponible -- se sigue sin estimacion de tiempo total.")
+
     project_root = Path(__file__).resolve().parent.parent.parent
     build_dir, binary_path, field_map, coil_geometry = pc.resolve_paths(args, project_root)
     pc.check_scorer_has_intrarun_columns(build_dir, binary_path)
@@ -162,6 +167,19 @@ def main():
 
     total_runs = len(combos_spec) * args.n_bins
     run_n = 0
+
+    all_work = [((species, phase, str(bin_index)), f"{species}/{phase}", f"bin={bin_index}")
+                for species, phase in combos_spec
+                for bin_index, _e, _f in energy_bins.build_bins(spectra_dir, n_bins=args.n_bins)[(species, phase)]]
+    pending_work = [(cl, wu, args.n_events_probe) for k, cl, wu in all_work if k not in done_keys]
+    eta_s, missing = pc.estimate_remaining_s("fase9", pending_work, score)
+    if eta_s is not None:
+        print(f"ETA del trabajo restante ({len(pending_work)} corrida(s)): ~{pc.format_eta(eta_s)}"
+              + (f" ({missing} sin referencia previa, no incluida(s))" if missing else ""))
+    elif pending_work:
+        print(f"Sin referencia de tiempo previa para ninguna de las {len(pending_work)} corrida(s) "
+              f"pendientes en esta maquina -- se ira midiendo y mostrando desde la primera.")
+
     # runs[(species,phase)][bin_index] = {"out_path", "duration_s", "energy_mev", "flux_bin"}
     runs = {}
     for combo_idx, (species, phase) in enumerate(combos_spec):
@@ -201,6 +219,20 @@ def main():
                 duration_s = 0.0
             status = "OK" if exit_code == 0 else "FALLO"
             print(f"    -> {status}, {run_n}/{total_runs} corridas hechas, {duration_s:.1f}s")
+
+            if exit_code == 0:
+                pc.record_reference_duration("fase9", f"{species}/{phase}", f"bin={bin_index}",
+                                              args.n_events_probe, duration_s, score)
+                done_keys.add(key)
+                n_left = sum(1 for k, _cl, _wu in all_work if k not in done_keys)
+                eta_s, missing = pc.estimate_remaining_s(
+                    "fase9", [(cl, wu, args.n_events_probe) for k, cl, wu in all_work if k not in done_keys], score)
+                if eta_s is not None:
+                    print(f"    ETA restante ({n_left} corrida(s)): ~{pc.format_eta(eta_s)}"
+                          + (f" ({missing} sin referencia)" if missing else ""))
+                elif n_left:
+                    print(f"    ETA restante: sin referencia aun para ninguna de las "
+                          f"{n_left} corrida(s) pendientes.")
 
             manifest_rows.append({
                 "species": species, "phase": phase, "bin_index": bin_index, "energy_mev": energy_rep,

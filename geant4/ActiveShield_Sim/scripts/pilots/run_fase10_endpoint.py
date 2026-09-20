@@ -121,6 +121,11 @@ def main():
     import os
     n_threads = args.threads or os.cpu_count()
 
+    print(f"Benchmark de esta maquina ({n_threads} procesos)...")
+    score = pc.cpu_score(n_threads)
+    print(f"  cpu_score={score}" if score is not None
+          else "  cpu_score no disponible -- se sigue sin estimacion de tiempo total.")
+
     project_root = Path(__file__).resolve().parent.parent.parent
     build_dir, binary_path, field_map, coil_geometry = pc.resolve_paths(args, project_root)
     pc.check_scorer_has_intrarun_columns(build_dir, binary_path)
@@ -159,6 +164,27 @@ def main():
     total_bins = sum(len(energy_bins.build_bins(spectra_dir, n_bins=args.n_bins)[sp]) for sp in combos_spec)
     total_runs = total_bins * 2  # control + shield
     run_n = 0
+
+    # work_unit incluye config+bin (control y shield del mismo bin corren
+    # el mismo M_b, pero son geometrias de campo distintas -- no deben
+    # compartir referencia de duracion entre si).
+    all_work = [
+        ((species, phase, str(bin_index), config),
+         f"{species}/{phase}", f"{config}/bin={bin_index}",
+         mb_by_bin.get((species, phase, bin_index), args.n_events))
+        for species, phase in combos_spec
+        for bin_index, _e, _f in energy_bins.build_bins(spectra_dir, n_bins=args.n_bins)[(species, phase)]
+        for config in ("control", "shield")
+    ]
+    pending_work = [(cl, wu, ne) for k, cl, wu, ne in all_work if k not in done_keys]
+    eta_s, missing = pc.estimate_remaining_s("fase10", pending_work, score)
+    if eta_s is not None:
+        print(f"ETA del trabajo restante ({len(pending_work)} corrida(s)): ~{pc.format_eta(eta_s)}"
+              + (f" ({missing} sin referencia previa, no incluida(s))" if missing else ""))
+    elif pending_work:
+        print(f"Sin referencia de tiempo previa para ninguna de las {len(pending_work)} corrida(s) "
+              f"pendientes en esta maquina -- se ira midiendo y mostrando desde la primera.")
+
     for combo_idx, (species, phase) in enumerate(combos_spec):
         bins = energy_bins.build_bins(spectra_dir, n_bins=args.n_bins)[(species, phase)]
         for config, field_scale in (("control", 0.0), ("shield", 1.0)):
@@ -193,6 +219,20 @@ def main():
                     duration_s = 0.0
                 status = "OK" if exit_code == 0 else "FALLO"
                 print(f"    -> {status}, {run_n}/{total_runs} corridas hechas, {duration_s:.1f}s")
+
+                if exit_code == 0:
+                    pc.record_reference_duration("fase10", f"{species}/{phase}",
+                                                  f"{config}/bin={bin_index}", m_b, duration_s, score)
+                    done_keys.add(key)
+                    n_left = sum(1 for k, _cl, _wu, _ne in all_work if k not in done_keys)
+                    eta_s, missing = pc.estimate_remaining_s(
+                        "fase10", [(cl, wu, ne) for k, cl, wu, ne in all_work if k not in done_keys], score)
+                    if eta_s is not None:
+                        print(f"    ETA restante ({n_left} corrida(s)): ~{pc.format_eta(eta_s)}"
+                              + (f" ({missing} sin referencia)" if missing else ""))
+                    elif n_left:
+                        print(f"    ETA restante: sin referencia aun para ninguna de las "
+                              f"{n_left} corrida(s) pendientes.")
 
                 manifest_rows.append({
                     "species": species, "phase": phase, "bin_index": bin_index, "config": config,
