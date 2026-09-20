@@ -133,6 +133,56 @@ desde cero (ignorando cualquier directorio anterior de esa fase), pasar
 siempre. Pasar `--out-dir` explícito a mano también sigue funcionando
 (tiene prioridad sobre la búsqueda automática).
 
+## Benchmark y ETA del trabajo restante (2026-09-20)
+
+Los 4 `run_faseN.py` corren un benchmark corto (~1-2s) de esta máquina al
+arrancar, y muestran una estimación del tiempo restante de la corrida
+completa (no solo de la corrida individual en curso, que ya se veía
+antes vía el ETA en vivo de `pilot_common.run_verbose()`):
+
+```
+Benchmark de esta maquina (4 procesos)...
+  cpu_score=1.817
+...
+ETA del trabajo restante (24 corrida(s)): ~35.5min
+...
+[1/24] GCR_H/min n_bins=8 bin=0 E=1.778e+01 MeV
+    ...
+    -> OK, 1/24 corridas hechas, 26.5s
+    ETA restante (23 corrida(s)): ~35.0min
+```
+
+**`cpu_score` es EL MISMO benchmark que `infra/worker/worker.py:cpu_score()`**
+(misma operación aritmética, mismas iteraciones por proceso, misma
+constante de normalización) — a propósito, no una coincidencia: un
+`cpu_score=1.4` acá y un `cpu_score=1.4` en el dashboard del coordinator
+(`GET /api/v1/workers`) representan la misma capacidad de cómputo real,
+así que son directamente comparables para decidir en qué máquina correr
+un piloto caro.
+
+**La tabla de referencia (`pilots/results/state/duraciones_referencia.json`,
+no versionada) se AUTO-ALIMENTA — nunca viene pre-sembrada con números
+que la máquina actual no midió.** La primera vez que se corre una
+combinación nueva en cualquier máquina, no hay ETA total todavía (el
+script lo dice explícitamente: "Sin referencia de tiempo previa..."); a
+partir de la segunda vez que se corre esa misma combinación (en esa
+misma máquina o en otra — la referencia se normaliza por `cpu_score`
+para ser comparable entre máquinas), ya hay estimación. Esto es
+deliberado: a diferencia de `infra/coordinator/db.py:REFERENCE_TIMINGS_S`
+(medido una vez en `bryam-local` y usado como base fija para todo el
+barrido de producción), los pilotos no tienen ese conjunto de mediciones
+de referencia para todas sus combinaciones — la mayoría de las fases
+(7, 9, 10) nunca corrieron una corrida real completa todavía, así que
+sembrar números ahí sería inventarlos.
+
+**Un solo bin caro puede hacer que el ETA se vea "estancado"** corrida a
+corrida si domina la suma total (ver el comentario en
+`pilot_common.estimate_remaining_s()`) — no es un bug: cada bin tiene su
+propia clave de referencia (a propósito, para no promediar costos muy
+distintos entre bins de energías muy distintas dentro de la misma
+grilla), así que el número apenas se mueve mientras corridas baratas se
+completan y el bin caro sigue pendiente.
+
 ## Fase 7 — Piloto A: validación del estimador de incertidumbre intra-run
 
 ```bash

@@ -9,6 +9,9 @@ ActiveShield_Sim con streaming en vivo y leer su .out instrumentado" --
 NO especifico de ninguna fase en particular (eso vive en cada
 run_faseN.py/analyze_faseN.py)."""
 import csv
+import json
+import math
+import multiprocessing
 import re
 import subprocess
 import sys
@@ -196,6 +199,174 @@ _EVENT_PROGRESS_RE = re.compile(r"--> Event (\d+) starts")
 # worker (4 threads = 4 lineas por cada N eventos reales) -- sin este
 # throttle, una corrida con progress_every chico inundaria la terminal.
 _PROGRESS_REPORT_INTERVAL_S = 5.0
+
+
+# ---------------------------------------------------------------------
+# Benchmark de maquina + ETA del trabajo restante (2026-09-20)
+#
+# Deliberadamente INDEPENDIENTE de infra/worker/worker.py:cpu_score() --
+# incluso siendo el mismo principio (throughput real bajo carga
+# multi-proceso, no single-thread, ver docstring de cpu_score() abajo),
+# los pilotos corren fuera del coordinator/worker (ver README.md, "no
+# pasan por el coordinator") y no deben depender de ese modulo. Duplica
+# ~15 lineas, no una arquitectura entera.
+#
+# La tabla de referencia (duraciones_referencia.json) se AUTO-ALIMENTA:
+# nunca viene pre-sembrada con numeros que esta maquina no midio. La
+# unica combinacion con datos reales hoy (GCR_H/min, Fase 8, n_events=200)
+# viene de una corrida real de esta misma sesion -- deliberadamente NO
+# se pre-cargo aqui (ver discusion de equipo 2026-09-20): la primera vez
+# que se corre una combinacion nueva, en cualquier maquina, no hay ETA
+# total todavia (el script lo dice explicitamente), y desde la segunda
+# corrida en adelante ya hay referencia real propia. Nunca se inventa un
+# numero para una combinacion no medida.
+# ---------------------------------------------------------------------
+
+# MISMA operacion, MISMO numero de iteraciones y MISMA baseline de
+# normalizacion que infra/worker/worker.py:cpu_score() -- a proposito,
+# no una coincidencia: si difirieran, un cpu_score=1.4 en un piloto y un
+# cpu_score=1.4 en el dashboard de produccion significarian cantidades
+# de computo distintas, haciendo la comparacion entre ambos sistemas
+# inutil (o peor, enganosamente comparable sin serlo). Se copian los
+# valores literales en vez de importar worker.py para no acoplar los
+# pilotos (que corren fuera del coordinator/worker, ver README.md) a ese
+# modulo -- pero deben mantenerse sincronizados a mano si worker.py
+# cambia su benchmark alguna vez.
+_BENCHMARK_ITERATIONS_PER_PROC = 3_000_000
+_BENCHMARK_REFERENCE_OPS_PER_SEC = 4_770_000.0
+
+_REFERENCE_PATH = Path(__file__).resolve().parent / "results" / "state" / "duraciones_referencia.json"
+
+
+def _benchmark_worker_proc(n_iterations: int) -> int:
+    """Trabajo aritmetico fijo, sin IO -- corrido en un proceso aparte
+    (multiprocessing.Pool, no threading: el GIL serializaria cualquier
+    intento de paralelismo con hilos en Python puro)."""
+    x = 0.5
+    for _ in range(n_iterations):
+        x = math.sqrt(math.sin(x) ** 2 + 1.0)
+    return n_iterations
+
+
+def cpu_score(n_procs: int) -> float | None:
+    """Mide capacidad de computo real bajo carga multi-proceso (n_procs
+    procesos simultaneos, tipicamente --threads de la fase, ya que eso es
+    lo que realmente compite por CPU con el binario de Geant4 MT que se
+    va a correr despues). Se corre UNA VEZ al arrancar el script. None si
+    el benchmark falla por cualquier razon (nunca debe impedir que el
+    piloto arranque -- sin cpu_score, simplemente no hay ETA total, ver
+    estimate_remaining_s()).
+
+    Comparable directamente con el cpu_score que reporta un worker del
+    coordinator (GET /api/v1/workers) -- misma operacion aritmetica,
+    mismas iteraciones por proceso, misma baseline de normalizacion (ver
+    constantes arriba). Un cpu_score=1.4 acá y uno de 1.4 alli representan
+    la misma capacidad de computo real."""
+    try:
+        n_procs = max(1, n_procs)
+        started = time.perf_counter()
+        with multiprocessing.Pool(processes=n_procs) as pool:
+            pool.map(_benchmark_worker_proc, [_BENCHMARK_ITERATIONS_PER_PROC] * n_procs)
+        elapsed_s = time.perf_counter() - started
+        if elapsed_s <= 0:
+            return None
+        total_ops = n_procs * _BENCHMARK_ITERATIONS_PER_PROC
+        return round((total_ops / elapsed_s) / _BENCHMARK_REFERENCE_OPS_PER_SEC, 3)
+    except Exception as exc:  # noqa: BLE001 -- nunca tumbar el piloto por esto
+        print(f"(cpu_score() fallo, se sigue sin el: {exc})")
+        return None
+
+
+def _load_reference_table() -> dict:
+    if not _REFERENCE_PATH.is_file():
+        return {}
+    try:
+        with open(_REFERENCE_PATH) as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _reference_key(fase: str, combo_label: str, work_unit: str, n_events: int) -> str:
+    # n_events entra en la clave porque el costo por corrida escala con
+    # el (Geant4 no tiene un costo fijo por evento independiente de
+    # cuantos se pidan -- overhead de inicializacion aparte) -- mezclar
+    # referencias de dos --n-events distintos daria una estimacion
+    # sistematicamente sesgada.
+    return f"{fase}|{combo_label}|{work_unit}|n_events={n_events}"
+
+
+def record_reference_duration(fase: str, combo_label: str, work_unit: str,
+                               n_events: int, duration_s: float, score: float | None) -> None:
+    """Guarda una duracion real medida, NORMALIZADA por cpu_score (para
+    que sea comparable entre maquinas distintas) -- promedia con lo que
+    ya hubiera para esa clave exacta, no lo reemplaza de un solo dato
+    (una corrida individual puede variar ~15-20%, ver DISPLAY_OVERESTIMATE_FACTOR
+    en infra/coordinator/db.py para el mismo fenomeno en produccion).
+    Sin cpu_score (benchmark fallo), no se guarda nada -- un tiempo sin
+    normalizar contaminaria la tabla para cualquier otra maquina."""
+    if score is None or score <= 0 or duration_s is None:
+        return
+    table = _load_reference_table()
+    key = _reference_key(fase, combo_label, work_unit, n_events)
+    normalized_s = duration_s * score  # tiempo equivalente a cpu_score=1.0
+    prev = table.get(key)
+    if prev is None:
+        table[key] = {"normalized_s": normalized_s, "n_samples": 1}
+    else:
+        n = prev["n_samples"]
+        table[key] = {
+            "normalized_s": (prev["normalized_s"] * n + normalized_s) / (n + 1),
+            "n_samples": n + 1,
+        }
+    _REFERENCE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(_REFERENCE_PATH, "w") as f:
+        json.dump(table, f, indent=2, sort_keys=True)
+
+
+def estimate_remaining_s(fase: str, pending: list[tuple[str, str, int]], score: float | None) -> tuple[float | None, int]:
+    """Estima el tiempo restante para una lista de trabajo pendiente
+    [(combo_label, work_unit, n_events), ...] sumando la referencia
+    normalizada de cada clave (si existe) reescalada por 1/score.
+
+    Devuelve (segundos_estimados_o_None, n_sin_referencia). Si TODA la
+    lista carece de referencia, o no hay score, devuelve (None, len(pending))
+    -- nunca inventa un numero para lo no medido, solo dice cuanto falta
+    medir.
+
+    OJO al leer el numero que esto produce (verificado con datos reales,
+    2026-09-20): puede parecer "estancado" corrida a corrida si un solo
+    bin caro (ej. el bin de mayor energia de una grilla, ~250x mas lento
+    que uno barato, ver REFERENCE_TIMINGS_S en infra/coordinator/db.py
+    para el mismo fenomeno en produccion) sigue pendiente mientras varias
+    corridas baratas ya se completan -- el total apenas se mueve porque
+    esas corridas rapidas son una fraccion pequeña de la suma. No es un
+    bug: cada bin tiene su propia clave de referencia (por diseño, para
+    no promediar costos muy distintos entre si), asi que el bin caro
+    domina el estimado hasta que finalmente se corre el."""
+    if score is None or score <= 0:
+        return None, len(pending)
+    table = _load_reference_table()
+    total_s = 0.0
+    missing = 0
+    for combo_label, work_unit, n_events in pending:
+        key = _reference_key(fase, combo_label, work_unit, n_events)
+        entry = table.get(key)
+        if entry is None:
+            missing += 1
+            continue
+        total_s += entry["normalized_s"] / score
+    if missing == len(pending):
+        return None, missing
+    return total_s, missing
+
+
+def format_eta(seconds: float) -> str:
+    if seconds < 60:
+        return f"{seconds:.0f}s"
+    if seconds < 3600:
+        return f"{seconds / 60:.1f}min"
+    return f"{seconds / 3600:.1f}h"
 
 
 def run_verbose(binary_path, macro_path, build_dir, log_path, out_path, n_events):

@@ -198,6 +198,11 @@ def main():
     import os
     n_threads = args.threads or os.cpu_count()
 
+    print(f"Benchmark de esta maquina ({n_threads} procesos)...")
+    score = pc.cpu_score(n_threads)
+    print(f"  cpu_score={score}" if score is not None
+          else "  cpu_score no disponible -- se sigue sin estimacion de tiempo total.")
+
     project_root = Path(__file__).resolve().parent.parent.parent
     build_dir, binary_path, field_map, coil_geometry = pc.resolve_paths(args, project_root)
 
@@ -242,6 +247,23 @@ def main():
         print(f"Retomando {out_dir} -- {len(done_keys)} corrida(s) ya exitosa(s), se saltan "
               f"(usar --no-resume para rehacer todo).")
 
+    # (key_de_resume, combo_label_para_referencia, work_unit, M) por cada
+    # corrida planeada -- work_unit NO incluye seed_idx (dos seeds del
+    # mismo M cuestan lo mismo en promedio, ver reference_key() en
+    # pilot_common.py: es correcto que compartan referencia).
+    all_work = [((combo_label_raw.replace("/", "_"), str(m), str(seed_idx)), combo_label_raw, f"M={m}", m)
+                for combo_label_raw, _combo in requested
+                for m in CHECKPOINTS_M
+                for seed_idx in range(args.n_seeds)]
+    pending_work = [(cl, wu, m) for key, cl, wu, m in all_work if key not in done_keys]
+    eta_s, missing = pc.estimate_remaining_s("fase7", pending_work, score)
+    if eta_s is not None:
+        print(f"ETA del trabajo restante ({len(pending_work)} corrida(s)): ~{pc.format_eta(eta_s)}"
+              + (f" ({missing} sin referencia previa, no incluida(s))" if missing else ""))
+    elif pending_work:
+        print(f"Sin referencia de tiempo previa para ninguna de las {len(pending_work)} corrida(s) "
+              f"pendientes en esta maquina -- se ira midiendo y mostrando desde la primera.")
+
     run_n = 0
     for combo_idx, (combo_label_raw, combo) in enumerate(requested):
         combo_label = combo_label_raw.replace("/", "_")
@@ -274,6 +296,19 @@ def main():
                     duration_s = 0.0
                 status = "OK" if exit_code == 0 else "FALLO"
                 print(f"    -> {status}, {run_n}/{total_runs} corridas hechas, {duration_s:.1f}s esta corrida")
+
+                if exit_code == 0:
+                    pc.record_reference_duration("fase7", combo_label_raw, f"M={m}", m, duration_s, score)
+                    done_keys.add(key)
+                    n_left = sum(1 for k, _cl, _wu, _m in all_work if k not in done_keys)
+                    eta_s, missing = pc.estimate_remaining_s(
+                        "fase7", [(cl, wu, mm) for k, cl, wu, mm in all_work if k not in done_keys], score)
+                    if eta_s is not None:
+                        print(f"    ETA restante ({n_left} corrida(s)): ~{pc.format_eta(eta_s)}"
+                              + (f" ({missing} sin referencia)" if missing else ""))
+                    elif n_left:
+                        print(f"    ETA restante: sin referencia aun para ninguna de las "
+                              f"{n_left} corrida(s) pendientes.")
 
                 manifest_rows.append({
                     "combo_label": combo_label, "species": combo["species"], "phase": combo["phase"],
