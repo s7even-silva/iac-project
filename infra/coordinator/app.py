@@ -307,7 +307,7 @@ async def submit_result_v2(
         # grilla de 8 y bin_index=3 de una grilla de 16 NO son el mismo
         # job, ver UNIQUE de jobs_v2 en db_v2.py).
         for row in rows + manifest:
-            if (row["especie"] != job["species"] or int(row["bin_index"]) != job["bin_index"]
+            if (row["especie"] != job["species"] or row.get("fase") != job["phase"] or int(row["bin_index"]) != job["bin_index"]
                     or int(row.get("n_bins", -1)) != job["n_bins"]
                     or int(row["repeticion"]) != job["repeticion"]
                     or not math.isclose(float(row["offset_x_m"]), job["offset_x_m"], abs_tol=1e-6)

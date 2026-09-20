@@ -86,7 +86,7 @@ def test_filter_results_csv_tolerates_extra_columns_for_v1(tmp_path):
     assert 's1_j' not in lines[0]  # header v1, sin las columnas nuevas
 
 
-def test_cleanup_orphaned_simulations_kills_only_job_dir_processes(tmp_path, monkeypatch):
+def test_cleanup_preserves_other_workers_job_dir_processes(tmp_path, monkeypatch):
     # Bug real de produccion (2026-09-20, ver infra/OPERATIONS_LOG.md):
     # procesos ICRP110phantoms huerfanos en tania, hasta 24h vivos.
     # Verifica las DOS correcciones de diseño discutidas con el equipo:
@@ -110,9 +110,9 @@ def test_cleanup_orphaned_simulations_kills_only_job_dir_processes(tmp_path, mon
         killed = worker.cleanup_orphaned_simulations()
         time.sleep(0.3)
 
-        assert orphan.pid in killed
+        assert orphan.pid not in killed
         assert manual.pid not in killed
-        assert orphan.poll() is not None, 'el huerfano en geant4-job-* debe matarse'
+        assert orphan.poll() is None, 'el prefijo no prueba que sea huerfano'
         assert manual.poll() is None, 'una corrida en un directorio normal NUNCA debe tocarse'
     finally:
         for p in (orphan, manual):
@@ -121,7 +121,7 @@ def test_cleanup_orphaned_simulations_kills_only_job_dir_processes(tmp_path, mon
                 p.wait(timeout=5)
 
 
-def test_cleanup_orphaned_simulations_increments_counter_and_logs_diagnostics(tmp_path, monkeypatch, capsys):
+def test_cleanup_does_not_claim_unverified_kills(tmp_path, monkeypatch, capsys):
     # Pedido explicito del equipo tras el incidente de tania (2026-09-20):
     # si el problema reaparece, el dato que faltó esa vez (pid/ppid/pgid/
     # sid/cwd reales del huerfano) debe quedar registrado sin que nadie
@@ -137,14 +137,9 @@ def test_cleanup_orphaned_simulations_increments_counter_and_logs_diagnostics(tm
     try:
         time.sleep(0.3)
         killed = worker.cleanup_orphaned_simulations()
-        assert orphan.pid in killed
-        assert worker._orphans_killed_total == 1
-
-        out = capsys.readouterr().out
-        assert f'pid={orphan.pid}' in out
-        assert 'ppid=' in out and 'pgid=' in out and 'sid=' in out
-        assert str(job_dir) in out
-        assert 'total acumulado en este proceso: 1' in out
+        assert orphan.pid not in killed
+        assert worker._orphans_killed_total == 0
+        assert orphan.poll() is None
     finally:
         if orphan.poll() is None:
             orphan.terminate()
@@ -947,3 +942,37 @@ def test_run_worker_loop_resets_streak_after_success(monkeypatch, tmp_path):
     with pytest.raises(_JobsExhausted):
         worker.run_worker_loop()  # nunca debe salir por SystemExit de la racha
     assert next(jobs, None) is None  # confirma que efectivamente se consumieron los 5
+
+
+def test_orphan_cleanup_never_kills_unproven_owner(monkeypatch):
+    kill = MagicMock()
+    monkeypatch.setattr(worker.os, 'killpg', kill)
+    assert worker.cleanup_orphaned_simulations() == []
+    kill.assert_not_called()
+
+
+def test_v2_outbox_does_not_replace_v1(monkeypatch, tmp_path):
+    monkeypatch.setattr(worker, 'PENDING_RESULTS_DIR', tmp_path)
+    one = worker._save_pending_result(1, {'api_version':'v1'}, 'v1', '')
+    two = worker._save_pending_result(1, {'api_version':'v2'}, 'v2', '')
+    assert one != two
+    assert (one/'results.csv').read_text() == 'v1'
+
+
+def test_v2_heartbeat_ignores_v1_cancellation(monkeypatch):
+    monkeypatch.setattr(worker, '_active_cancel', (1, worker.threading.Event(), 1, 'v2'))
+    with patch.object(worker.SESSION, 'post') as post:
+        post.return_value.json.return_value = {'cancel_job_id':1}
+        assert worker.heartbeat('w') is None
+        assert post.call_args.kwargs['json']['active_job_id'] is None
+
+
+def test_v2_start_uses_v2_endpoint(monkeypatch, tmp_path):
+    monkeypatch.setattr(worker, 'BUILD_DIR', tmp_path)
+    monkeypatch.setattr(worker, 'REPO_ROOT', tmp_path)
+    monkeypatch.setattr(worker, 'build_command', lambda *a: ['true'])
+    monkeypatch.setattr(worker, 'filter_results_csv', lambda *a, **k: 'results')
+    monkeypatch.setattr(worker, 'read_manifest_csv', lambda *a: 'manifest')
+    with patch.object(worker.SESSION, 'post') as post, patch.object(worker, 'report_result'):
+        worker.run_job('w', dict(job_id=1, species='SEP_p', bin_index=0, offset_x_m=0, _api_version='v2'))
+    assert post.call_args_list[0].args[0].endswith('/jobs/v2/1/start')

@@ -399,59 +399,11 @@ _orphans_killed_total = 0
 
 
 def cleanup_orphaned_simulations() -> list[int]:
-    """Mata cualquier proceso ICRP110phantoms cuyo directorio de trabajo
-    (cwd, via /proc/<pid>/cwd) esta dentro de un geant4-job-* -- el
-    prefijo unico que SOLO worker.py crea (tempfile.TemporaryDirectory en
-    _run_job()) para cada intento. Deliberadamente NO filtra por nombre
-    de binario solo: eso mataria una corrida manual del usuario en un
-    worker sin contenedor (ver correccion 2 arriba). Un ICRP110phantoms
-    corrido a mano por alguien, en cualquier otro directorio, nunca se
-    toca -- solo los que este worker mismo pudo haber lanzado.
-
-    Llamado (a) UNA VEZ al arrancar, dentro de worker_lock() en main()
-    -- cubre el caso simple (worker reiniciado, hijo huerfano de un
-    proceso anterior), y (b) PERIODICAMENTE dentro del loop principal
-    (ver run_worker_loop()) -- cubre el caso real de tania, donde el
-    mismo proceso worker sigue vivo dias enteros pero el killpg de un
-    intento especifico no alcanzo al nieto.
-
-    Nunca debe impedir que el worker arranque o siga corriendo: cualquier
-    fallo al leer /proc (permisos, race de que el proceso termine solo
-    mientras se inspecciona) se ignora en silencio para ESE pid. Devuelve
-    la lista de PIDs matados, para loguear."""
-    global _orphans_killed_total
-    killed = []
-    try:
-        pids = [int(p) for p in os.listdir("/proc") if p.isdigit()]
-    except OSError:
-        return killed
-
-    for pid in pids:
-        if _ORPHAN_BINARY_NAME not in _read_proc_cmdline(pid):
-            continue
-        cwd = _read_proc_cwd_realpath(pid)
-        if _ORPHAN_JOB_DIR_PREFIX not in cwd:
-            continue
-        # Snapshot ANTES de matar -- una vez muerto, /proc/<pid> ya no
-        # tiene nada que leer (ver _read_proc_diagnostics()).
-        diag = _read_proc_diagnostics(pid)
-        try:
-            os.killpg(os.getpgid(pid), signal.SIGTERM)
-            killed.append(pid)
-            _orphans_killed_total += 1
-            if diag is not None:
-                age_str = f"{diag['age_s']:.0f}s" if diag["age_s"] is not None else "?"
-                print(f"[worker] limpieza: matado pid={diag['pid']} ppid={diag['ppid']} "
-                      f"pgid={diag['pgid']} sid={diag['sid']} edad={age_str} cwd={diag['cwd']}")
-            else:
-                print(f"[worker] limpieza: matado pid={pid} (no se pudo leer /proc antes de matar)")
-        except (ProcessLookupError, PermissionError):
-            continue
-    if killed:
-        print(f"[worker] limpieza: {len(killed)} proceso(s) {_ORPHAN_BINARY_NAME} huerfano(s) "
-              f"(cwd bajo {_ORPHAN_JOB_DIR_PREFIX}*, sin job activo de este worker) terminados: {killed} "
-              f"(total acumulado en este proceso: {_orphans_killed_total})")
-    return killed
+    """No eliminar procesos sin evidencia duradera de propiedad del worker."""
+    # A shared temporary-directory prefix cannot prove process ownership.
+    # Fail closed until a durable per-worker process identity is available.
+    # Normal cancellation still terminates the Popen-owned process group.
+    return []
 
 
 def image_repository(reference: str) -> str:
@@ -745,7 +697,7 @@ def heartbeat(worker_id: str) -> int | None:
     no inflar cada request cuando nadie lo pidio (el caso comun)."""
     with _cancel_lock:
         log_context = _active_cancel
-        active_job_id = log_context[0] if log_context is not None else None
+        active_job_id = log_context[0] if log_context is not None and (len(log_context) < 4 or log_context[3] == "v1") else None
     try:
         resp = SESSION.post(
             f"{COORDINATOR_URL}/api/v1/workers/{worker_id}/heartbeat",
@@ -765,7 +717,7 @@ def heartbeat(worker_id: str) -> int | None:
             if isinstance(request, dict):
                 report_log(worker_id, active_job_id, log_context, request)
         cancel_id = payload.get("cancel_job_id") if isinstance(payload, dict) else None
-        return cancel_id if type(cancel_id) is int and cancel_id > 0 else None
+        return cancel_id if active_job_id is not None and type(cancel_id) is int and cancel_id > 0 else None
     except (requests.RequestException, ValueError) as exc:
         print(f"[worker] heartbeat fallo (no fatal): {exc}")
         return None
@@ -977,7 +929,7 @@ def _post_result(job_id: int, data: dict, files: dict, api_version: str = "v1") 
 
 def _save_pending_result(job_id: int, data: dict, results_csv_text: str, manifest_csv_text: str) -> Path:
     PENDING_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    job_dir = PENDING_RESULTS_DIR / str(job_id)
+    job_dir = PENDING_RESULTS_DIR / (f"v2-{job_id}" if data.get("api_version") == "v2" else str(job_id))
     if job_dir.exists():
         archive_pending_result(job_dir, "Entrada anterior preservada antes de guardar otra entrega del mismo job")
     job_dir.mkdir()
@@ -1072,7 +1024,7 @@ def retry_pending_results() -> None:
         if not job_dir.is_dir():
             continue
         try:
-            job_id = int(job_dir.name)
+            job_id = int(job_dir.name.removeprefix("v2-"))
             data = json.loads((job_dir / "data.json").read_text())
             created_at = float(data["created_at"])
             results_csv_text = (job_dir / "results.csv").read_text()
@@ -1136,7 +1088,7 @@ def retry_pending_failures() -> bool:
 def report_failure(worker_id: str, job_id: int, error: str, duration_s: float, api_version: str = "v1") -> None:
     directory = WORKER_ID_FILE.parent / "pending_failures"
     directory.mkdir(parents=True, exist_ok=True)
-    write_update_state(directory / f"{job_id}.json", {
+    write_update_state(directory / (f"v2-{job_id}.json" if api_version == "v2" else f"{job_id}.json"), {
         "job_id": job_id,
         "api_version": api_version,
         "payload": {"worker_id": worker_id, "error": error[-2000:], "duration_s": duration_s},
@@ -1292,7 +1244,7 @@ def run_job(worker_id: str, job: dict) -> tuple[bool, float]:
     detectar una racha de fallos casi instantaneos (ver
     _CONSECUTIVE_FAST_FAILURES_LIMIT), no solo para logging."""
     global _active_cancel
-    context = (job["job_id"], threading.Event(), job.get("attempt", 0))
+    context = (job["job_id"], threading.Event(), job.get("attempt", 0), job.get("_api_version", "v1"))
     with _cancel_lock:
         _active_cancel = context
     try:
@@ -1309,7 +1261,8 @@ def _run_job(worker_id: str, job: dict, cancel_event) -> tuple[bool, float]:
     print(f"[worker] job {job_id} ({label}) -- iniciando")
 
     try:
-        resp = SESSION.post(f"{COORDINATOR_URL}/api/v1/jobs/{job_id}/start", json={"worker_id": worker_id}, timeout=15)
+        start_url = _result_path(job_id, job.get("_api_version", "v1")).removesuffix("result") + "start"
+        resp = SESSION.post(start_url, json={"worker_id": worker_id}, timeout=15)
         resp.raise_for_status()
     except requests.RequestException as exc:
         print(f"[worker] no se pudo marcar 'running' el job {job_id} (se abandona esta asignacion): {exc}")

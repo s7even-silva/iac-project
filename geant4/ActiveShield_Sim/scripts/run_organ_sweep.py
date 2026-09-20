@@ -224,6 +224,23 @@ def build_combinations(spectra_dir, n_bins=None):
     return combos
 
 
+def validate_resume_grid(build_dir, n_bins):
+    """Never append a new CSV layout or grid to an existing run directory."""
+    for filename in ("organ_sweep_manifest.csv", "resultados_organo_sweep.csv"):
+        path = build_dir / filename
+        if not path.exists():
+            continue
+        with path.open(newline="") as stream:
+            reader = csv.DictReader(stream)
+            required = {"n_bins"}
+            if filename.startswith("resultados"):
+                required.update(("s1_j", "s2_j2", "n", "se_run_j"))
+            if not required.issubset(reader.fieldnames or []):
+                raise ValueError(f"{path}: esquema antiguo; conservarlo y usar otro directorio de build/salida")
+            if any(int(row["n_bins"]) != n_bins for row in reader):
+                raise ValueError(f"{path}: otra grilla n_bins; usar otro directorio de salida")
+
+
 def parse_icrp110_out(out_path):
     """Extrae, por organo, edep/dosis y (si el binario tiene el scorer
     instrumentado) los acumuladores intra-run S1/S2/N/SE_run, de la tabla
@@ -359,6 +376,8 @@ def main():
     parser.add_argument("--repetition-start", type=int, default=0,
                         help="Indice inicial de repeticion (default 0); con --repeats 1 ejecuta solo ese indice.")
     args = parser.parse_args()
+    if args.n_bins < 1:
+        parser.error("--n-bins debe ser positivo")
     if args.print_progress_every < 1:
         parser.error("--print-progress-every debe ser positivo")
     if args.repetition_start < 0 or args.repeats < 1:
@@ -381,6 +400,8 @@ def main():
                   "field/mesh_swept.py + field/mesh_to_gdml.py, o pasa --no-coil-geometry para omitirlo "
                   "(no es el comportamiento de produccion, ver AGENTS.md).")
 
+    if args.resume:
+        validate_resume_grid(build_dir, args.n_bins)
     generated_dir = build_dir / "macros" / "generated_organ"
     logs_dir = build_dir / "logs_organ"
     archive_dir = build_dir / "organ_out_archive"
