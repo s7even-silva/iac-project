@@ -61,6 +61,64 @@ que **dentro** de cada fase, correr y analizar no requiera intervención
 manual, no que las 4 fases decidan solas algo que el plan dice
 explícitamente que requiere revisión.
 
+## Reanudar tras un corte (resume)
+
+Los 4 scripts `run_faseN.py` escriben un `manifest.csv` corrida por
+corrida (append inmediato, no al final) y son reanudables **por
+diseño**, igual que `run_organ_sweep.py`: si la máquina se apaga, se
+cierra la sesión, o el proceso se corta a mitad de camino (le pasó de
+verdad a una corrida de Fase 8 el 2026-09-19, cortada por fin de sesión
+con 22/24 corridas ya hechas), **no hace falta borrar nada ni correr de
+nuevo desde cero**. Basta con volver a invocar el mismo script con el
+mismo `--out-dir` que generó la corrida cortada:
+
+```bash
+# out_dir real de la corrida cortada, tal como lo imprimió el script al arrancar
+python3 run_fase8_binning.py --combos "GCR_H/min" --n-events 200 --threads 4 \
+  --out-dir results/fase8_binning_20260919T214722Z
+```
+
+El script carga el manifiesto existente, salta toda combinación que ya
+tenga `exit_code == 0` registrado (imprime `-- YA HECHA (retomando), se
+salta`), y solo corre lo que falta. El análisis final (CSV de resumen +
+`faseN_estado.json`) se recalcula sobre el conjunto completo (corridas
+viejas + nuevas), no solo sobre las nuevas.
+
+**Detalles verificados, no solo diseñados:**
+
+- Una corrida que falló (`exit_code != 0`, ej. crash de Geant4) **no**
+  cuenta como hecha — se reintenta en el siguiente resume. Verificado con
+  un caso real: un primer intento de resume falló instantáneamente en 2
+  corridas por un bug de ruta relativa (ver abajo), dejando filas con
+  `exit_code=1` en el manifiesto; el segundo intento las reintentó y las
+  completó, y el análisis final las usó correctamente — el manifiesto
+  queda con ambas filas (la fallida y la exitosa) porque es un log de
+  solo-append, no un upsert, pero eso no afecta la corrección: `analyze()`
+  siempre lee el `.out` final en disco por convención de nombre, no las
+  filas del manifiesto.
+- Usar `--out-dir` **sin** haber corrido antes con ese directorio
+  simplemente empieza una corrida nueva ahí (no hace falta que exista).
+- `--no-resume` fuerza rehacer todo desde cero aunque el directorio ya
+  tenga corridas exitosas (mismo flag que `run_organ_sweep.py`).
+- Si no se pasa `--out-dir`, cada invocación crea un directorio nuevo con
+  timestamp — **no hay resume implícito**: para reanudar hay que apuntar
+  explícitamente al `--out-dir` de la corrida cortada (el propio script lo
+  imprime apenas arranca, y también queda en la ruta que reportan los
+  logs).
+- `--out-dir` debe existir dentro del checkout (relativo o absoluto, da
+  igual — el script lo resuelve a ruta absoluta internamente); un
+  `--out-dir` relativo **sí funcionaba mal antes de 2026-09-20** (rompía
+  la ruta de las macros nuevas al correr Geant4 con otro directorio de
+  trabajo, con un crash `-11` sin mensaje claro) — ya corregido en
+  `pilot_common.resolve_out_dir()`.
+
+El orquestador (`run_pilot_workflow.py --continue-to faseN`) delega en
+estos mismos scripts, así que hereda esta robustez automáticamente: para
+reanudar una fase cortada a través del orquestador, pasale el mismo
+`--out-dir` como argumento adicional (se reenvía tal cual a la fase, ver
+`parse_known_args()` en `run_pilot_workflow.py`) — el orquestador en sí
+no guarda ni infiere ese directorio por su cuenta.
+
 ## Fase 7 — Piloto A: validación del estimador de incertidumbre intra-run
 
 ```bash

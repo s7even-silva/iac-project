@@ -190,7 +190,9 @@ def main():
                          help="Hilos de Geant4 MT (default: todos los nucleos detectados).")
     parser.add_argument("--print-progress-every", type=int, default=500)
     parser.add_argument("--out-dir", type=Path, default=None,
-                         help="Default: pilots/results/intrarun_pilot_<timestamp UTC>/")
+                         help="Default: pilots/results/intrarun_pilot_<timestamp UTC>/. Reusar el "
+                              "directorio de una corrida anterior para retomarla -- ver --no-resume.")
+    pc.add_resume_arg(parser)
     args = parser.parse_args()
 
     import os
@@ -201,10 +203,7 @@ def main():
 
     pc.check_scorer_has_intrarun_columns(build_dir, binary_path)
 
-    out_dir = args.out_dir or (
-        Path(__file__).resolve().parent / "results" /
-        f"intrarun_pilot_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
-    )
+    out_dir, resuming = pc.resolve_out_dir(args, Path(__file__).resolve().parent, "intrarun_pilot")
     out_dir.mkdir(parents=True, exist_ok=True)
     macros_dir = out_dir / "macros"
     logs_dir = out_dir / "logs"
@@ -233,10 +232,15 @@ def main():
     print(f"Salida: {out_dir}")
     print()
 
-    manifest_rows = []
     manifest_path = out_dir / "manifest.csv"
     manifest_fieldnames = ["combo_label", "species", "phase", "bin_index", "energy_mev", "M",
                             "seed_idx", "seed1", "seed2", "exit_code", "duration_s", "macro_path", "out_path"]
+    key_fields = ["combo_label", "M", "seed_idx"]
+    done_keys = pc.load_done_keys(manifest_path, key_fields) if resuming else set()
+    manifest_rows = pc.read_existing_manifest_rows(manifest_path) if resuming else []
+    if resuming:
+        print(f"Retomando {out_dir} -- {len(done_keys)} corrida(s) ya exitosa(s), se saltan "
+              f"(usar --no-resume para rehacer todo).")
 
     run_n = 0
     for combo_idx, (combo_label_raw, combo) in enumerate(requested):
@@ -244,8 +248,14 @@ def main():
         for m_idx, m in enumerate(CHECKPOINTS_M):
             for seed_idx in range(args.n_seeds):
                 run_n += 1
-                seed1, seed2 = seed_for(combo_idx, m_idx, seed_idx)
                 run_out_path = checkpoints_dir / f"run_{combo_label}_M{m}_seed{seed_idx}.out"
+                key = (combo_label, str(m), str(seed_idx))
+                if key in done_keys:
+                    print(f"\n[{run_n}/{total_runs}] {combo_label} M={m} seed_idx={seed_idx} "
+                          f"-- YA HECHA (retomando), se salta")
+                    continue
+
+                seed1, seed2 = seed_for(combo_idx, m_idx, seed_idx)
                 macro = pc.build_macro(
                     combo, args.offset_x_m, seed1, seed2, n_threads, args.print_progress_every,
                     field_map, coil_geometry, m, run_out_path,

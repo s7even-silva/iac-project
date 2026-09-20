@@ -669,9 +669,27 @@ reducido: dosis absoluta, no el endpoint `eta` completo — ver docstring
 del script) y escribe un veredicto automatizable (`auto_continue` /
 `limitrofe` / `revisar`) contra el presupuesto `B_8→16 ≤ 2.5 pp` de más
 abajo, vía `pilot_state.py`. Encadenable con la Fase 7 y las siguientes
-mediante `run_pilot_workflow.py`. Ver `pilots/README.md`. Verificado con
-una corrida de humo (1 combinación, pocos eventos) — sin resultado real
-del piloto todavía, eso queda pendiente de correr en una máquina rápida.
+mediante `run_pilot_workflow.py`. Ver `pilots/README.md`.
+
+**Resume agregado (2026-09-20):** los 4 scripts `run_faseN.py`
+(`pilot_common.resolve_out_dir()`/`add_resume_arg()`) ahora reanudan una
+corrida cortada reinvocando el mismo comando con el mismo `--out-dir`,
+saltando toda combinación ya exitosa (`exit_code==0` en el manifiesto) —
+mismo patrón que `run_organ_sweep.py`. Motivado por un caso real: una
+corrida de humo de esta fase (1 combinación, 200 eventos/bin) se cortó
+por fin de sesión con 22/24 corridas hechas; sin este mecanismo se habría
+perdido ese trabajo. Verificado de punta a punta retomando esa misma
+corrida cortada: las 2 corridas faltantes (bin14/15 de la grilla de 16,
+las más caras) se completaron y el análisis final se recalculó
+correctamente sobre las 24 corridas — **primer resultado real de esta
+fase**: `epsilon_binning` máximo = 2.78% (peor caso `GCR_H/min`),
+veredicto `limitrofe` (dentro de ±0.5pp del presupuesto de 2.5pp — el
+plan pide comprobar 16→32 antes de decidir, no implementado todavía). Se
+corrigió también un bug encontrado durante esta prueba: un `--out-dir`
+relativo rompía la ruta de las macros al correr Geant4 desde otro
+directorio de trabajo (crash `-11` sin mensaje claro) — ya resuelto
+resolviendo `--out-dir` a ruta absoluta. Detalle completo en
+`pilots/README.md`, sección "Reanudar tras un corte (resume)".
 
 ## Objetivo
 
