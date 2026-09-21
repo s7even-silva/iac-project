@@ -44,6 +44,20 @@ completa en vez de un solo punto. El costo total sube de
 "n_combos*n_seeds corridas" a "n_combos*n_seeds*4 corridas" (una por
 cada M, ya no compartidas dentro de una sola corrida larga).
 
+BUG DE SEMILLAS CORREGIDO 2026-09-21 (mismo defecto encontrado primero en
+run_fase8_binning.py, ver su docstring): combo_idx usaba enumerate(requested),
+es decir la POSICION de cada combinacion dentro de --combos, no un id fijo
+por combinacion -- dos invocaciones de "las mismas" combinaciones con
+--combos en otro orden generaban semillas de Geant4 DISTINTAS para cada
+una. Corregido usando combo["index"] (el indice GLOBAL y estable que ya
+asigna run_organ_sweep.build_combinations(), el mismo que usa produccion
+real) en vez de la posicion en --combos -- el resultado ya no depende del
+orden del flag. Los 3 out-dirs locales generados antes de este fix
+(2026-09-19, un solo combo cada uno, GCR_H/min/2) quedaron con semillas
+no reproducibles (combo_idx=0 en vez del index real=14) y se descartaron
+-- cualquier out-dir de Fase 7 anterior a este commit debe recorrerse
+desde cero, no retomarse con --out-dir.
+
 Que hace, por cada combinacion representativa elegida (--combos):
 
   1. Para cada M en {2500, 5000, 10000, 20000}: corre N_SEEDS corridas
@@ -168,7 +182,16 @@ def seed_for(combo_idx: int, m_idx: int, seed_idx: int) -> tuple[int, int]:
     con CRN, ver Fase 10 del plan), pero aqui se prefiere dar a cada
     (combo,M,seed_idx) una semilla propia y distinguible -- evita
     cualquier ambigüedad de "es una coincidencia de diseño o data real"
-    al revisar el manifest.csv despues."""
+    al revisar el manifest.csv despues.
+
+    combo_idx debe venir de combo["index"] (el indice GLOBAL y estable de
+    run_organ_sweep.build_combinations(), el mismo que ya usa produccion
+    real y que NUNCA cambia mientras SPECIES_PHASE no se reordene -- ver
+    AGENTS.md), NUNCA de la posicion dentro de --combos. Mismo bug real
+    encontrado y corregido en run_fase8_binning.py (2026-09-21, ver su
+    docstring): usar enumerate(requested) aqui haria que dos invocaciones
+    de "las mismas" combinaciones con --combos en otro orden generaran
+    semillas Geant4 distintas para cada una, sin ningun aviso."""
     seed1 = pc.PILOT_BASE_SEED + PHASE_SEED_OFFSET + 100_000 * combo_idx + 1_000 * m_idx + 2 * seed_idx
     return seed1, seed1 + 1
 
@@ -268,7 +291,8 @@ def main():
               f"pendientes en esta maquina -- se ira midiendo y mostrando desde la primera.")
 
     run_n = 0
-    for combo_idx, (combo_label_raw, combo) in enumerate(requested):
+    for combo_label_raw, combo in requested:
+        combo_idx = combo["index"]
         combo_label = combo_label_raw.replace("/", "_")
         for m_idx, m in enumerate(CHECKPOINTS_M):
             for seed_idx in range(args.n_seeds):
