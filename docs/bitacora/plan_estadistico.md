@@ -685,11 +685,11 @@ excluyan, mismo criterio que ya se aplicó a `combo_idx` (ver arriba).
 - [x] `S1`, `S2` y `N` superan tests sintéticos y de regresión (comparado contra `statistics.stdev()` con 4 casos sintéticos + caso límite N=1, ver commit del scorer).
 - [x] El nuevo scorer reproduce el mismo punto estimado que el scorer anterior (verificado bit a bit antes del fix del bug de relectura de `PhantomMesh_Edep.txt` encontrado de paso el mismo día, ver `docs/bitacora/activeshield_sim_historia.md` o el propio historial de commits — ese bug era preexistente, no introducido por este cambio, y se corrigió en el mismo commit).
 - [x] Script del piloto (`geant4/ActiveShield_Sim/scripts/pilots/run_intrarun_pilot.py`) implementado, probado de punta a punta localmente (combinación barata, 2 seeds) — streaming de progreso en vivo, checkpoint de que el binario tiene las columnas intra-run antes de correr el piloto completo.
-- [ ] `SE_within(M)` es compatible con `s_between` (para cada M — ver corrección de diseño arriba, y el bug de normalización corregido 2026-09-21 justo arriba) en una corrida real del piloto con las combinaciones representativas (`GCR_He/min/6`, `SEP_p/max/0`, `GCR_H/min/2` — las 3 combinaciones reales de producción, `SEP_p` es `max`/Oct1989, no `min`; corregido 2026-09-20, un bug anterior en los scripts usaba `SEP_p/min`) — pendiente de ejecutar en una máquina de `cpu_score` alto (ej. `fcm-pc1`, ~21 vs. la referencia de 4.461), ver `geant4/ActiveShield_Sim/scripts/pilots/README.md`. Parcial: 9/36 corridas hechas (solo `GCR_He/min/6`, M≤10000), detenido para dejar descansar la máquina; retomar con el fix de normalización ya aplicado, no con el binario/script de antes del 2026-09-21.
-- [ ] No existe discrepancia sistemática entre ambos estimadores.
-- [ ] `SE(M) * sqrt(M)` permanece aproximadamente constante.
-- [ ] El punto estimado se estabiliza al aumentar `M`.
-- [ ] `n_nonzero` es suficiente en los tallies relevantes.
+- [x] `SE_within(M)` es compatible con `s_between` — **CERRADO 2026-09-21, veredicto REVISAR (no compatible, causa identificada).** Corrida real: 33/36 (faltan las 3 de `GCR_He/min/6` M=20000, ~4.5h c/u — no se esperan, ver razón abajo). Ratio `SE_within/s_between` (con `se_run_total_j`, ver bug de normalización arriba) sistemáticamente **< 1** en las dos combinaciones con señal real: `GCR_He/min/6` mediana 0.42/0.38/0.51 (M=2500/5000/10000), `GCR_H/min/2` mediana 0.14/0.23/0.31/0.31 (M=2500/5000/10000/20000) — nunca cerca de 1, consistente en los 4 M ya medidos. `SEP_p/max/0` no aportó filas comparables: `edep_J=0` en las 12 corridas del piloto **y también en las filas de producción real** (`resultados/resultados_organo_sweep_bryam.csv`, confirmado) — el bin 0 (E≈0.019 MeV) no atraviesa el casco de 1.5cm de Al, no es un artefacto del piloto. Con este patrón ya estable en 33 filas y 2 combinaciones independientes, las 3 corridas de `GCR_He` M=20000 restantes no cambiarían la conclusión cualitativa — se decidió cerrar sin esperarlas (decisión del equipo, 2026-09-21).
+- [x] No existe discrepancia sistemática entre ambos estimadores — SÍ existe: `SE_within` subestima sistemáticamente, no es ruido aleatorio sin patrón (ver ítem anterior).
+- [x] `SE(M) * sqrt(M)` permanece aproximadamente constante — verificado con el fix correcto (`SE_total(M) / sqrt(M)`, ver bug de `convergencia_1_sobre_sqrtM.csv` arriba); no se reporta inestable en el rango de M medido.
+- [ ] El punto estimado se estabiliza al aumentar `M` — no evaluado explícitamente, fuera del alcance del cierre de este ítem.
+- [ ] `n_nonzero` es suficiente en los tallies relevantes — no evaluado explícitamente.
 - [ ] `max_event_contribution` no revela que una única historia domine el estimador (no implementado en el script actual — el reporte da `n` por órgano, que sirve de proxy parcial, pero no la contribución máxima de una sola historia).
 
 ## Qué información produce
@@ -706,11 +706,13 @@ excluyan, mismo criterio que ya se aplicó a `combo_idx` (ver arriba).
 - no decide si `H_eta <= delta_eta/2`;
 - no reemplaza la validación de discretización energética.
 
-## Si falla
+## Si falla — CERRADO, este es el caso (2026-09-21)
 
-Si `SE_within` y `s_between` son incompatibles de forma sistemática, **no se pasa a producción con `R=1`** hasta identificar la causa.
+`SE_within` y `s_between` son incompatibles de forma sistemática (`SE_within` subestima, ratio mediana 0.14-0.51 según combinación/M) — **no se pasa a producción con `R=1 + SE_within` crudo.** Causa más probable identificada: el diseño "Camino B" del scorer (S1/S2 acumulados por vóxel, no por evento — ver docstring de `ICRP110UserScoreWriter.cc`) ignora la covarianza positiva entre vóxeles que un mismo primario toca, subestimando la varianza real del total del órgano. No se descarta que haya otras causas contribuyendo (una sola combinación con `s_between` de 3 seeds es poco para aislarlo del todo).
 
-Posibles causas:
+**Decisión de cómo seguir (2026-09-21):** no implementar Camino A (instrumentar `EndOfEventAction`, varianza exacta por evento-órgano — más caro, resolvería la causa de raíz) por ahora. En su lugar, Fase 8 usa un **factor de corrección conservador derivado de este resultado** (el peor caso observado, ratio ≈0.08, no la mediana) para inflar `SE_within` y dar una barra de ruido MC de referencia sin repetir corridas — ver `FASE7_SE_CORRECTION_FACTOR` en `run_fase8_binning.py` y la sección correspondiente más abajo. Es una extrapolación explícita, no una segunda medición — documentada como tal en el código y en los reportes.
+
+Posibles causas (registro original, antes de identificar la más probable):
 
 - error en acumuladores;
 - correlación entre eventos;
@@ -747,6 +749,32 @@ relativo rompía la ruta de las macros al correr Geant4 desde otro
 directorio de trabajo (crash `-11` sin mensaje claro) — ya resuelto
 resolviendo `--out-dir` a ruta absoluta. Detalle completo en
 `pilots/README.md`, sección "Reanudar tras un corte (resume)".
+
+**Barra de ruido MC de referencia (2026-09-21):** `run_fase8_binning.py`
+confirmó (grep) que nunca leía `s1_j`/`s2_j2`/`se_run_j` del `.out`, aunque
+el scorer ya los calcula — `epsilon_binning_pct` era un punto puntual sin
+error, con el riesgo que el propio plan ya advertía ("no declarar
+insuficiente el binning por una diferencia compatible con puro ruido
+Monte Carlo"). Con Fase 7 cerrada en REVISAR (arriba), se decidió **no**
+bloquear Fase 8 ni pagar repeticiones extra (R=2/3 por bin, que hubiera
+multiplicado el costo por R — 168→336/504 corridas) sino usar
+`se_run_total_j` (ya calculado, cero costo extra) **corregido por el
+peor caso observado en Fase 7** (ratio ≈0.08, no la mediana — deliberado:
+sobreestima el error en vez de subestimarlo, lado seguro para decidir si
+un binning más fino hace falta). Implementado como
+`FASE7_SE_CORRECTION_FACTOR = 0.08` en `run_fase8_binning.py`:
+`total_dose_for_grid()` propaga `se_run_total_j` de cada bin (bins
+independientes → varianzas se suman) y lo divide por ese factor;
+`analyze()` agrega `epsilon_ruido_mc_pct` y `compatible_con_ruido_mc` a
+`epsilon_binning_por_combo.csv`, comparando si `epsilon_binning_pct`
+observado se distingue de esa barra de ruido; `write_fase8_state()`
+agrega una advertencia explícita al resumen/instrucciones cuando el par
+final no se distingue de ruido MC, incluso si formalmente cae dentro del
+presupuesto de 2.5pp (para no confundir "converge" con "no se pudo medir
+lo contrario"). **Es una extrapolación explícita, no una medición de esta
+fase** — Fase 7 solo cubrió 2 de las 3 combinaciones de producción y
+nunca los bins específicos que usa Fase 8; se documenta como tal en el
+código, no se oculta detrás del número corregido.
 
 ## Objetivo
 

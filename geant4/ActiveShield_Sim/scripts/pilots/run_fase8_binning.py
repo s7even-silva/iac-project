@@ -74,6 +74,22 @@ default (8+16+32=56) y los 3 combos default: 168 corridas -- bastante
 mas caro que antes (72), ver --n-bins-grid para acotar a un subconjunto
 (ej. "16,32" si 8 ya se descarto en una corrida previa) si el costo
 completo no es necesario.
+
+BARRA DE RUIDO MC DE REFERENCIA (2026-09-21, ver FASE7_SE_CORRECTION_FACTOR
+mas abajo): esta fase NO repite corridas (mide error de discretizacion,
+no ruido MC), asi que epsilon_binning_pct sigue siendo un punto sin barra
+de error propia. Se agrega epsilon_ruido_mc_pct (propagando se_run_total_j
+de cada bin, ya calculado por el scorer, sin costo extra) corregido por
+el PEOR CASO observado en Fase 7 (factor conservador 0.08 -- Fase 7 midio
+que SE_within subestima s_between por ese orden de magnitud en el peor
+caso) para poder distinguir "epsilon_binning alto porque el binning no
+converge" de "epsilon_binning alto pero compatible con puro ruido MC
+subestimado" (ver Fase 8 del plan: "no declarar insuficiente el binning
+por una diferencia compatible con ruido Monte Carlo"). Es una
+EXTRAPOLACION explicita del resultado de Fase 7 (que no cubrio los mismos
+bins ni las 3 combinaciones), no una medicion propia de esta fase --
+columna `compatible_con_ruido_mc` en epsilon_binning_por_combo.csv, y
+advertencia en el resumen si aplica.
 """
 import argparse
 import csv
@@ -111,6 +127,30 @@ EPSILON_BUDGET_PCT = 2.5
 # lado) -- decision propia de implementacion, no un numero que venga del
 # plan (el plan solo dice "si 8->16 es limitrofe", sin cuantificarlo).
 EPSILON_MARGIN_PCT = 0.5
+
+# Factor de correccion de SE_within, derivado de Fase 7 (2026-09-21,
+# docs/bitacora/plan_estadistico.md, seccion "Bug de normalizacion de
+# SE_run_J"): SE_within (calculado por el scorer con una sola corrida,
+# "Camino B") SUBESTIMA la dispersion real (s_between) medida entre seeds
+# independientes -- ratio SE_within/s_between con mediana 0.14-0.51 segun
+# combinacion/M, y percentil 10 tan bajo como ~0.08 (GCR_H/min, M=5000 y
+# M=10000). Fase 8 no corre repeticiones (mide error de discretizacion,
+# no ruido MC, ver docstring del modulo) asi que no puede medir su propio
+# factor -- se usa el PEOR CASO observado en Fase 7 (el mas conservador:
+# el que mas infla el error, no la mediana) como factor de correccion
+# GLOBAL, aplicado a TODOS los bins por igual. Esto es una extrapolacion
+# deliberada, no una medicion de Fase 8: Fase 7 solo cubrio 2 de las 3
+# combinaciones de produccion (GCR_He/min, GCR_H/min; SEP_p/max/bin0 no
+# genero senal, ver plan) y nunca los bins especificos que usa Fase 8. El
+# proposito NO es "corregir" epsilon_binning en si (que es un punto
+# estimado, no depende de SE_within) sino dar una barra de ruido MC de
+# referencia para no confundir "epsilon_binning alto" con "diferencia de
+# discretizacion real" cuando en realidad podria ser ruido MC subestimado
+# por SE_within crudo (ver Fase 8 del plan, "Considerar tambien el ruido
+# Monte Carlo... no declarar insuficiente el binning por una diferencia
+# compatible con puro ruido Monte Carlo"). Usar 0.08 (no redondear a 0.1)
+# para no aflojar el margen de seguridad.
+FASE7_SE_CORRECTION_FACTOR = 0.08
 
 
 # Marcador de semilla por grilla -- FIJO por valor de n_bins, no por
@@ -380,10 +420,19 @@ def total_dose_for_grid(species, phase, n_bins, runs, spectra_dir, area_cm2, n_e
     (masa*N) -- aqui usa TotalDep (todos los organos del cuerpo, ya
     calculado por el scorer) en vez de un organo especifico, para dar
     una D agregada simple, suficiente para epsilon_binning. No separa
-    por organo -- si hace falta esa granularidad, extender aqui."""
+    por organo -- si hace falta esa granularidad, extender aqui.
+
+    Devuelve (total_d, se_d_ruido_mc, missing). se_d_ruido_mc (2026-09-21,
+    ver FASE7_SE_CORRECTION_FACTOR) propaga se_run_total_j de CADA bin
+    (independientes entre si -- bins de energia distintos, corridas
+    Geant4 separadas -- asi que las varianzas se SUMAN, no los SE) y lo
+    corrige por el peor-caso de Fase 7 antes de devolverlo, para dar una
+    barra de ruido MC de referencia sobre D (NO una barra de error real
+    calibrada -- ver la nota extensa en FASE7_SE_CORRECTION_FACTOR)."""
     bins = energy_bins.build_bins(spectra_dir, n_bins=n_bins)[(species, phase)]
     key = (species, phase, n_bins)
     total_d = 0.0
+    var_d_ruido_mc = 0.0
     missing = []
     for bin_index, _energy_rep, flux_bin in bins:
         if bin_index not in runs.get(key, {}):
@@ -395,10 +444,22 @@ def total_dose_for_grid(species, phase, n_bins, runs, spectra_dir, area_cm2, n_e
             continue
         rows = pc.parse_organ_table_full(Path(out_path))
         total_dep_j = sum(r["edep_J"] for oid, r in rows.items() if oid != 0)  # excluye Air (organo_id=0)
+        # se_run_total_j solo presente si el binario tiene el scorer
+        # instrumentado (ver run_organ_sweep.py:parse_icrp110_out()) --
+        # ausente en un .out del formato viejo, sin que eso sea un error
+        # (se_bin_j queda 0.0, ese bin simplemente no aporta ruido MC a
+        # la barra de referencia -- subestima el total en ese caso, no lo
+        # sobreestima, coherente con el resto de este calculo siendo
+        # conservador en la direccion opuesta via FASE7_SE_CORRECTION_FACTOR).
+        se_bin_total_j = sum(r.get("se_run_total_j", 0.0) for oid, r in rows.items() if oid != 0)
         w_b = area_cm2 * flux_bin
         r_b = total_dep_j / n_events  # Gy*kg-equivalente por primario -- sin dividir por masa (D relativa, ok para epsilon)
+        se_r_b = se_bin_total_j / n_events  # misma normalizacion que r_b
         total_d += r_b * w_b
-    return total_d, missing
+        var_d_ruido_mc += (w_b ** 2) * (se_r_b ** 2)
+    se_d_crudo = math.sqrt(var_d_ruido_mc)
+    se_d_ruido_mc = se_d_crudo / FASE7_SE_CORRECTION_FACTOR
+    return total_d, se_d_ruido_mc, missing
 
 
 def analyze(combos_spec, runs, spectra_dir, n_events, n_bins_grid, ship_radius_m, ship_half_length_m, out_dir):
@@ -420,15 +481,39 @@ def analyze(combos_spec, runs, spectra_dir, n_events, n_bins_grid, ship_radius_m
 
     resultado_rows = []
     resultado_fieldnames = ["species", "phase", "n_bins_lo", "n_bins_hi", "D_lo", "D_hi",
-                             "epsilon_binning_pct", "bins_faltantes_lo", "bins_faltantes_hi"]
+                             "epsilon_binning_pct", "epsilon_ruido_mc_pct", "compatible_con_ruido_mc",
+                             "bins_faltantes_lo", "bins_faltantes_hi"]
     for species, phase in combos_spec:
         for n_lo, n_hi in zip(n_bins_grid, n_bins_grid[1:]):
-            d_lo, missing_lo = dose_by_combo_and_n[(species, phase, n_lo)]
-            d_hi, missing_hi = dose_by_combo_and_n[(species, phase, n_hi)]
+            d_lo, se_lo, missing_lo = dose_by_combo_and_n[(species, phase, n_lo)]
+            d_hi, se_hi, missing_hi = dose_by_combo_and_n[(species, phase, n_hi)]
             eps_pct = (abs(d_hi - d_lo) / abs(d_hi) * 100.0) if d_hi != 0 else float("nan")
+            # epsilon_ruido_mc_pct (2026-09-21, ver FASE7_SE_CORRECTION_FACTOR):
+            # barra de ruido MC de referencia sobre epsilon_binning, NO una
+            # barra de error real calibrada. Propaga SE(D_hi - D_lo) =
+            # sqrt(se_lo^2 + se_hi^2) (D_lo y D_hi vienen de corridas Geant4
+            # INDEPENDIENTES -- distintas grillas de bins, sin semillas
+            # compartidas -- covarianza cero es la aproximacion correcta),
+            # tratando D_hi del denominador como fijo (aproximacion de primer
+            # orden, valida cuando se_hi/d_hi << 1, que es el caso esperado
+            # aqui). compatible_con_ruido_mc=True cuando epsilon_binning
+            # observado NO se distingue de puro ruido MC segun esta barra --
+            # en ese caso, un epsilon "alto" podria no ser diferencia de
+            # discretizacion real (ver Fase 8 del plan, "no declarar
+            # insuficiente el binning por una diferencia compatible con puro
+            # ruido Monte Carlo").
+            if d_hi != 0:
+                se_diff = math.sqrt(se_lo ** 2 + se_hi ** 2)
+                eps_ruido_mc_pct = (se_diff / abs(d_hi)) * 100.0
+                compatible_con_ruido_mc = eps_pct <= eps_ruido_mc_pct
+            else:
+                eps_ruido_mc_pct = float("nan")
+                compatible_con_ruido_mc = None
             resultado_rows.append({
                 "species": species, "phase": phase, "n_bins_lo": n_lo, "n_bins_hi": n_hi,
                 "D_lo": d_lo, "D_hi": d_hi, "epsilon_binning_pct": eps_pct,
+                "epsilon_ruido_mc_pct": eps_ruido_mc_pct,
+                "compatible_con_ruido_mc": compatible_con_ruido_mc,
                 "bins_faltantes_lo": ";".join(map(str, missing_lo)),
                 "bins_faltantes_hi": ";".join(map(str, missing_hi)),
             })
@@ -489,19 +574,35 @@ def write_fase8_state(resultado_rows, n_bins_grid, out_dir):
     max_eps = max(r["epsilon_binning_pct"] for r in valid_rows)
     peor = max(valid_rows, key=lambda r: r["epsilon_binning_pct"])
     contexto = f" (pares anteriores: {'; '.join(earlier_pairs_summary)})" if earlier_pairs_summary else ""
+    # Cuantas filas del par final NO se distinguen de ruido MC segun la
+    # barra de referencia (epsilon_ruido_mc_pct, ver FASE7_SE_CORRECTION_FACTOR)
+    # -- da contexto en los 3 veredictos, sin cambiar el umbral EPSILON_BUDGET_PCT
+    # en si (eso sigue viniendo del plan, no de esta barra de ruido).
+    n_compatible_ruido = sum(1 for r in valid_rows if r.get("compatible_con_ruido_mc") is True)
+    ruido_txt = (f" ADVERTENCIA: {n_compatible_ruido}/{len(valid_rows)} fila(s) del par final no se "
+                 f"distinguen de ruido MC segun SE_within corregido por el peor-caso de Fase 7 (factor "
+                 f"{FASE7_SE_CORRECTION_FACTOR}, ver epsilon_ruido_mc_pct en el CSV) -- esta barra es una "
+                 f"extrapolacion, no una medicion de Fase 8 (no repite corridas)."
+                 if n_compatible_ruido else "")
 
     if max_eps <= EPSILON_BUDGET_PCT - EPSILON_MARGIN_PCT:
         veredicto = pilot_state.VERDICT_AUTO_CONTINUE
         resumen = (f"epsilon_binning({n_bins_lo_final} vs {n_bins_hi_final}) maximo={max_eps:.3f}% "
                    f"(peor caso: {peor['species']}/{peor['phase']}), claramente <= presupuesto "
-                   f"{EPSILON_BUDGET_PCT}pp -- {n_bins_lo_final} bins ya son suficientes{contexto}.")
+                   f"{EPSILON_BUDGET_PCT}pp -- {n_bins_lo_final} bins ya son suficientes{contexto}."
+                   f"{ruido_txt}")
         instrucciones = (f"Continuar a Fase 9 (calibracion de M_b) con {n_bins_lo_final} bins, "
-                          f"sin necesidad de {n_bins_hi_final}.")
+                          f"sin necesidad de {n_bins_hi_final}."
+                          + (" NOTA: revisar epsilon_ruido_mc_pct antes de continuar -- si la convergencia "
+                             "observada no se distingue de ruido MC, no es evidencia fuerte de que el "
+                             "binning converja de verdad, solo de que no se pudo medir lo contrario."
+                             if n_compatible_ruido else ""))
     elif max_eps >= EPSILON_BUDGET_PCT + EPSILON_MARGIN_PCT:
         veredicto = pilot_state.VERDICT_REVISAR
         resumen = (f"epsilon_binning({n_bins_lo_final} vs {n_bins_hi_final}) maximo={max_eps:.3f}% "
                    f"(peor caso: {peor['species']}/{peor['phase']}), claramente > presupuesto "
-                   f"{EPSILON_BUDGET_PCT}pp -- ni siquiera {n_bins_hi_final} bins alcanzan{contexto}.")
+                   f"{EPSILON_BUDGET_PCT}pp -- ni siquiera {n_bins_hi_final} bins alcanzan{contexto}."
+                   f"{ruido_txt}")
         instrucciones = (f"Adoptar {n_bins_hi_final} bins como candidato de todos modos NO es seguro -- "
                           f"el error de discretizacion sigue por encima del presupuesto incluso en el par "
                           f"mas fino corrido. Extender --n-bins-grid con un valor mayor (ej. "
@@ -511,7 +612,7 @@ def write_fase8_state(resultado_rows, n_bins_grid, out_dir):
         resumen = (f"epsilon_binning({n_bins_lo_final} vs {n_bins_hi_final}) maximo={max_eps:.3f}% "
                    f"(peor caso: {peor['species']}/{peor['phase']}), cerca del presupuesto "
                    f"{EPSILON_BUDGET_PCT}pp (dentro de +-{EPSILON_MARGIN_PCT}pp) -- limitrofe incluso en "
-                   f"el par mas fino corrido{contexto}.")
+                   f"el par mas fino corrido{contexto}.{ruido_txt}")
         instrucciones = (f"Ver Fase 8 del plan, 'Si 8->16 es limitrofe o 16 no parece estable': seguir "
                           f"subdividiendo. Correr de nuevo con --n-bins-grid "
                           f"'{n_bins_lo_final},{n_bins_hi_final},{n_bins_hi_final*2}' para comprobar "
@@ -522,6 +623,8 @@ def write_fase8_state(resultado_rows, n_bins_grid, out_dir):
         detalle={"epsilon_binning_max_pct": max_eps, "peor_caso": f"{peor['species']}/{peor['phase']}",
                  "par_final": f"{n_bins_lo_final} vs {n_bins_hi_final}",
                  "presupuesto_pct": EPSILON_BUDGET_PCT, "margen_pct": EPSILON_MARGIN_PCT,
+                 "fase7_se_correction_factor": FASE7_SE_CORRECTION_FACTOR,
+                 "n_filas_compatibles_con_ruido_mc": n_compatible_ruido,
                  "pares_anteriores": earlier_pairs_summary, "filas": valid_rows},
         instrucciones_si_no_auto=instrucciones,
         out_dir=str(out_dir),
