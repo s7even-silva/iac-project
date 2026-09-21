@@ -1,0 +1,30 @@
+PILOTO A (Fase 7) -- Reporte de validacion del estimador intra-run
+======================================================================
+
+Combinaciones: ['SEP_p/max/0', 'GCR_H/min/2']
+Seeds independientes por (combinacion, M): 3
+Valores de M comparados: [2500, 5000, 10000, 20000]
+
+Filas comparables (organo con datos en >=2 seeds): 146
+
+Ratio SE_within/s_between por M (agregado sobre todas las combinaciones/organos):
+  M=  2500: n=  12, media=0.350, mediana=0.138, min=0.060, max=1.198
+  M=  5000: n=  36, media=0.698, mediana=0.233, min=0.041, max=9.585
+  M= 10000: n=  32, media=0.465, mediana=0.306, min=0.000, max=2.470
+  M= 20000: n=  66, media=0.394, mediana=0.307, min=0.062, max=1.991
+
+Interpretacion (ver docstring del script para el detalle):
+  ratio ~ 1.0  -> SE_within predice bien la dispersion real, Camino B validado.
+  ratio << 1.0 -> SE_within SUBESTIMA la varianza real (covarianza entre
+                  voxels del mismo evento importa) -- no usar R=1 sin el
+                  diseno mas costoso (Camino A, EndOfEventAction).
+  ratio >> 1.0 -> inesperado, investigar antes de continuar (posible error
+                  en el calculo, o s_between subestimado por muy pocas seeds).
+
+Este piloto NO fija un umbral numerico de aceptacion (queda a criterio
+del equipo revisando este reporte + comparacion_se_within_vs_s_between.csv,
+ver Fase 7 del plan: 'Si falla... no se pasa a produccion con R=1 hasta
+identificar la causa').
+
+Detalle completo: comparacion_se_within_vs_s_between.csv
+Verificacion 1/sqrt(M): convergencia_1_sobre_sqrtM.csv
