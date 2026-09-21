@@ -1,0 +1,3675 @@
+
+**************************************************************
+ Geant4 version Name: geant4-11-04-patch-02 [MT]   (12-June-2026)
+  << in Multi-threaded mode >> 
+                       Copyright : Geant4 Collaboration
+                      References : NIM A 506 (2003), 250-303
+                                 : IEEE-TNS 53 (2006), 270-278
+                                 : NIM A 835 (2016), 186-225
+                             WWW : http://geant4.org/
+**************************************************************
+
+G4PhysListFactory::GetReferencePhysList <Shielding>
+<<< Geant4 Physics List simulation engine: Shielding
+<<< (Note that Shielding and Shielding_HP are equivalent!)
+
+Visualization Manager instantiating with verbosity "warnings (3)"...
+WARNING: No extent set for user vis action "phantom".
+Visualization Manager initialising...
+Registering graphics systems...
+
+You have successfully registered the following graphics systems.
+Registered graphics systems are:
+  ASCIITree (ATree)
+  DAWNFILE (DAWNFILE)
+  RayTracer (RT)
+  VRML2FILE (VRML2FILE)
+  gMocrenFile (gMocrenFile)
+  TOOLSSG_OFFSCREEN (TSG_OFFSCREEN, TSG_FILE)
+  OpenGLImmediateQt (OGLIQt, OGLI)
+  OpenGLStoredQt (OGLSQt, OGLS)
+  OpenGLImmediateX (OGLIX, OGLIQt_FALLBACK)
+  OpenGLStoredX (OGLSX, OGLSQt_FALLBACK)
+  RayTracerX (RTX)
+  RayTracerQt (RTQt)
+  TOOLSSG_X11_GLES (TSG_X11_GLES, TSGX11, TSG_QT_GLES_FALLBACK)
+  TOOLSSG_X11_ZB (TSG_X11_ZB, TSGX11ZB)
+  TOOLSSG_QT_GLES (TSG_QT_GLES, TSGQt, TSG, OGL)
+  TOOLSSG_QT_ZB (TSG_QT_ZB, TSGQtZB, TSGZB)
+You may choose a graphics system (driver) with a parameter of
+the command "/vis/open" or "/vis/sceneHandler/create",
+or you may omit the driver parameter and choose at run time:
+- by argument in the construction of G4VisExecutive;
+- by environment variable "G4VIS_DEFAULT_DRIVER";
+- by entry in "~/.g4session";
+- by build flags.
+- Note: This feature is not allowed in batch mode.
+For further information see "examples/basic/B1/exampleB1.cc"
+and "vis.mac".
+
+Registering model factories...
+
+You have successfully registered the following model factories.
+Registered model factories:
+  generic
+  drawByAttribute
+  drawByCharge
+  drawByOriginVolume
+  drawByParticleID
+  drawByEncounteredVolume
+
+Registered models:
+  None
+
+Registered filter factories:
+  attributeFilter
+  chargeFilter
+  originVolumeFilter
+  particleFilter
+  encounteredVolumeFilter
+
+Registered filters:
+  None
+
+You have successfully registered the following user vis actions.
+Run Duration User Vis Actions:
+  phantom
+End of Event User Vis Actions: none
+End of Run User Vis Actions: none
+
+Some /vis commands (optionally) take a string to specify colour.
+"/vis/list" to see available colours.
+>> Male Phantom will be built.
+>> Male Phantom identified by UserScoreWriter.
+>> Full/Custom Phantom will be built.
+>> Custom/Full Phantom identified by UserScoreWriter.
+Field map: /home/bryam/Documents/iac-project/field/production/crewhat_elmer_fullscale.map; bounds [m]: (-11.3,-13.3,-7.6) to (11.3,13.3,7.6); scale: 1; max boundary |B| [T]: 0.39746
+Field is ZERO outside map bounds. Domain and fringe-field convergence must be checked before production.
+Checking overlaps for volume MagnetEnvelope:0 (G4Box) ... OK! 
+Checking overlaps for volume ShipHull:0 (G4SubtractionSolid) ... OK! 
+Checking overlaps for volume ShipInterior:0 (G4Tubs) ... OK! 
+G4GDML: Reading '/home/bryam/Documents/iac-project/field/production/crewhat_corc_array.gdml'...
+G4GDML: Reading definitions...
+G4GDML: Reading materials...
+G4GDML: Reading solids...
+G4GDML: Reading structure...
+G4GDML: Reading setup...
+G4GDML: Reading '/home/bryam/Documents/iac-project/field/production/crewhat_corc_array.gdml' done!
+Stripping off GDML names of materials, solids and volumes ...
+Checking overlaps for volume coil_placement_1:0 (G4TessellatedSolid) ... OK! 
+Imported coil component: coil_part_1; material=coil_mat_crewhat_corc_homogenized; density [g/cm3]=8.95693; mass [kg]=77905.4
+Checking overlaps for volume coil_placement_2:1 (G4TessellatedSolid) ... OK! 
+Imported coil component: coil_part_2; material=coil_mat_crewhat_corc_homogenized; density [g/cm3]=8.95693; mass [kg]=77906.1
+Checking overlaps for volume coil_placement_3:2 (G4TessellatedSolid) ... OK! 
+Imported coil component: coil_part_3; material=coil_mat_crewhat_corc_homogenized; density [g/cm3]=8.95693; mass [kg]=77904.9
+Checking overlaps for volume coil_placement_4:3 (G4TessellatedSolid) ... OK! 
+Imported coil component: coil_part_4; material=coil_mat_crewhat_corc_homogenized; density [g/cm3]=8.95693; mass [kg]=77905.4
+Checking overlaps for volume coil_placement_5:4 (G4TessellatedSolid) ... OK! 
+Imported coil component: coil_part_5; material=coil_mat_crewhat_corc_homogenized; density [g/cm3]=8.95693; mass [kg]=77905.3
+Checking overlaps for volume coil_placement_6:5 (G4TessellatedSolid) ... OK! 
+Imported coil component: coil_part_6; material=coil_mat_crewhat_corc_homogenized; density [g/cm3]=8.95693; mass [kg]=77904.8
+Checking overlaps for volume coil_placement_7:6 (G4TessellatedSolid) ... OK! 
+Imported coil component: coil_part_7; material=coil_mat_crewhat_corc_homogenized; density [g/cm3]=8.95693; mass [kg]=77905.2
+Checking overlaps for volume coil_placement_8:7 (G4TessellatedSolid) ... OK! 
+Imported coil component: coil_part_8; material=coil_mat_crewhat_corc_homogenized; density [g/cm3]=8.95693; mass [kg]=77904.8
+Spacecraft: outer radius [m]=4.5; outer length [m]=10; Al hull thickness [cm]=1.5; hull mass [kg]=16544.6; world half sizes [m]=(14,14.3,14)
+Phantom Sex: male
+Phantom Section: full
+Data file ICRPdata/MaleData.dat is read by Detector Construction.
+Number of files = 222
+Number of X,Y,Z voxels = 254, 127, 222
+Total Number of Voxels = 7161276
+ICRP110PhantomConstruction::ReadPhantomDataFile is openining the following phantom files: 
+AM_slice1.g4dat
+AM_slice2.g4dat
+AM_slice3.g4dat
+AM_slice4.g4dat
+AM_slice5.g4dat
+AM_slice6.g4dat
+AM_slice7.g4dat
+AM_slice8.g4dat
+AM_slice9.g4dat
+AM_slice10.g4dat
+AM_slice11.g4dat
+AM_slice12.g4dat
+AM_slice13.g4dat
+AM_slice14.g4dat
+AM_slice15.g4dat
+AM_slice16.g4dat
+AM_slice17.g4dat
+AM_slice18.g4dat
+AM_slice19.g4dat
+AM_slice20.g4dat
+AM_slice21.g4dat
+AM_slice22.g4dat
+AM_slice23.g4dat
+AM_slice24.g4dat
+AM_slice25.g4dat
+AM_slice26.g4dat
+AM_slice27.g4dat
+AM_slice28.g4dat
+AM_slice29.g4dat
+AM_slice30.g4dat
+AM_slice31.g4dat
+AM_slice32.g4dat
+AM_slice33.g4dat
+AM_slice34.g4dat
+AM_slice35.g4dat
+AM_slice36.g4dat
+AM_slice37.g4dat
+AM_slice38.g4dat
+AM_slice39.g4dat
+AM_slice40.g4dat
+AM_slice41.g4dat
+AM_slice42.g4dat
+AM_slice43.g4dat
+AM_slice44.g4dat
+AM_slice45.g4dat
+AM_slice46.g4dat
+AM_slice47.g4dat
+AM_slice48.g4dat
+AM_slice49.g4dat
+AM_slice50.g4dat
+AM_slice51.g4dat
+AM_slice52.g4dat
+AM_slice53.g4dat
+AM_slice54.g4dat
+AM_slice55.g4dat
+AM_slice56.g4dat
+AM_slice57.g4dat
+AM_slice58.g4dat
+AM_slice59.g4dat
+AM_slice60.g4dat
+AM_slice61.g4dat
+AM_slice62.g4dat
+AM_slice63.g4dat
+AM_slice64.g4dat
+AM_slice65.g4dat
+AM_slice66.g4dat
+AM_slice67.g4dat
+AM_slice68.g4dat
+AM_slice69.g4dat
+AM_slice70.g4dat
+AM_slice71.g4dat
+AM_slice72.g4dat
+AM_slice73.g4dat
+AM_slice74.g4dat
+AM_slice75.g4dat
+AM_slice76.g4dat
+AM_slice77.g4dat
+AM_slice78.g4dat
+AM_slice79.g4dat
+AM_slice80.g4dat
+AM_slice81.g4dat
+AM_slice82.g4dat
+AM_slice83.g4dat
+AM_slice84.g4dat
+AM_slice85.g4dat
+AM_slice86.g4dat
+AM_slice87.g4dat
+AM_slice88.g4dat
+AM_slice89.g4dat
+AM_slice90.g4dat
+AM_slice91.g4dat
+AM_slice92.g4dat
+AM_slice93.g4dat
+AM_slice94.g4dat
+AM_slice95.g4dat
+AM_slice96.g4dat
+AM_slice97.g4dat
+AM_slice98.g4dat
+AM_slice99.g4dat
+AM_slice100.g4dat
+AM_slice101.g4dat
+AM_slice102.g4dat
+AM_slice103.g4dat
+AM_slice104.g4dat
+AM_slice105.g4dat
+AM_slice106.g4dat
+AM_slice107.g4dat
+AM_slice108.g4dat
+AM_slice109.g4dat
+AM_slice110.g4dat
+AM_slice111.g4dat
+AM_slice112.g4dat
+AM_slice113.g4dat
+AM_slice114.g4dat
+AM_slice115.g4dat
+AM_slice116.g4dat
+AM_slice117.g4dat
+AM_slice118.g4dat
+AM_slice119.g4dat
+AM_slice120.g4dat
+AM_slice121.g4dat
+AM_slice122.g4dat
+AM_slice123.g4dat
+AM_slice124.g4dat
+AM_slice125.g4dat
+AM_slice126.g4dat
+AM_slice127.g4dat
+AM_slice128.g4dat
+AM_slice129.g4dat
+AM_slice130.g4dat
+AM_slice131.g4dat
+AM_slice132.g4dat
+AM_slice133.g4dat
+AM_slice134.g4dat
+AM_slice135.g4dat
+AM_slice136.g4dat
+AM_slice137.g4dat
+AM_slice138.g4dat
+AM_slice139.g4dat
+AM_slice140.g4dat
+AM_slice141.g4dat
+AM_slice142.g4dat
+AM_slice143.g4dat
+AM_slice144.g4dat
+AM_slice145.g4dat
+AM_slice146.g4dat
+AM_slice147.g4dat
+AM_slice148.g4dat
+AM_slice149.g4dat
+AM_slice150.g4dat
+AM_slice151.g4dat
+AM_slice152.g4dat
+AM_slice153.g4dat
+AM_slice154.g4dat
+AM_slice155.g4dat
+AM_slice156.g4dat
+AM_slice157.g4dat
+AM_slice158.g4dat
+AM_slice159.g4dat
+AM_slice160.g4dat
+AM_slice161.g4dat
+AM_slice162.g4dat
+AM_slice163.g4dat
+AM_slice164.g4dat
+AM_slice165.g4dat
+AM_slice166.g4dat
+AM_slice167.g4dat
+AM_slice168.g4dat
+AM_slice169.g4dat
+AM_slice170.g4dat
+AM_slice171.g4dat
+AM_slice172.g4dat
+AM_slice173.g4dat
+AM_slice174.g4dat
+AM_slice175.g4dat
+AM_slice176.g4dat
+AM_slice177.g4dat
+AM_slice178.g4dat
+AM_slice179.g4dat
+AM_slice180.g4dat
+AM_slice181.g4dat
+AM_slice182.g4dat
+AM_slice183.g4dat
+AM_slice184.g4dat
+AM_slice185.g4dat
+AM_slice186.g4dat
+AM_slice187.g4dat
+AM_slice188.g4dat
+AM_slice189.g4dat
+AM_slice190.g4dat
+AM_slice191.g4dat
+AM_slice192.g4dat
+AM_slice193.g4dat
+AM_slice194.g4dat
+AM_slice195.g4dat
+AM_slice196.g4dat
+AM_slice197.g4dat
+AM_slice198.g4dat
+AM_slice199.g4dat
+AM_slice200.g4dat
+AM_slice201.g4dat
+AM_slice202.g4dat
+AM_slice203.g4dat
+AM_slice204.g4dat
+AM_slice205.g4dat
+AM_slice206.g4dat
+AM_slice207.g4dat
+AM_slice208.g4dat
+AM_slice209.g4dat
+AM_slice210.g4dat
+AM_slice211.g4dat
+AM_slice212.g4dat
+AM_slice213.g4dat
+AM_slice214.g4dat
+AM_slice215.g4dat
+AM_slice216.g4dat
+AM_slice217.g4dat
+AM_slice218.g4dat
+AM_slice219.g4dat
+AM_slice220.g4dat
+AM_slice221.g4dat
+AM_slice222.g4dat
+Number of X,Y,Z voxels = 254, 127, 222
+ placing voxel container volume at (0,0,0)
+Checking overlaps for volume phantomContainer:1 (G4Box) ... OK! 
+Phantom Material Colours set via ColourMap.dat data file 
+Global field created with stepper DormandPrince745
+ G4ChordFinder: stepperDriverId: 2
+--- G4CoupledTransportation is used 
+
+ hInelastic Shielding : threshold between BERT and FTFP is over the interval 
+ for pions :   3 to 6 GeV
+ for kaons :   3 to 6 GeV
+ for proton :  3 to 6 GeV
+ for neutron : 3 to 6 GeV
+
+@@@ G4ParticleHPInelasticData instantiated for particle neutron data directory variable is G4NEUTRONHPDATA pointing to /home/bryam/miniconda3/envs/geant4_env/share/Geant4/data/NDL4.7.1
+=======================================================================
+======                 Electromagnetic Physics Parameters      ========
+=======================================================================
+LPM effect enabled                                 1
+Enable creation and use of sampling tables         0
+Apply cuts on all EM processes                     0
+Use combined TransportationWithMsc                 Disabled
+Use general process                                1
+Enable linear polarisation for gamma               0
+Enable photoeffect sampling below K-shell          1
+Enable sampling of quantum entanglement            0
+X-section factor for integral approach             0.8
+Min kinetic energy for tables                      100 eV 
+Max kinetic energy for tables                      100 TeV
+Number of bins per decade of a table               7
+Verbose level                                      1
+Verbose level for worker thread                    0
+Bremsstrahlung energy threshold above which 
+  primary e+- is added to the list of secondary    100 TeV
+Bremsstrahlung energy threshold above which primary
+  muon/hadron is added to the list of secondary    100 TeV
+Positron annihilation at rest model                SimplePositronium
+Enable 3 gamma annihilation on fly                 0
+Lowest triplet kinetic energy                      1 MeV
+Enable sampling of gamma linear polarisation       0
+5D gamma conversion model type                     0
+5D gamma conversion model on isolated ion          0
+Use RiGe 5D e+e- pair production model by muons    0
+Livermore data directory                           epics_2017
+=======================================================================
+======                 Ionisation Parameters                   ========
+=======================================================================
+Step function for e+-                              (0.2, 1 mm)
+Step function for muons/hadrons                    (0.2, 0.1 mm)
+Step function for light ions                       (0.2, 0.1 mm)
+Step function for general ions                     (0.2, 0.1 mm)
+Lowest e+e- kinetic energy                         1 keV
+Lowest muon/hadron kinetic energy                  1 keV
+Use ICRU90 data                                    0
+Fluctuations of dE/dx are enabled                  1
+Type of fluctuation model for leptons and hadrons  Urban
+Use built-in Birks saturation                      0
+Build CSDA range enabled                           0
+Use cut as a final range enabled                   0
+Enable angular generator interface                 0
+Max kinetic energy for CSDA tables                 1 GeV
+Max kinetic energy for NIEL computation            0 eV 
+Linear loss limit                                  0.01
+Read data from file for e+e- pair production by mu 0
+=======================================================================
+======                 Multiple Scattering Parameters          ========
+=======================================================================
+Type of msc step limit algorithm for e+-           1
+Type of msc step limit algorithm for muons/hadrons 0
+Msc lateral displacement for e+- enabled           1
+Msc lateral displacement for muons and hadrons     0
+Urban msc model lateral displacement alg96         1
+Range factor for msc step limit for e+-            0.04
+Range factor for msc step limit for muons/hadrons  0.2
+Geometry factor for msc step limitation of e+-     2.5
+Safety factor for msc step limit for e+-           0.6
+Skin parameter for msc step limitation of e+-      1
+Lambda limit for msc step limit for e+-            1 mm
+Use Mott correction for e- scattering              0
+Factor used for dynamic computation of angular 
+  limit between single and multiple scattering     1
+Fixed angular limit between single 
+  and multiple scattering                          3.1416 rad
+Upper energy limit for e+- multiple scattering     100 MeV
+Type of electron single scattering model           0
+Type of nuclear form-factor                        1
+Screening factor                                   1
+=======================================================================
+======                 Atomic Deexcitation Parameters          ========
+=======================================================================
+Fluorescence enabled                               1
+Directory in G4LEDATA for fluorescence data files  fluor
+Auger electron cascade enabled                     1
+PIXE atomic de-excitation enabled                  0
+De-excitation module ignores cuts                  1
+Type of PIXE cross section for hadrons             Empirical
+Type of PIXE cross section for e+-                 Livermore
+=======================================================================
+
+### ===  Deexcitation model UAtomDeexcitation is activated for 1 region:
+          DefaultRegionForTheWorld  1  1  0
+### ===  Auger flag: 1
+### ===  Ignore cuts flag:   1
+
+phot:  for gamma SubType=12 BuildTable=0
+      LambdaPrime table from 200 keV to 100 TeV in 61 bins 
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+ LivermorePhElectric : Emin=    0 eV  Emax=  100 TeV  SauterGavrila Fluo
+
+compt:  for gamma SubType=13 BuildTable=1
+      Lambda table from 100 eV  to 1 MeV, 7 bins/decade, spline: 1
+      LambdaPrime table from 1 MeV to 100 TeV in 56 bins 
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+       Klein-Nishina : Emin=    0 eV  Emax=  100 TeV
+
+conv:  for gamma SubType=14 BuildTable=1
+      Lambda table from 1.022 MeV to 100 TeV, 18 bins/decade, spline: 1
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+     BetheHeitlerLPM : Emin=    0 eV  Emax=  100 TeV  ModifiedTsai
+
+Rayl:  for gamma SubType=11 BuildTable=1
+      Lambda table from 100 eV  to 150 keV, 7 bins/decade, spline: 0
+      LambdaPrime table from 150 keV to 100 TeV in 62 bins 
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+   LivermoreRayleigh : Emin=    0 eV  Emax=  100 TeV  CullenGenerator
+
+msc:  for e-  SubType= 10
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+            UrbanMsc : Emin=    0 eV  Emax=  100 MeV Nbins=42 100 eV  - 100 MeV
+          StepLim=UseSafety Rfact=0.04 Gfact=2.5 Sfact=0.6 DispFlag:1 Skin=1 Llim=1 mm
+        WentzelVIUni : Emin=  100 MeV Emax=  100 TeV Nbins=42 100 MeV - 100 TeV
+          StepLim=UseSafety Rfact=0.04 Gfact=2.5 Sfact=0.6 DispFlag:1 Skin=1 Llim=1 mm
+
+eIoni:  for e-  XStype:3  SubType=2
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      StepFunction=(0.2, 1 mm), integ: 3, fluct: 1, linLossLim= 0.01
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+        MollerBhabha : Emin=    0 eV  Emax=  100 TeV
+
+eBrem:  for e-  XStype:4  SubType=3
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      LPM flag: 1 for E > 1 GeV,  VertexHighEnergyTh(GeV)= 100000
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+             eBremSB : Emin=    0 eV  Emax=    1 GeV  ModifiedTsai
+            eBremLPM : Emin=    1 GeV Emax=  100 TeV  ModifiedTsai
+
+CoulombScat:  for e- XStype:1 SubType=1 BuildTable=1
+      Lambda table from 100 MeV to 100 TeV, 7 bins/decade, spline: 0
+      ThetaMin(p) < Theta(degree) < 180, pLimit(GeV^1)= 0.139531
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+  eCoulombScattering : Emin=  100 MeV Emax=  100 TeV
+
+msc:  for e+  SubType= 10
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+            UrbanMsc : Emin=    0 eV  Emax=  100 MeV Nbins=42 100 eV  - 100 MeV
+          StepLim=UseSafety Rfact=0.04 Gfact=2.5 Sfact=0.6 DispFlag:1 Skin=1 Llim=1 mm
+        WentzelVIUni : Emin=  100 MeV Emax=  100 TeV Nbins=42 100 MeV - 100 TeV
+          StepLim=UseSafety Rfact=0.04 Gfact=2.5 Sfact=0.6 DispFlag:1 Skin=1 Llim=1 mm
+
+eIoni:  for e+  XStype:3  SubType=2
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      StepFunction=(0.2, 1 mm), integ: 3, fluct: 1, linLossLim= 0.01
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+        MollerBhabha : Emin=    0 eV  Emax=  100 TeV
+
+eBrem:  for e+  XStype:4  SubType=3
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      LPM flag: 1 for E > 1 GeV,  VertexHighEnergyTh(GeV)= 100000
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+             eBremSB : Emin=    0 eV  Emax=    1 GeV  ModifiedTsai
+            eBremLPM : Emin=    1 GeV Emax=  100 TeV  ModifiedTsai
+
+annihil:  for e+ XStype:2 SubType=5 AtRestModel:Simple BuildTable=0
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+            eplus2gg : Emin=    0 eV  Emax=  100 TeV
+
+CoulombScat:  for e+ XStype:1 SubType=1 BuildTable=1
+      Lambda table from 100 MeV to 100 TeV, 7 bins/decade, spline: 0
+      ThetaMin(p) < Theta(degree) < 180, pLimit(GeV^1)= 0.139531
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+  eCoulombScattering : Emin=  100 MeV Emax=  100 TeV
+
+msc:  for proton  SubType= 10
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+        WentzelVIUni : Emin=    0 eV  Emax=  100 TeV Nbins=84 100 eV  - 100 TeV
+          StepLim=Minimal Rfact=0.2 Gfact=2.5 Sfact=0.6 DispFlag:0 Skin=1 Llim=1 mm
+
+hIoni:  for proton  XStype:3  SubType=2
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      StepFunction=(0.2, 0.1 mm), integ: 3, fluct: 1, linLossLim= 0.01
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+               Bragg : Emin=    0 eV  Emax=    2 MeV
+          BetheBloch : Emin=    2 MeV Emax=  100 TeV
+
+hBrems:  for proton  XStype:1  SubType=3
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+               hBrem : Emin=    0 eV  Emax=  100 TeV  ModifiedMephi
+
+hPairProd:  for proton  XStype:1  SubType=4
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      Sampling table 17x1001, from 7.50618 GeV to 100 TeV 
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+           hPairProd : Emin=    0 eV  Emax=  100 TeV  ModifiedMephi
+
+CoulombScat:  for proton XStype:1 SubType=1 BuildTable=1
+      Lambda table from threshold  to 100 TeV, 7 bins/decade, spline: 0
+      ThetaMin(p) < Theta(degree) < 180, pLimit(GeV^1)= 0.139531
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+  eCoulombScattering : Emin=    0 eV  Emax=  100 TeV
+
+msc:  for GenericIon  SubType= 10
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+            UrbanMsc : Emin=    0 eV  Emax=  100 TeV
+          StepLim=Minimal Rfact=0.2 Gfact=2.5 Sfact=0.6 DispFlag:0 Skin=1 Llim=1 mm
+
+ionIoni:  for GenericIon  XStype:3  SubType=2
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      StepFunction=(0.2, 0.1 mm), integ: 3, fluct: 1, linLossLim= 0.02
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+               Bragg : Emin=    0 eV  Emax=    2 MeV
+          BetheBloch : Emin=    2 MeV Emax=  100 TeV
+======================================================================
+======          Radioactive Decay Physics Parameters           =======
+======================================================================
+min MeanLife (from G4NuclideTable)                1 ns 
+Max life time (from G4DeexPrecoParameters)        1000 ps 
+Internal e- conversion flag                       1
+Stored internal conversion coefficients           1
+Enabled atomic relaxation mode                    1
+Enable correlated gamma emission                  0
+Max 2J for sampling of angular correlations       10
+Atomic de-excitation enabled                      1
+Auger electron emission enabled                   1
+Check EM cuts disabled for atomic de-excitation   1
+Use Bearden atomic level energies                 0
+Use ANSTO fluorescence model                      0
+Threshold for very long decay time at rest        1 y  
+======================================================================
+
+msc:  for alpha  SubType= 10
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+            UrbanMsc : Emin=    0 eV  Emax=  100 TeV
+          StepLim=Minimal Rfact=0.2 Gfact=2.5 Sfact=0.6 DispFlag:0 Skin=1 Llim=1 mm
+
+ionIoni:  for alpha  XStype:3  SubType=2
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      StepFunction=(0.2, 0.1 mm), integ: 3, fluct: 1, linLossLim= 0.02
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+            BraggIon : Emin=    0 eV  Emax=7.9452 MeV
+          BetheBloch : Emin=7.9452 MeV Emax=  100 TeV
+
+msc:  for anti_proton  SubType= 10
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+        WentzelVIUni : Emin=    0 eV  Emax=  100 TeV Nbins=84 100 eV  - 100 TeV
+          StepLim=Minimal Rfact=0.2 Gfact=2.5 Sfact=0.6 DispFlag:0 Skin=1 Llim=1 mm
+
+hIoni:  for anti_proton  XStype:3  SubType=2
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      StepFunction=(0.2, 0.1 mm), integ: 3, fluct: 1, linLossLim= 0.01
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+            ICRU73QO : Emin=    0 eV  Emax=    2 MeV
+          BetheBloch : Emin=    2 MeV Emax=  100 TeV
+
+hBrems:  for anti_proton  XStype:1  SubType=3
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+               hBrem : Emin=    0 eV  Emax=  100 TeV  ModifiedMephi
+
+hPairProd:  for anti_proton  XStype:1  SubType=4
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      Sampling table 17x1001, from 7.50618 GeV to 100 TeV 
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+           hPairProd : Emin=    0 eV  Emax=  100 TeV  ModifiedMephi
+
+CoulombScat:  for anti_proton XStype:1 SubType=1 BuildTable=1
+      Lambda table from threshold  to 100 TeV, 7 bins/decade, spline: 0
+      ThetaMin(p) < Theta(degree) < 180, pLimit(GeV^1)= 0.139531
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+  eCoulombScattering : Emin=    0 eV  Emax=  100 TeV
+
+msc:  for kaon+  SubType= 10
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+        WentzelVIUni : Emin=    0 eV  Emax=  100 TeV Nbins=84 100 eV  - 100 TeV
+          StepLim=Minimal Rfact=0.2 Gfact=2.5 Sfact=0.6 DispFlag:0 Skin=1 Llim=1 mm
+
+hIoni:  for kaon+  XStype:3  SubType=2
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      StepFunction=(0.2, 0.1 mm), integ: 3, fluct: 1, linLossLim= 0.01
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+               Bragg : Emin=    0 eV  Emax=1.05231 MeV
+          BetheBloch : Emin=1.05231 MeV Emax=  100 TeV
+
+hBrems:  for kaon+  XStype:1  SubType=3
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+               hBrem : Emin=    0 eV  Emax=  100 TeV  ModifiedMephi
+
+hPairProd:  for kaon+  XStype:1  SubType=4
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      Sampling table 18x1001, from 3.94942 GeV to 100 TeV 
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+           hPairProd : Emin=    0 eV  Emax=  100 TeV  ModifiedMephi
+
+CoulombScat:  for kaon+ XStype:1 SubType=1 BuildTable=1
+      Lambda table from threshold  to 100 TeV, 7 bins/decade, spline: 0
+      ThetaMin(p) < Theta(degree) < 180, pLimit(GeV^1)= 0.139531
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+  eCoulombScattering : Emin=    0 eV  Emax=  100 TeV
+
+msc:  for kaon-  SubType= 10
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+        WentzelVIUni : Emin=    0 eV  Emax=  100 TeV Nbins=84 100 eV  - 100 TeV
+          StepLim=Minimal Rfact=0.2 Gfact=2.5 Sfact=0.6 DispFlag:0 Skin=1 Llim=1 mm
+
+hIoni:  for kaon-  XStype:3  SubType=2
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      StepFunction=(0.2, 0.1 mm), integ: 3, fluct: 1, linLossLim= 0.01
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+            ICRU73QO : Emin=    0 eV  Emax=1.05231 MeV
+          BetheBloch : Emin=1.05231 MeV Emax=  100 TeV
+
+hBrems:  for kaon-  XStype:1  SubType=3
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+               hBrem : Emin=    0 eV  Emax=  100 TeV  ModifiedMephi
+
+hPairProd:  for kaon-  XStype:1  SubType=4
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      Sampling table 18x1001, from 3.94942 GeV to 100 TeV 
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+           hPairProd : Emin=    0 eV  Emax=  100 TeV  ModifiedMephi
+
+CoulombScat:  for kaon- XStype:1 SubType=1 BuildTable=1
+      Used Lambda table of kaon+
+      ThetaMin(p) < Theta(degree) < 180, pLimit(GeV^1)= 0.139531
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+  eCoulombScattering : Emin=    0 eV  Emax=  100 TeV
+
+msc:  for mu+  SubType= 10
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+        WentzelVIUni : Emin=    0 eV  Emax=  100 TeV Nbins=84 100 eV  - 100 TeV
+          StepLim=Minimal Rfact=0.2 Gfact=2.5 Sfact=0.6 DispFlag:0 Skin=1 Llim=1 mm
+
+muIoni:  for mu+  XStype:3  SubType=2
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      StepFunction=(0.2, 0.1 mm), integ: 3, fluct: 1, linLossLim= 0.01
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+               Bragg : Emin=    0 eV  Emax=  200 keV
+        MuBetheBloch : Emin=  200 keV Emax=  100 TeV
+
+muBrems:  for mu+  XStype:1  SubType=3
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+              MuBrem : Emin=    0 eV  Emax=  100 TeV  ModifiedMephi
+
+muPairProd:  for mu+  XStype:1  SubType=4
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      Sampling table 21x1001, from 0.85 GeV to 100 TeV 
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+          muPairProd : Emin=    0 eV  Emax=  100 TeV  ModifiedMephi
+
+CoulombScat:  for mu+ XStype:1 SubType=1 BuildTable=1
+      Lambda table from threshold  to 100 TeV, 7 bins/decade, spline: 0
+      ThetaMin(p) < Theta(degree) < 180, pLimit(GeV^1)= 0.139531
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+  eCoulombScattering : Emin=    0 eV  Emax=  100 TeV
+
+msc:  for mu-  SubType= 10
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+        WentzelVIUni : Emin=    0 eV  Emax=  100 TeV Nbins=84 100 eV  - 100 TeV
+          StepLim=Minimal Rfact=0.2 Gfact=2.5 Sfact=0.6 DispFlag:0 Skin=1 Llim=1 mm
+
+muIoni:  for mu-  XStype:3  SubType=2
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      StepFunction=(0.2, 0.1 mm), integ: 3, fluct: 1, linLossLim= 0.01
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+            ICRU73QO : Emin=    0 eV  Emax=  200 keV
+        MuBetheBloch : Emin=  200 keV Emax=  100 TeV
+
+muBrems:  for mu-  XStype:1  SubType=3
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+              MuBrem : Emin=    0 eV  Emax=  100 TeV  ModifiedMephi
+
+muPairProd:  for mu-  XStype:1  SubType=4
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      Sampling table 21x1001, from 0.85 GeV to 100 TeV 
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+          muPairProd : Emin=    0 eV  Emax=  100 TeV  ModifiedMephi
+
+CoulombScat:  for mu- XStype:1 SubType=1 BuildTable=1
+      Used Lambda table of mu+
+      ThetaMin(p) < Theta(degree) < 180, pLimit(GeV^1)= 0.139531
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+  eCoulombScattering : Emin=    0 eV  Emax=  100 TeV
+
+=======================================================
+======       ParticleHP Physics Parameters     ========
+=======================================================
+ Use only photo-evaporation      0
+ Skip missing isotopes           0
+ Neglect Doppler                 0
+ Do not adjust final state       0
+ Produce fission fragments       1
+ Use WendtFissionModel           0
+ Use NRESP71Model                0
+ Use DBRC                        0
+ PHP use Poisson                 0
+ PHP check                       1
+ CHECK HP NAMES                  0
+ Enable DEBUG                    0
+ Use probability tables from     
+=======================================================
+
+@@@ G4ParticleHPInelastic instantiated for particle neutron/n    data directory is /home/bryam/miniconda3/envs/geant4_env/share/Geant4/data/NDL4.7.1/Inelastic
+
+msc:  for pi+  SubType= 10
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+        WentzelVIUni : Emin=    0 eV  Emax=  100 TeV Nbins=84 100 eV  - 100 TeV
+          StepLim=Minimal Rfact=0.2 Gfact=2.5 Sfact=0.6 DispFlag:0 Skin=1 Llim=1 mm
+
+hIoni:  for pi+  XStype:3  SubType=2
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      StepFunction=(0.2, 0.1 mm), integ: 3, fluct: 1, linLossLim= 0.01
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+               Bragg : Emin=    0 eV  Emax=297.505 keV
+          BetheBloch : Emin=297.505 keV Emax=  100 TeV
+
+hBrems:  for pi+  XStype:1  SubType=3
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+               hBrem : Emin=    0 eV  Emax=  100 TeV  ModifiedMephi
+
+hPairProd:  for pi+  XStype:1  SubType=4
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      Sampling table 20x1001, from 1.11656 GeV to 100 TeV 
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+           hPairProd : Emin=    0 eV  Emax=  100 TeV  ModifiedMephi
+
+CoulombScat:  for pi+ XStype:1 SubType=1 BuildTable=1
+      Lambda table from threshold  to 100 TeV, 7 bins/decade, spline: 0
+      ThetaMin(p) < Theta(degree) < 180, pLimit(GeV^1)= 0.139531
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+  eCoulombScattering : Emin=    0 eV  Emax=  100 TeV
+
+msc:  for pi-  SubType= 10
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+        WentzelVIUni : Emin=    0 eV  Emax=  100 TeV Nbins=84 100 eV  - 100 TeV
+          StepLim=Minimal Rfact=0.2 Gfact=2.5 Sfact=0.6 DispFlag:0 Skin=1 Llim=1 mm
+
+hIoni:  for pi-  XStype:3  SubType=2
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      StepFunction=(0.2, 0.1 mm), integ: 3, fluct: 1, linLossLim= 0.01
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+            ICRU73QO : Emin=    0 eV  Emax=297.505 keV
+          BetheBloch : Emin=297.505 keV Emax=  100 TeV
+
+hBrems:  for pi-  XStype:1  SubType=3
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+               hBrem : Emin=    0 eV  Emax=  100 TeV  ModifiedMephi
+
+hPairProd:  for pi-  XStype:1  SubType=4
+      dE/dx and range tables from 100 eV  to 100 TeV in 84 bins
+      Lambda tables from threshold to 100 TeV, 7 bins/decade, spline: 1
+      Sampling table 20x1001, from 1.11656 GeV to 100 TeV 
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+           hPairProd : Emin=    0 eV  Emax=  100 TeV  ModifiedMephi
+
+CoulombScat:  for pi- XStype:1 SubType=1 BuildTable=1
+      Used Lambda table of pi+
+      ThetaMin(p) < Theta(degree) < 180, pLimit(GeV^1)= 0.139531
+      ===== EM models for the G4Region  DefaultRegionForTheWorld ======
+  eCoulombScattering : Emin=    0 eV  Emax=  100 TeV
+
+====================================================================
+                  HADRONIC PROCESSES SUMMARY (verbose level 1)
+-----------------------------------------------------------------------
+                           Hadronic Processes for B-
+  Process: hadElastic
+        Model:              hElasticLHEP: 0 eV  ---> 100 TeV
+     Cr_sctns:            Glauber-Gribov: 0 eV  ---> 100 TeV
+  Process: B-Inelastic
+        Model:                      FTFP: 0 eV  ---> 100 TeV
+     Cr_sctns:            Glauber-Gribov: 0 eV  ---> 100 TeV
+-----------------------------------------------------------------------
+                           Hadronic Processes for D-
+  Process: hadElastic
+        Model:              hElasticLHEP: 0 eV  ---> 100 TeV
+     Cr_sctns:            Glauber-Gribov: 0 eV  ---> 100 TeV
+  Process: D-Inelastic
+        Model:                      FTFP: 0 eV  ---> 100 TeV
+     Cr_sctns:            Glauber-Gribov: 0 eV  ---> 100 TeV
+-----------------------------------------------------------------------
+                           Hadronic Processes for GenericIon
+  Process: ionElastic
+        Model:          NNDiffuseElastic: 0 eV /n ---> 100 TeV/n
+     Cr_sctns:  Glauber-Gribov Nucl-nucl: 0 eV  ---> 25.6 PeV
+  Process: ionInelastic
+        Model:  Binary Light Ion Cascade: 0 eV /n ---> 110 MeV/n
+        Model:                  QMDModel: 100 MeV/n ---> 6 GeV/n
+        Model:                      FTFP: 5.99 GeV/n ---> 100 TeV/n
+     Cr_sctns:  Glauber-Gribov Nucl-nucl: 0 eV  ---> 25.6 PeV
+  Process: RadioactiveDecay
+-----------------------------------------------------------------------
+                           Hadronic Processes for He3
+  Process: hadElastic
+        Model:              hElasticLHEP: 0 eV /n ---> 100 TeV/n
+     Cr_sctns:  Glauber-Gribov Nucl-nucl: 0 eV  ---> 25.6 PeV
+  Process: He3Inelastic
+        Model:  Binary Light Ion Cascade: 0 eV /n ---> 110 MeV/n
+        Model:                  QMDModel: 100 MeV/n ---> 6 GeV/n
+        Model:                      FTFP: 5.99 GeV/n ---> 100 TeV/n
+     Cr_sctns:  Glauber-Gribov Nucl-nucl: 0 eV  ---> 25.6 PeV
+-----------------------------------------------------------------------
+                           Hadronic Processes for alpha
+  Process: hadElastic
+        Model:              hElasticLHEP: 0 eV /n ---> 100 TeV/n
+     Cr_sctns:  Glauber-Gribov Nucl-nucl: 0 eV  ---> 25.6 PeV
+  Process: alphaInelastic
+        Model:  Binary Light Ion Cascade: 0 eV /n ---> 110 MeV/n
+        Model:                  QMDModel: 100 MeV/n ---> 6 GeV/n
+        Model:                      FTFP: 5.99 GeV/n ---> 100 TeV/n
+     Cr_sctns:  Glauber-Gribov Nucl-nucl: 0 eV  ---> 25.6 PeV
+-----------------------------------------------------------------------
+                           Hadronic Processes for anti_He3
+  Process: hadElastic
+        Model:              hElasticLHEP: 0 eV /n ---> 100.1 MeV/n
+        Model:              AntiAElastic: 100 MeV/n ---> 100 TeV/n
+     Cr_sctns:              AntiAGlauber: 0 eV  ---> 25.6 PeV
+  Process: anti_He3Inelastic
+        Model:                      FTFP: 0 eV /n ---> 100 TeV/n
+     Cr_sctns:              AntiAGlauber: 0 eV  ---> 25.6 PeV
+  Process: hFritiofCaptureAtRest
+-----------------------------------------------------------------------
+                           Hadronic Processes for anti_alpha
+  Process: hadElastic
+        Model:              hElasticLHEP: 0 eV /n ---> 100.1 MeV/n
+        Model:              AntiAElastic: 100 MeV/n ---> 100 TeV/n
+     Cr_sctns:              AntiAGlauber: 0 eV  ---> 25.6 PeV
+  Process: anti_alphaInelastic
+        Model:                      FTFP: 0 eV /n ---> 100 TeV/n
+     Cr_sctns:              AntiAGlauber: 0 eV  ---> 25.6 PeV
+  Process: hFritiofCaptureAtRest
+-----------------------------------------------------------------------
+                           Hadronic Processes for anti_deuteron
+  Process: hadElastic
+        Model:              hElasticLHEP: 0 eV /n ---> 100.1 MeV/n
+        Model:              AntiAElastic: 100 MeV/n ---> 100 TeV/n
+     Cr_sctns:              AntiAGlauber: 0 eV  ---> 25.6 PeV
+  Process: anti_deuteronInelastic
+        Model:                      FTFP: 0 eV /n ---> 100 TeV/n
+     Cr_sctns:              AntiAGlauber: 0 eV  ---> 25.6 PeV
+  Process: hFritiofCaptureAtRest
+-------------------------------------------------------------------------
+                           Hadronic Processes for anti_hypertriton
+  Process: hFritiofCaptureAtRest
+-----------------------------------------------------------------------
+                           Hadronic Processes for anti_lambda
+  Process: hadElastic
+        Model:              hElasticLHEP: 0 eV  ---> 100 TeV
+     Cr_sctns:            Glauber-Gribov: 0 eV  ---> 100 TeV
+  Process: anti_lambdaInelastic
+        Model:                      FTFP: 0 eV  ---> 100 TeV
+     Cr_sctns:            Glauber-Gribov: 0 eV  ---> 100 TeV
+  Process: hFritiofCaptureAtRest
+-----------------------------------------------------------------------
+                           Hadronic Processes for anti_neutron
+  Process: hadElastic
+        Model:              hElasticLHEP: 0 eV  ---> 100.1 MeV
+        Model:              AntiAElastic: 100 MeV ---> 100 TeV
+     Cr_sctns:              AntiAGlauber: 0 eV  ---> 25.6 PeV
+  Process: anti_neutronInelastic
+        Model:                      FTFP: 0 eV  ---> 100 TeV
+     Cr_sctns:              AntiAGlauber: 0 eV  ---> 25.6 PeV
+  Process: hFritiofCaptureAtRest
+-----------------------------------------------------------------------
+                           Hadronic Processes for anti_proton
+  Process: hadElastic
+        Model:              hElasticLHEP: 0 eV  ---> 100.1 MeV
+        Model:              AntiAElastic: 100 MeV ---> 100 TeV
+     Cr_sctns:              AntiAGlauber: 0 eV  ---> 25.6 PeV
+  Process: anti_protonInelastic
+        Model:                      FTFP: 0 eV  ---> 100 TeV
+     Cr_sctns:              AntiAGlauber: 0 eV  ---> 25.6 PeV
+  Process: hFritiofCaptureAtRest
+-----------------------------------------------------------------------
+                           Hadronic Processes for anti_triton
+  Process: hadElastic
+        Model:              hElasticLHEP: 0 eV /n ---> 100.1 MeV/n
+        Model:              AntiAElastic: 100 MeV/n ---> 100 TeV/n
+     Cr_sctns:              AntiAGlauber: 0 eV  ---> 25.6 PeV
+  Process: anti_tritonInelastic
+        Model:                      FTFP: 0 eV /n ---> 100 TeV/n
+     Cr_sctns:              AntiAGlauber: 0 eV  ---> 25.6 PeV
+  Process: hFritiofCaptureAtRest
+-----------------------------------------------------------------------
+                           Hadronic Processes for deuteron
+  Process: hadElastic
+        Model:              hElasticLHEP: 0 eV /n ---> 100 TeV/n
+     Cr_sctns:  Glauber-Gribov Nucl-nucl: 0 eV  ---> 25.6 PeV
+  Process: dInelastic
+        Model:  Binary Light Ion Cascade: 0 eV /n ---> 110 MeV/n
+        Model:                  QMDModel: 100 MeV/n ---> 6 GeV/n
+        Model:                      FTFP: 5.99 GeV/n ---> 100 TeV/n
+     Cr_sctns:  Glauber-Gribov Nucl-nucl: 0 eV  ---> 25.6 PeV
+-----------------------------------------------------------------------
+                           Hadronic Processes for e+
+  Process: positronNuclear
+        Model:   G4ElectroVDNuclearModel: 0 eV  ---> 1 PeV
+     Cr_sctns:          ElectroNuclearXS: 0 eV  ---> 100 TeV
+-----------------------------------------------------------------------
+                           Hadronic Processes for e-
+  Process: electronNuclear
+        Model:   G4ElectroVDNuclearModel: 0 eV  ---> 1 PeV
+     Cr_sctns:          ElectroNuclearXS: 0 eV  ---> 100 TeV
+-----------------------------------------------------------------------
+                           Hadronic Processes for gamma
+  Process: photonNuclear
+        Model:               GammaNPreco: 0 eV  ---> 200 MeV
+        Model:            BertiniCascade: 199 MeV ---> 6 GeV
+        Model:           TheoFSGenerator: 3 GeV ---> 100 TeV
+     Cr_sctns:            GammaNuclearXS: 0 eV  ---> 100 TeV
+-----------------------------------------------------------------------
+                           Hadronic Processes for kaon+
+  Process: hadElastic
+        Model:              hElasticLHEP: 0 eV  ---> 100 TeV
+     Cr_sctns:            Glauber-Gribov: 0 eV  ---> 100 TeV
+  Process: kaon+Inelastic
+        Model:                      FTFP: 3 GeV ---> 100 TeV
+        Model:            BertiniCascade: 0 eV  ---> 6 GeV
+     Cr_sctns:            Glauber-Gribov: 0 eV  ---> 100 TeV
+-----------------------------------------------------------------------
+                           Hadronic Processes for kaon-
+  Process: hadElastic
+        Model:              hElasticLHEP: 0 eV  ---> 100 TeV
+     Cr_sctns:            Glauber-Gribov: 0 eV  ---> 100 TeV
+  Process: kaon-Inelastic
+        Model:                      FTFP: 3 GeV ---> 100 TeV
+        Model:            BertiniCascade: 0 eV  ---> 6 GeV
+     Cr_sctns:            Glauber-Gribov: 0 eV  ---> 100 TeV
+  Process: hBertiniCaptureAtRest
+-----------------------------------------------------------------------
+                           Hadronic Processes for lambda
+  Process: hadElastic
+        Model:              hElasticLHEP: 0 eV  ---> 100 TeV
+     Cr_sctns:            Glauber-Gribov: 0 eV  ---> 100 TeV
+  Process: lambdaInelastic
+        Model:                      FTFP: 3 GeV ---> 100 TeV
+        Model:            BertiniCascade: 0 eV  ---> 6 GeV
+     Cr_sctns:            Glauber-Gribov: 0 eV  ---> 100 TeV
+-----------------------------------------------------------------------
+                           Hadronic Processes for mu+
+  Process: muonNuclear
+        Model:      G4MuonVDNuclearModel: 0 eV  ---> 1 PeV
+     Cr_sctns:     KokoulinMuonNuclearXS: 0 eV  ---> 100 TeV
+-----------------------------------------------------------------------
+                           Hadronic Processes for mu-
+  Process: muonNuclear
+        Model:      G4MuonVDNuclearModel: 0 eV  ---> 1 PeV
+     Cr_sctns:     KokoulinMuonNuclearXS: 0 eV  ---> 100 TeV
+  Process: muMinusCaptureAtRest
+-----------------------------------------------------------------------
+                           Hadronic Processes for neutron
+  Process: hadElastic
+        Model:             hElasticCHIPS: 19.5 MeV ---> 100 TeV
+        Model:          NeutronHPElastic: 0 eV  ---> 20 MeV
+     Cr_sctns:        NeutronHPElasticXS: 0 eV  ---> 20 MeV
+     Cr_sctns:        G4NeutronElasticXS: 0 eV  ---> 100 TeV
+  Process: neutronInelastic
+        Model:                      FTFP: 3 GeV ---> 100 TeV
+        Model:            BertiniCascade: 19.9 MeV ---> 6 GeV
+        Model:        NeutronHPInelastic: 0 eV  ---> 20 MeV
+     Cr_sctns:      NeutronHPInelasticXS: 0 eV  ---> 20 MeV
+     Cr_sctns: JENDLHEInelasticCrossSection: 0 eV  ---> 100 TeV
+     Cr_sctns:      G4NeutronInelasticXS: 0 eV  ---> 100 TeV
+  Process: nCapture
+        Model:             nRadCaptureHP: 0 eV  ---> 20 MeV
+        Model:               nRadCapture: 19.9 MeV ---> 100 TeV
+     Cr_sctns:        NeutronHPCaptureXS: 0 eV  ---> 100 TeV
+     Cr_sctns:        G4NeutronCaptureXS: 0 eV  ---> 100 TeV
+  Process: nFission
+        Model:          NeutronHPFission: 0 eV  ---> 20 MeV
+        Model:                G4LFission: 19.9 MeV ---> 100 TeV
+     Cr_sctns:        NeutronHPFissionXS: 0 eV  ---> 20 MeV
+     Cr_sctns:                    ZeroXS: 0 eV  ---> 100 TeV
+-----------------------------------------------------------------------
+                           Hadronic Processes for pi+
+  Process: hadElastic
+        Model:           hElasticGlauber: 0 eV  ---> 100 TeV
+     Cr_sctns:  BarashenkovGlauberGribov: 0 eV  ---> 100 TeV
+  Process: pi+Inelastic
+        Model:                      FTFP: 3 GeV ---> 100 TeV
+        Model:            BertiniCascade: 0 eV  ---> 6 GeV
+     Cr_sctns:  BarashenkovGlauberGribov: 0 eV  ---> 100 TeV
+-----------------------------------------------------------------------
+                           Hadronic Processes for pi-
+  Process: hadElastic
+        Model:           hElasticGlauber: 0 eV  ---> 100 TeV
+     Cr_sctns:  BarashenkovGlauberGribov: 0 eV  ---> 100 TeV
+  Process: pi-Inelastic
+        Model:                      FTFP: 3 GeV ---> 100 TeV
+        Model:            BertiniCascade: 0 eV  ---> 6 GeV
+     Cr_sctns:  BarashenkovGlauberGribov: 0 eV  ---> 100 TeV
+  Process: hBertiniCaptureAtRest
+-----------------------------------------------------------------------
+                           Hadronic Processes for proton
+  Process: hadElastic
+        Model:             hElasticCHIPS: 0 eV  ---> 100 TeV
+     Cr_sctns:  BarashenkovGlauberGribov: 0 eV  ---> 100 TeV
+  Process: protonInelastic
+        Model:                      FTFP: 3 GeV ---> 100 TeV
+        Model:            BertiniCascade: 0 eV  ---> 6 GeV
+     Cr_sctns:  BarashenkovGlauberGribov: 0 eV  ---> 100 TeV
+-----------------------------------------------------------------------
+                           Hadronic Processes for sigma-
+  Process: hadElastic
+        Model:              hElasticLHEP: 0 eV  ---> 100 TeV
+     Cr_sctns:            Glauber-Gribov: 0 eV  ---> 100 TeV
+  Process: sigma-Inelastic
+        Model:                      FTFP: 3 GeV ---> 100 TeV
+        Model:            BertiniCascade: 0 eV  ---> 6 GeV
+     Cr_sctns:            Glauber-Gribov: 0 eV  ---> 100 TeV
+  Process: hBertiniCaptureAtRest
+-----------------------------------------------------------------------
+                           Hadronic Processes for triton
+  Process: hadElastic
+        Model:              hElasticLHEP: 0 eV /n ---> 100 TeV/n
+     Cr_sctns:  Glauber-Gribov Nucl-nucl: 0 eV  ---> 25.6 PeV
+  Process: tInelastic
+        Model:  Binary Light Ion Cascade: 0 eV /n ---> 110 MeV/n
+        Model:                  QMDModel: 100 MeV/n ---> 6 GeV/n
+        Model:                      FTFP: 5.99 GeV/n ---> 100 TeV/n
+     Cr_sctns:  Glauber-Gribov Nucl-nucl: 0 eV  ---> 25.6 PeV
+  Process: RadioactiveDecay
+=======================================================================
+======       Geant4 Native Pre-compound Model Parameters       ========
+=======================================================================
+Type of pre-compound model                          0
+Type of pre-compound inverse x-section              1
+Pre-compound model active                           1
+Pre-compound excitation low energy                  0.1 MeV 
+Pre-compound excitation high energy                 15 MeV 
+Angular generator for pre-compound model            1
+Use NeverGoBack option for pre-compound model       0
+Use SoftCutOff option for pre-compound model        0
+Use CEM transitions for pre-compound model          1
+Use GNASH transitions for pre-compound model        0
+Use HETC submodel for pre-compound model            0
+=======================================================================
+======       Nuclear De-excitation Module Parameters           ========
+=======================================================================
+Type of de-excitation inverse x-section             3
+Type of de-excitation factory                       Evaporation+GEM
+Number of de-excitation channels                    68
+Type of Fermi BreakUp model                         ModelVI
+Min excitation energy                               0.01 keV 
+Min energy per nucleon for multifragmentation       2e+05 MeV
+Level density (1/MeV)                               0.075
+Use simple level density model                      1
+Use discrete excitation energy of the residual      0
+Time limit for long lived isomeres                  1 ns 
+Isomer production flag                              1
+Internal e- conversion flag                         1
+Store e- internal conversion data                   1
+Correlated gamma emission flag                      0
+Max 2J for sampling of angular correlations         10
+=======================================================================
+/tracking/verbose 0
+/run/verbose 0
+/event/verbose 0
+/run/printProgress 500
+/gun/species GCR_He
+/gun/phase min
+/gun/fixedEnergyMeV 17782.79410038923
+/score/create/boxMesh PhantomMesh
+/score/mesh/boxSize 271.399 135.6995 888. mm
+/score/mesh/nBin 254 127 222
+.... G4ScoringMessenger::MeshBinCommand - G4ScoringBox
+/score/mesh/translate/xyz 0. 0. 0. mm
+/score/quantity/energyDeposit energyDeposit
+G4VScoringMesh::SetPrimitiveScorer() : energyDeposit is registered. 3D size: (254, 127, 222)
+/score/close
+/run/beamOn 5000
+/run/geometryModified
+### Run 0 starts.
+G4WT14 > /tracking/verbose 0
+G4WT14 > /run/verbose 0
+G4WT4 > /tracking/verbose 0
+G4WT2 > /tracking/verbose 0
+G4WT9 > /tracking/verbose 0
+G4WT4 > /run/verbose 0
+G4WT11 > /tracking/verbose 0
+G4WT14 > /event/verbose 0
+G4WT11 > /run/verbose 0
+G4WT11 > /event/verbose 0
+G4WT11 > /run/printProgress 500
+G4WT13 > /tracking/verbose 0
+G4WT11 > /gun/species GCR_He
+G4WT13 > /run/verbose 0
+G4WT11 > /gun/phase min
+G4WT13 > /event/verbose 0
+G4WT11 > /gun/fixedEnergyMeV 17782.79410038923
+G4WT13 > /run/printProgress 500
+G4WT11 > /score/create/boxMesh PhantomMesh
+G4WT2 > /run/verbose 0
+G4WT11 > /score/mesh/boxSize 271.399 135.6995 888. mm
+G4WT12 > /tracking/verbose 0
+G4WT4 > /event/verbose 0
+G4WT1 > /tracking/verbose 0
+G4WT11 > /score/mesh/nBin 254 127 222
+G4WT4 > /run/printProgress 500
+G4WT3 > /tracking/verbose 0
+G4WT11 > .... G4ScoringMessenger::MeshBinCommand - G4ScoringBox
+G4WT7 > /tracking/verbose 0
+G4WT9 > /run/verbose 0
+G4WT0 > /tracking/verbose 0
+G4WT15 > /tracking/verbose 0
+G4WT9 > /event/verbose 0
+G4WT10 > /tracking/verbose 0
+G4WT0 > /run/verbose 0
+G4WT9 > /run/printProgress 500
+G4WT8 > /tracking/verbose 0
+G4WT9 > /gun/species GCR_He
+G4WT12 > /run/verbose 0
+G4WT9 > /gun/phase min
+G4WT9 > /gun/fixedEnergyMeV 17782.79410038923
+G4WT14 > /run/printProgress 500
+G4WT9 > /score/create/boxMesh PhantomMesh
+G4WT12 > /event/verbose 0
+G4WT12 > /run/printProgress 500
+G4WT9 > /score/mesh/boxSize 271.399 135.6995 888. mm
+G4WT4 > /gun/species GCR_He
+G4WT12 > /gun/species GCR_He
+G4WT12 > /gun/phase min
+G4WT7 > /run/verbose 0
+G4WT9 > /score/mesh/nBin 254 127 222
+G4WT12 > /gun/fixedEnergyMeV 17782.79410038923
+G4WT5 > /tracking/verbose 0
+G4WT7 > /event/verbose 0
+G4WT15 > /run/verbose 0
+G4WT0 > /event/verbose 0
+G4WT13 > /gun/species GCR_He
+G4WT15 > /event/verbose 0
+G4WT10 > /run/verbose 0
+G4WT2 > /event/verbose 0
+G4WT15 > /run/printProgress 500
+G4WT13 > /gun/phase min
+G4WT13 > /gun/fixedEnergyMeV 17782.79410038923
+G4WT14 > /gun/species GCR_He
+G4WT15 > /gun/species GCR_He
+G4WT3 > /run/verbose 0
+G4WT6 > /tracking/verbose 0
+G4WT3 > /event/verbose 0
+G4WT3 > /run/printProgress 500
+G4WT6 > /run/verbose 0
+G4WT5 > /run/verbose 0
+G4WT3 > /gun/species GCR_He
+G4WT3 > /gun/phase min
+G4WT6 > /event/verbose 0
+G4WT3 > /gun/fixedEnergyMeV 17782.79410038923
+G4WT8 > /run/verbose 0
+G4WT3 > /score/create/boxMesh PhantomMesh
+G4WT11 > /score/mesh/translate/xyz 0. 0. 0. mm
+G4WT10 > /event/verbose 0
+G4WT1 > /run/verbose 0
+G4WT10 > /run/printProgress 500
+G4WT4 > /gun/phase min
+G4WT10 > /gun/species GCR_He
+G4WT15 > /gun/phase min
+G4WT10 > /gun/phase min
+G4WT4 > /gun/fixedEnergyMeV 17782.79410038923
+G4WT10 > /gun/fixedEnergyMeV 17782.79410038923
+G4WT15 > /gun/fixedEnergyMeV 17782.79410038923
+G4WT4 > /score/create/boxMesh PhantomMesh
+G4WT15 > /score/create/boxMesh PhantomMesh
+G4WT10 > /score/create/boxMesh PhantomMesh
+G4WT14 > /gun/phase min
+G4WT7 > /run/printProgress 500
+G4WT15 > /score/mesh/boxSize 271.399 135.6995 888. mm
+G4WT9 > .... G4ScoringMessenger::MeshBinCommand - G4ScoringBox
+G4WT10 > /score/mesh/boxSize 271.399 135.6995 888. mm
+G4WT7 > /gun/species GCR_He
+G4WT9 > /score/mesh/translate/xyz 0. 0. 0. mm
+G4WT7 > /gun/phase min
+G4WT7 > /gun/fixedEnergyMeV 17782.79410038923
+G4WT6 > /run/printProgress 500
+G4WT7 > /score/create/boxMesh PhantomMesh
+G4WT5 > /event/verbose 0
+G4WT9 > /score/quantity/energyDeposit energyDeposit
+G4WT0 > /run/printProgress 500
+G4WT2 > /run/printProgress 500
+G4WT7 > /score/mesh/boxSize 271.399 135.6995 888. mm
+G4WT8 > /event/verbose 0
+G4WT13 > /score/create/boxMesh PhantomMesh
+G4WT9 > /score/close 
+G4WT9 > /run/geometryModified 
+G4WT1 > /event/verbose 0
+G4WT7 > /score/mesh/nBin 254 127 222
+G4WT14 > /gun/fixedEnergyMeV 17782.79410038923
+G4WT4 > /score/mesh/boxSize 271.399 135.6995 888. mm
+G4WT1 > /run/printProgress 500
+G4WT4 > /score/mesh/nBin 254 127 222
+G4WT4 > .... G4ScoringMessenger::MeshBinCommand - G4ScoringBox
+G4WT4 > /score/mesh/translate/xyz 0. 0. 0. mm
+G4WT4 > /score/quantity/energyDeposit energyDeposit
+G4WT1 > /gun/species GCR_He
+G4WT4 > /score/close 
+G4WT1 > /gun/phase min
+G4WT4 > /run/geometryModified 
+G4WT1 > /gun/fixedEnergyMeV 17782.79410038923
+G4WT1 > /score/create/boxMesh PhantomMesh
+G4WT10 > /score/mesh/nBin 254 127 222
+G4WT11 > /score/quantity/energyDeposit energyDeposit
+G4WT13 > /score/mesh/boxSize 271.399 135.6995 888. mm
+G4WT10 > .... G4ScoringMessenger::MeshBinCommand - G4ScoringBox
+G4WT10 > /score/mesh/translate/xyz 0. 0. 0. mm
+G4WT7 > .... G4ScoringMessenger::MeshBinCommand - G4ScoringBox
+G4WT1 > /score/mesh/boxSize 271.399 135.6995 888. mm
+G4WT7 > /score/mesh/translate/xyz 0. 0. 0. mm
+G4WT13 > /score/mesh/nBin 254 127 222
+G4WT11 > /score/close 
+G4WT0 > /gun/species GCR_He
+G4WT11 > /run/geometryModified 
+G4WT5 > /run/printProgress 500
+G4WT7 > /score/quantity/energyDeposit energyDeposit
+G4WT0 > /gun/phase min
+G4WT1 > /score/mesh/nBin 254 127 222
+G4WT12 > /score/create/boxMesh PhantomMesh
+G4WT10 > /score/quantity/energyDeposit energyDeposit
+G4WT7 > /score/close 
+G4WT3 > /score/mesh/boxSize 271.399 135.6995 888. mm
+G4WT1 > .... G4ScoringMessenger::MeshBinCommand - G4ScoringBox
+G4WT1 > /score/mesh/translate/xyz 0. 0. 0. mm
+G4WT2 > /gun/species GCR_He
+G4WT12 > /score/mesh/boxSize 271.399 135.6995 888. mm
+G4WT1 > /score/quantity/energyDeposit energyDeposit
+G4WT10 > /score/close 
+G4WT10 > /run/geometryModified 
+G4WT2 > /gun/phase min
+G4WT3 > /score/mesh/nBin 254 127 222
+G4WT8 > /run/printProgress 500
+G4WT14 > /score/create/boxMesh PhantomMesh
+G4WT8 > /gun/species GCR_He
+G4WT15 > /score/mesh/nBin 254 127 222
+G4WT8 > /gun/phase min
+G4WT8 > /gun/fixedEnergyMeV 17782.79410038923
+G4WT7 > /run/geometryModified 
+G4WT8 > /score/create/boxMesh PhantomMesh
+G4WT15 > .... G4ScoringMessenger::MeshBinCommand - G4ScoringBox
+G4WT6 > /gun/species GCR_He
+G4WT13 > .... G4ScoringMessenger::MeshBinCommand - G4ScoringBox
+G4WT14 > /score/mesh/boxSize 271.399 135.6995 888. mm
+G4WT13 > /score/mesh/translate/xyz 0. 0. 0. mm
+G4WT2 > /gun/fixedEnergyMeV 17782.79410038923
+G4WT1 > /score/close 
+G4WT14 > /score/mesh/nBin 254 127 222
+G4WT1 > /run/geometryModified 
+G4WT3 > .... G4ScoringMessenger::MeshBinCommand - G4ScoringBox
+G4WT5 > /gun/species GCR_He
+G4WT3 > /score/mesh/translate/xyz 0. 0. 0. mm
+G4WT5 > /gun/phase min
+G4WT15 > /score/mesh/translate/xyz 0. 0. 0. mm
+G4WT8 > /score/mesh/boxSize 271.399 135.6995 888. mm
+G4WT3 > /score/quantity/energyDeposit energyDeposit
+G4WT0 > /gun/fixedEnergyMeV 17782.79410038923
+G4WT15 > /score/quantity/energyDeposit energyDeposit
+G4WT0 > /score/create/boxMesh PhantomMesh
+G4WT12 > /score/mesh/nBin 254 127 222
+G4WT8 > /score/mesh/nBin 254 127 222
+G4WT6 > /gun/phase min
+G4WT15 > /score/close 
+G4WT8 > .... G4ScoringMessenger::MeshBinCommand - G4ScoringBox
+G4WT0 > /score/mesh/boxSize 271.399 135.6995 888. mm
+G4WT12 > .... G4ScoringMessenger::MeshBinCommand - G4ScoringBox
+G4WT6 > /gun/fixedEnergyMeV 17782.79410038923
+G4WT12 > /score/mesh/translate/xyz 0. 0. 0. mm
+G4WT5 > /gun/fixedEnergyMeV 17782.79410038923
+G4WT2 > /score/create/boxMesh PhantomMesh
+G4WT12 > /score/quantity/energyDeposit energyDeposit
+G4WT5 > /score/create/boxMesh PhantomMesh
+G4WT3 > /score/close 
+G4WT13 > /score/quantity/energyDeposit energyDeposit
+G4WT0 > /score/mesh/nBin 254 127 222
+G4WT2 > /score/mesh/boxSize 271.399 135.6995 888. mm
+G4WT14 > .... G4ScoringMessenger::MeshBinCommand - G4ScoringBox
+G4WT5 > /score/mesh/boxSize 271.399 135.6995 888. mm
+G4WT0 > .... G4ScoringMessenger::MeshBinCommand - G4ScoringBox
+G4WT14 > /score/mesh/translate/xyz 0. 0. 0. mm
+G4WT13 > /score/close 
+G4WT3 > /run/geometryModified 
+G4WT14 > /score/quantity/energyDeposit energyDeposit
+G4WT15 > /run/geometryModified 
+G4WT8 > /score/mesh/translate/xyz 0. 0. 0. mm
+G4WT6 > /score/create/boxMesh PhantomMesh
+G4WT0 > /score/mesh/translate/xyz 0. 0. 0. mm
+G4WT8 > /score/quantity/energyDeposit energyDeposit
+G4WT2 > /score/mesh/nBin 254 127 222
+G4WT5 > /score/mesh/nBin 254 127 222
+G4WT2 > .... G4ScoringMessenger::MeshBinCommand - G4ScoringBox
+G4WT2 > /score/mesh/translate/xyz 0. 0. 0. mm
+G4WT13 > /run/geometryModified 
+G4WT14 > /score/close 
+G4WT5 > .... G4ScoringMessenger::MeshBinCommand - G4ScoringBox
+G4WT5 > /score/mesh/translate/xyz 0. 0. 0. mm
+G4WT2 > /score/quantity/energyDeposit energyDeposit
+G4WT14 > /run/geometryModified 
+G4WT6 > /score/mesh/boxSize 271.399 135.6995 888. mm
+G4WT2 > /score/close 
+G4WT2 > /run/geometryModified 
+G4WT8 > /score/close 
+G4WT8 > /run/geometryModified 
+G4WT0 > /score/quantity/energyDeposit energyDeposit
+G4WT6 > /score/mesh/nBin 254 127 222
+G4WT12 > /score/close 
+G4WT0 > /score/close 
+G4WT12 > /run/geometryModified 
+G4WT0 > /run/geometryModified 
+G4WT5 > /score/quantity/energyDeposit energyDeposit
+G4WT6 > .... G4ScoringMessenger::MeshBinCommand - G4ScoringBox
+G4WT5 > /score/close 
+G4WT6 > /score/mesh/translate/xyz 0. 0. 0. mm
+G4WT5 > /run/geometryModified 
+G4WT6 > /score/quantity/energyDeposit energyDeposit
+G4WT6 > /score/close 
+G4WT6 > /run/geometryModified 
+G4WT11 > ### Run 0 starts on worker thread 11.
+G4WT3 > ### Run 0 starts on worker thread 3.
+G4WT2 > ### Run 0 starts on worker thread 2.
+G4WT5 > ### Run 0 starts on worker thread 5.
+G4WT11 > --> Event 0 starts with initial seeds (21546623,86125245).
+G4WT8 > ### Run 0 starts on worker thread 8.
+G4WT15 > ### Run 0 starts on worker thread 15.
+G4WT9 > ### Run 0 starts on worker thread 9.
+G4WT14 > ### Run 0 starts on worker thread 14.
+G4WT13 > ### Run 0 starts on worker thread 13.
+G4WT0 > ### Run 0 starts on worker thread 0.
+G4WT12 > ### Run 0 starts on worker thread 12.
+G4WT10 > ### Run 0 starts on worker thread 10.
+G4WT6 > ### Run 0 starts on worker thread 6.
+G4WT7 > ### Run 0 starts on worker thread 7.
+G4WT1 > ### Run 0 starts on worker thread 1.
+G4WT4 > ### Run 0 starts on worker thread 4.
+G4WT8 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 133.643 MeV energy  ( pre-Step = 133.643 ) 
+   momentum = (-0.469615,108.141,79.3865) mag= 134.153
+   position = (-3.4447,4500,3422.63) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 3
+ Length of this step = 35335.8 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 343015 )
+ =============== Recommendations / advice ====================
+ Recommendations to address this issue (Transport-001-ExcessSteps)
+ This warning is controlled by the SetThresholdWarningEnergy  method of G4Transportation.  
+ Current value of 'warning' threshold= 100 MeV 
+ - If 'unimportant' particles (with energy low enough not to matter in your   application, then increase its value. 
+ - If particles of high-enough energy to be important are being  killed, you can 
+   a) Increase the trial steps using the method  SetThresholdTrials().    Particles above the 'important' threshold 
+  will be given this many 'chances'.  The default value was 10, and the current value is 10
+   b) Increase the energy which you consider 'important' (above this they are killed only after extra trials), using the method SetThresholdImportantEnergy() 
+      Note: this can incur a potentially high cost in extra simulation time  if more tracks require very large number of integration steps . 
+   c) investigate alternative integration methods 
+    e.g.  Helical methods for uniform or almost uniform fields or else higher order RK methods such as DormandPrince78 
+ This information is provided 5 times. Current count: 1 / 5
+ =============================================================
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT1 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 162.946 MeV energy  ( pre-Step = 162.946 ) 
+   momentum = (134.915,-89.245,-23.4759) mag= 163.456
+   position = (3804.43,-2403.4,-655.24) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 3
+ Length of this step = 31001.2 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 484414 )
+ =============== Recommendations / advice ====================
+ Recommendations to address this issue (Transport-001-ExcessSteps)
+ This warning is controlled by the SetThresholdWarningEnergy  method of G4Transportation.  
+ Current value of 'warning' threshold= 100 MeV 
+ - If 'unimportant' particles (with energy low enough not to matter in your   application, then increase its value. 
+ - If particles of high-enough energy to be important are being  killed, you can 
+   a) Increase the trial steps using the method  SetThresholdTrials().    Particles above the 'important' threshold 
+  will be given this many 'chances'.  The default value was 10, and the current value is 10
+   b) Increase the energy which you consider 'important' (above this they are killed only after extra trials), using the method SetThresholdImportantEnergy() 
+      Note: this can incur a potentially high cost in extra simulation time  if more tracks require very large number of integration steps . 
+   c) investigate alternative integration methods 
+    e.g.  Helical methods for uniform or almost uniform fields or else higher order RK methods such as DormandPrince78 
+ This information is provided 5 times. Current count: 2 / 5
+ =============================================================
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT1 > --> Event 1000 starts with initial seeds (71057834,64010586).
+G4WT14 > --> Event 500 starts with initial seeds (84151075,89277186).
+G4WT6 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 114.226 MeV energy  ( pre-Step = 114.226 ) 
+   momentum = (-102.655,45.5111,23.5595) mag= 114.736
+   position = (-4150.54,1738.69,771.273) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 21991.8 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 1119208 )
+ =============== Recommendations / advice ====================
+ Recommendations to address this issue (Transport-001-ExcessSteps)
+ This warning is controlled by the SetThresholdWarningEnergy  method of G4Transportation.  
+ Current value of 'warning' threshold= 100 MeV 
+ - If 'unimportant' particles (with energy low enough not to matter in your   application, then increase its value. 
+ - If particles of high-enough energy to be important are being  killed, you can 
+   a) Increase the trial steps using the method  SetThresholdTrials().    Particles above the 'important' threshold 
+  will be given this many 'chances'.  The default value was 10, and the current value is 10
+   b) Increase the energy which you consider 'important' (above this they are killed only after extra trials), using the method SetThresholdImportantEnergy() 
+      Note: this can incur a potentially high cost in extra simulation time  if more tracks require very large number of integration steps . 
+   c) investigate alternative integration methods 
+    e.g.  Helical methods for uniform or almost uniform fields or else higher order RK methods such as DormandPrince78 
+ This information is provided 5 times. Current count: 3 / 5
+ =============================================================
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT0 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 120.933 MeV energy  ( pre-Step = 120.933 ) 
+   momentum = (81.7652,0.155145,-89.7933) mag= 121.443
+   position = (3725.07,-2524.65,402.04) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 33484.6 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 584654 )
+ =============== Recommendations / advice ====================
+ Recommendations to address this issue (Transport-001-ExcessSteps)
+ This warning is controlled by the SetThresholdWarningEnergy  method of G4Transportation.  
+ Current value of 'warning' threshold= 100 MeV 
+ - If 'unimportant' particles (with energy low enough not to matter in your   application, then increase its value. 
+ - If particles of high-enough energy to be important are being  killed, you can 
+   a) Increase the trial steps using the method  SetThresholdTrials().    Particles above the 'important' threshold 
+  will be given this many 'chances'.  The default value was 10, and the current value is 10
+   b) Increase the energy which you consider 'important' (above this they are killed only after extra trials), using the method SetThresholdImportantEnergy() 
+      Note: this can incur a potentially high cost in extra simulation time  if more tracks require very large number of integration steps . 
+   c) investigate alternative integration methods 
+    e.g.  Helical methods for uniform or almost uniform fields or else higher order RK methods such as DormandPrince78 
+ This information is provided 5 times. Current count: 4 / 5
+ =============================================================
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT1 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 153.643 MeV energy  ( pre-Step = 153.643 ) 
+   momentum = (47.1783,-118.087,87.1381) mag= 154.154
+   position = (1372.85,-4285.47,2297.26) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 3
+ Length of this step = 33769.9 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 1720095 )
+ =============== Recommendations / advice ====================
+ Recommendations to address this issue (Transport-001-ExcessSteps)
+ This warning is controlled by the SetThresholdWarningEnergy  method of G4Transportation.  
+ Current value of 'warning' threshold= 100 MeV 
+ - If 'unimportant' particles (with energy low enough not to matter in your   application, then increase its value. 
+ - If particles of high-enough energy to be important are being  killed, you can 
+   a) Increase the trial steps using the method  SetThresholdTrials().    Particles above the 'important' threshold 
+  will be given this many 'chances'.  The default value was 10, and the current value is 10
+   b) Increase the energy which you consider 'important' (above this they are killed only after extra trials), using the method SetThresholdImportantEnergy() 
+      Note: this can incur a potentially high cost in extra simulation time  if more tracks require very large number of integration steps . 
+   c) investigate alternative integration methods 
+    e.g.  Helical methods for uniform or almost uniform fields or else higher order RK methods such as DormandPrince78 
+ This information is provided 5 times. Current count: 5 / 5
+ =============================================================
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT4 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 139.855 MeV energy  ( pre-Step = 139.855 ) 
+   momentum = (-2.23459,-132.971,44.9002) mag= 140.365
+   position = (6079.59,5321.85,3588.1) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 13
+ Length of this step = 37923 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 1331937 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT11 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 129.486 MeV energy  ( pre-Step = 129.486 ) 
+   momentum = (36.5132,123.981,-13.9464) mag= 129.996
+   position = (712.86,4443.18,-231.289) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 40
+ Length of this step = 27583.4 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 1277156 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT10 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 147.453 MeV energy  ( pre-Step = 147.453 ) 
+   momentum = (-93.9051,-106.018,42.8372) mag= 147.963
+   position = (-4213.3,-1580.54,-1473.63) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 170
+ Length of this step = 32503.2 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 2194240 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT1 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 107.098 MeV energy  ( pre-Step = 107.098 ) 
+   momentum = (87.7931,-56.9865,-24.9873) mag= 107.608
+   position = (2424.28,5127.7,447.622) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 1
+ Length of this step = 21880.6 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 3063020 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT15 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 193.868 MeV energy  ( pre-Step = 193.868 ) 
+   momentum = (134.197,-138.826,-22.3954) mag= 194.379
+   position = (3131.46,-3231.71,-472.263) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 4
+ Length of this step = 33079.3 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 1817764 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT15 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 213.612 MeV energy  ( pre-Step = 213.612 ) 
+   momentum = (-40.1033,-206.335,40.8142) mag= 214.122
+   position = (-2079.52,-3990.69,-2634.54) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 292
+ Length of this step = 35748.1 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 1950867 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT6 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 229.265 MeV energy  ( pre-Step = 229.265 ) 
+   momentum = (-163.279,-147.745,65.6372) mag= 229.776
+   position = (-3349.62,-3005.01,1410.94) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 34511.7 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 3123185 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT6 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 100.525 MeV energy  ( pre-Step = 100.525 ) 
+   momentum = (-89.7855,-46.3292,0.533786) mag= 101.035
+   position = (-3911.24,-2225.36,841.212) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 24228 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 3145295 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT10 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 175.068 MeV energy  ( pre-Step = 175.068 ) 
+   momentum = (-72.9208,-91.6455,-130.81) mag= 175.578
+   position = (-335,-6578.1,-3246.57) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 4
+ Length of this step = 29979.9 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 2942804 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT8 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 115.723 MeV energy  ( pre-Step = 115.723 ) 
+   momentum = (79.5011,82.5002,19.5785) mag= 116.233
+   position = (3107.24,3255,751.801) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 22525.6 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 2834794 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT10 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 116.103 MeV energy  ( pre-Step = 116.103 ) 
+   momentum = (-51.9071,-81.299,65.5337) mag= 116.613
+   position = (-912.994,-4406.41,-2998.87) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 42
+ Length of this step = 24170.3 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 3198826 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT13 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 172.257 MeV energy  ( pre-Step = 172.257 ) 
+   momentum = (-126.761,-105.865,50.7236) mag= 172.767
+   position = (-3468.98,-2866.39,1146.26) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 27162.7 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 2326220 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT8 > Loop-counter exceeded the threshold value at 391th line of /home/conda/feedstock_root/build_artifacts/bld/rattler-build_geant4_1788349596/work/src/source/processes/hadronic/models/particle_hp/src/G4ParticleHPInelasticCompFS.cc.
+G4WT13 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 103.116 MeV energy  ( pre-Step = 103.116 ) 
+   momentum = (50.4864,30.0286,-85.3674) mag= 103.625
+   position = (3299.59,1872.25,-5000) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 3
+ Length of this step = 25250.5 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 3281733 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT13 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 194.693 MeV energy  ( pre-Step = 194.693 ) 
+   momentum = (-137.146,-138.694,7.70023) mag= 195.203
+   position = (-3191.58,-3172.35,121.441) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 28155.4 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 3550315 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT0 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 116.727 MeV energy  ( pre-Step = 116.727 ) 
+   momentum = (96.2485,43.062,51.2487) mag= 117.237
+   position = (4111,1830.22,2040.31) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 37963.1 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 3126361 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT2 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 152.863 MeV energy  ( pre-Step = 152.863 ) 
+   momentum = (-109.624,-76.4668,75.2248) mag= 153.374
+   position = (-3691.71,-2573.18,2386.43) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 3
+ Length of this step = 29639.8 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 3248329 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT0 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 161.674 MeV energy  ( pre-Step = 161.674 ) 
+   momentum = (-154.516,-47.4071,-13.4479) mag= 162.184
+   position = (-4263.48,-1439.69,-1341.71) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 3
+ Length of this step = 34008.6 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 3301139 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT12 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 138.57 MeV energy  ( pre-Step = 138.57 ) 
+   momentum = (73.6609,99.6628,-63.1247) mag= 139.08
+   position = (-268.443,-6215.86,2830.18) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 11
+ Length of this step = 28254.2 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 3427738 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT0 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 140.533 MeV energy  ( pre-Step = 140.533 ) 
+   momentum = (-101.562,97.852,-1.84616) mag= 141.043
+   position = (-7679.2,-784.373,-3198.4) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 7
+ Length of this step = 23820.9 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 4177510 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT14 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 136.547 MeV energy  ( pre-Step = 136.547 ) 
+   momentum = (-89.4467,98.9525,-31.5025) mag= 137.057
+   position = (-3183.07,3180.89,-479.959) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 24017.4 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 4000264 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT2 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 109.318 MeV energy  ( pre-Step = 109.318 ) 
+   momentum = (-55.7716,-92.196,-21.2481) mag= 109.827
+   position = (7754.18,3235.7,1345.7) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 1
+ Length of this step = 27773.1 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 4800993 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT14 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 123.476 MeV energy  ( pre-Step = 123.476 ) 
+   momentum = (-118.976,-34.3507,6.10919) mag= 123.986
+   position = (-4327.51,-1233.95,199.458) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 37620.1 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 4994394 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT14 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 119.04 MeV energy  ( pre-Step = 119.04 ) 
+   momentum = (10.6323,-89.8894,78.096) mag= 119.55
+   position = (1166.24,-4346.25,3501.89) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 60
+ Length of this step = 31225.9 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 5318784 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT14 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 104.568 MeV energy  ( pre-Step = 104.568 ) 
+   momentum = (-6.44413,-76.7619,-71.4659) mag= 105.077
+   position = (415.819,-4480.75,647.505) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 13
+ Length of this step = 38200.8 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 5363317 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT9 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 122.698 MeV energy  ( pre-Step = 122.698 ) 
+   momentum = (116.921,36.5589,-13.1545) mag= 123.208
+   position = (4306.64,1304.95,-378.188) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 34158.6 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 5814639 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT3 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 134.828 MeV energy  ( pre-Step = 134.828 ) 
+   momentum = (54.3926,-118.725,35.5293) mag= 135.338
+   position = (1862.68,-4096.39,1355.38) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 8
+ Length of this step = 29170.6 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 4765295 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT3 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 217.907 MeV energy  ( pre-Step = 217.907 ) 
+   momentum = (85.4099,68.8058,188.884) mag= 218.417
+   position = (3940.74,5991.85,2797.24) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 5
+ Length of this step = 38455.6 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 5312163 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT10 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 112.613 MeV energy  ( pre-Step = 112.613 ) 
+   momentum = (-100.463,40.7481,-32.3044) mag= 113.123
+   position = (-4087.79,1881.48,-1402.26) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 3
+ Length of this step = 23097 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 5641274 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT13 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 116.566 MeV energy  ( pre-Step = 116.566 ) 
+   momentum = (-16.3449,32.6204,-111.245) mag= 117.076
+   position = (-770.426,4233.23,-5000) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 3
+ Length of this step = 35482.1 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 6437641 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT6 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 162.578 MeV energy  ( pre-Step = 162.578 ) 
+   momentum = (111.11,119.157,-7.34899) mag= 163.088
+   position = (3128.51,3234.57,-147.41) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 3
+ Length of this step = 25815.5 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 7155937 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT6 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 110.461 MeV energy  ( pre-Step = 110.461 ) 
+   momentum = (62.2285,-91.3644,9.72523) mag= 110.97
+   position = (-3963.48,5321.85,-1091.15) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 24
+ Length of this step = 29198.8 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 7308687 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT4 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 104.716 MeV energy  ( pre-Step = 104.716 ) 
+   momentum = (-101.333,-28.1938,-3.02999) mag= 105.226
+   position = (-4329.04,-1228.59,-367.64) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 3
+ Length of this step = 31826.1 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 4897751 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT12 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 127.331 MeV energy  ( pre-Step = 127.331 ) 
+   momentum = (-117.081,44.4622,25.6608) mag= 127.841
+   position = (-3981.94,2096.23,1200.11) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 29690.8 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 5556747 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT13 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 110.592 MeV energy  ( pre-Step = 110.592 ) 
+   momentum = (-93.0277,53.8492,-28.1012) mag= 111.102
+   position = (-3889.46,2263.21,-1169.35) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 30953.1 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 6887881 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT7 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 146.3 MeV energy  ( pre-Step = 146.3 ) 
+   momentum = (41.8284,117.065,78.0982) mag= 146.81
+   position = (1016.55,4383.68,-661.468) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 7
+ Length of this step = 21468.1 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 6335485 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT12 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 132.895 MeV energy  ( pre-Step = 132.895 ) 
+   momentum = (122.993,51.593,-2.81803) mag= 133.405
+   position = (4172.78,1684.6,-74.0106) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 35325.1 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 5883921 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT7 > --> Event 1500 starts with initial seeds (82438413,2370562).
+G4WT15 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 129.042 MeV energy  ( pre-Step = 129.042 ) 
+   momentum = (-94.9906,82.6195,30.5688) mag= 129.552
+   position = (-3485.05,2846.82,1423.23) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 4
+ Length of this step = 24653.7 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 6429424 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT1 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 109.26 MeV energy  ( pre-Step = 109.26 ) 
+   momentum = (76.3901,-78.2425,-9.59783) mag= 109.77
+   position = (3109.17,-3253.16,1447.13) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 64
+ Length of this step = 20300.8 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 7814706 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT3 > --> Event 2000 starts with initial seeds (25176899,39695611).
+G4WT11 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 106.075 MeV energy  ( pre-Step = 106.075 ) 
+   momentum = (-104.242,22.1618,1.62466) mag= 106.584
+   position = (-4393.88,971.509,-82.1784) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 4
+ Length of this step = 40169.1 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 7754691 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT6 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 109.438 MeV energy  ( pre-Step = 109.438 ) 
+   momentum = (-2.01333,109.902,2.4429) mag= 109.948
+   position = (-679.213,4448.45,822.998) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 27
+ Length of this step = 29468.6 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 9727398 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT9 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 114.837 MeV energy  ( pre-Step = 114.837 ) 
+   momentum = (-89.2261,-72.9015,5.38997) mag= 115.347
+   position = (-3616.09,-2678.42,118.015) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 22268.2 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 7815549 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT14 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 155.19 MeV energy  ( pre-Step = 155.19 ) 
+   momentum = (121.314,16.3008,96.2275) mag= 155.7
+   position = (3878.57,-2281.81,-452.897) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 31942.1 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 7602041 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT14 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 134.24 MeV energy  ( pre-Step = 134.24 ) 
+   momentum = (22.9561,-130.001,-27.0229) mag= 134.75
+   position = (774.714,-4432.81,-789.536) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 4
+ Length of this step = 38500.6 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 7759912 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT11 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 156.404 MeV energy  ( pre-Step = 156.404 ) 
+   momentum = (100.683,-117.555,-25.8063) mag= 156.914
+   position = (-3865.55,5321.85,1261.18) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 9
+ Length of this step = 39861.5 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 8103817 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT3 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 143.237 MeV energy  ( pre-Step = 143.237 ) 
+   momentum = (-119.087,-79.5986,-12.0602) mag= 143.747
+   position = (-3807.87,-2397.94,-206.581) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 33988.6 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 7719219 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT3 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 100.901 MeV energy  ( pre-Step = 100.901 ) 
+   momentum = (5.66443,-77.938,64.6354) mag= 101.411
+   position = (555.066,-4465.64,4515.35) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 6
+ Length of this step = 36665.3 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 8153440 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT14 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 162.323 MeV energy  ( pre-Step = 162.323 ) 
+   momentum = (-92.0796,110.706,76.0266) mag= 162.833
+   position = (-4241.46,-1503.34,-455.199) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 279
+ Length of this step = 32314.2 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 9259491 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT7 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 137.217 MeV energy  ( pre-Step = 137.217 ) 
+   momentum = (-118.95,48.3393,49.8275) mag= 137.727
+   position = (-4105.98,1841.46,1920.58) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 35731.9 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 8536124 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT2 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 139.187 MeV energy  ( pre-Step = 139.187 ) 
+   momentum = (117.093,-44.6762,61.7119) mag= 139.697
+   position = (4259.68,-1450.91,2484.05) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 34509.3 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 8774945 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT15 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 103.707 MeV energy  ( pre-Step = 103.707 ) 
+   momentum = (21.7635,79.7789,-63.4255) mag= 104.217
+   position = (1155.28,4349.18,-3065.9) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 3
+ Length of this step = 32407 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 10085280 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT11 > --> Event 2500 starts with initial seeds (27334346,14054939).
+G4WT4 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 100.149 MeV energy  ( pre-Step = 100.149 ) 
+   momentum = (37.5215,-53.3825,76.6459) mag= 100.659
+   position = (2038.23,-4011.93,2873.69) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 3
+ Length of this step = 25642.9 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 7671617 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT8 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 208.391 MeV energy  ( pre-Step = 208.391 ) 
+   momentum = (-168.362,65.6337,-104.815) mag= 208.901
+   position = (-4201,1612.96,-2241.06) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 40508 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 8664469 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT8 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 108.901 MeV energy  ( pre-Step = 108.901 ) 
+   momentum = (-106.386,24.2391,-8.07849) mag= 109.411
+   position = (-4385.46,1008.84,-28.4804) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 29336.5 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 8676150 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT4 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 158.743 MeV energy  ( pre-Step = 158.743 ) 
+   momentum = (61.1485,-135.982,-55.9607) mag= 159.254
+   position = (1813.88,-4118.23,-1635.63) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 39194.3 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 7908014 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT8 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 113.041 MeV energy  ( pre-Step = 113.041 ) 
+   momentum = (103.551,-42.5721,18.9377) mag= 113.551
+   position = (4372.05,1065.43,726.328) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 213
+ Length of this step = 29508.6 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 9207162 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT6 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 129.15 MeV energy  ( pre-Step = 129.15 ) 
+   momentum = (-120.012,-44.9347,19.7463) mag= 129.66
+   position = (-4252.46,-1471.93,847.417) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 38495.6 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 12210322 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT14 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 117.594 MeV energy  ( pre-Step = 117.594 ) 
+   momentum = (-56.6852,-59.2729,-84.9827) mag= 118.104
+   position = (-1995.72,-4033.25,-4502.02) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 40473.1 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 10283391 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT8 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 154.911 MeV energy  ( pre-Step = 154.911 ) 
+   momentum = (135.307,42.8428,-63.3424) mag= 155.421
+   position = (4108.73,-1835.31,-430.994) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 168
+ Length of this step = 30545.1 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 10044617 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT0 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 121.318 MeV energy  ( pre-Step = 121.318 ) 
+   momentum = (-111.259,20.6164,-45.148) mag= 121.827
+   position = (-2252.25,-3895.82,1706.02) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 76
+ Length of this step = 22586.3 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 9280674 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT9 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 118.707 MeV energy  ( pre-Step = 118.707 ) 
+   momentum = (-3.95873,-117.276,21.0527) mag= 119.217
+   position = (-3995.75,-2069.79,-1296.76) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 3
+ Length of this step = 28512.8 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 10313070 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT9 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 184.617 MeV energy  ( pre-Step = 184.617 ) 
+   momentum = (-153.962,102.573,6.8469) mag= 185.128
+   position = (-3714.84,2539.68,425.997) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 3
+ Length of this step = 40796.8 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 10526492 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT3 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 222.355 MeV energy  ( pre-Step = 222.355 ) 
+   momentum = (-199.282,72.127,68.9454) mag= 222.865
+   position = (-1204.05,4335.93,77.806) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 45
+ Length of this step = 30985.1 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 9519210 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT5 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 217.171 MeV energy  ( pre-Step = 217.171 ) 
+   momentum = (172.542,-118.835,-59.0978) mag= 217.681
+   position = (2987.51,-3365.23,-604.661) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 3
+ Length of this step = 30954.8 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 10900790 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT5 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 101.546 MeV energy  ( pre-Step = 101.546 ) 
+   momentum = (10.2947,101.17,8.59695) mag= 102.056
+   position = (680.278,4448.28,18.5464) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 5
+ Length of this step = 34361.2 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 11207848 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT10 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 110.669 MeV energy  ( pre-Step = 110.669 ) 
+   momentum = (-16.6199,56.0387,94.5731) mag= 111.178
+   position = (-635.259,4454.94,3250) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 39392.2 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 11035331 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT11 > --> Event 3500 starts with initial seeds (67093476,48326482).
+G4WT9 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 119.01 MeV energy  ( pre-Step = 119.01 ) 
+   momentum = (-107.846,-40.8187,31.4334) mag= 119.519
+   position = (-4266.68,-1430.19,1094.46) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 6
+ Length of this step = 36768.5 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 11564954 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT4 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 120.752 MeV energy  ( pre-Step = 120.752 ) 
+   momentum = (-118.598,-24.642,5.62388) mag= 121.262
+   position = (-5975.71,3386.4,-1332.13) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 1
+ Length of this step = 34822.5 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 9777253 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT0 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 100.032 MeV energy  ( pre-Step = 100.032 ) 
+   momentum = (-5.6969,-26.938,96.6979) mag= 100.542
+   position = (-330.513,-4487.85,-511.692) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 25143.5 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 10670700 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT15 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 126.636 MeV energy  ( pre-Step = 126.636 ) 
+   momentum = (-4.42758,-103.532,-73.6719) mag= 127.146
+   position = (-154.174,-4497.36,-3077.89) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 30050.9 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 11854221 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT8 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 142.771 MeV energy  ( pre-Step = 142.771 ) 
+   momentum = (116.428,-82.1825,-14.8295) mag= 143.281
+   position = (2443.56,-3778.76,780.408) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 58
+ Length of this step = 23171.8 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 11617258 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT2 > --> Event 3000 starts with initial seeds (51649255,92624569).
+G4WT10 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 125.505 MeV energy  ( pre-Step = 125.505 ) 
+   momentum = (85.3293,-27.5712,88.536) mag= 126.015
+   position = (3769.09,2458.44,-126.531) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 311
+ Length of this step = 31731.2 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 12115586 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT8 > Loop-counter exceeded the threshold value at 391th line of /home/conda/feedstock_root/build_artifacts/bld/rattler-build_geant4_1788349596/work/src/source/processes/hadronic/models/particle_hp/src/G4ParticleHPInelasticCompFS.cc.
+G4WT14 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 167.319 MeV energy  ( pre-Step = 167.319 ) 
+   momentum = (-117.841,-114.991,32.5116) mag= 167.829
+   position = (-3124.23,-3238.7,936.486) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 10
+ Length of this step = 25865.4 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 13495512 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT2 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 146.337 MeV energy  ( pre-Step = 146.337 ) 
+   momentum = (126.305,-73.6963,-13.4159) mag= 146.848
+   position = (3872.41,-2292.26,-233.728) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 4
+ Length of this step = 38026.5 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 12378802 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT11 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 146.723 MeV energy  ( pre-Step = 146.723 ) 
+   momentum = (-14.9057,136.926,-52.0283) mag= 147.234
+   position = (-854.929,4418.04,-3977.21) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 143
+ Length of this step = 35039.2 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 12346463 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT5 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 120.608 MeV energy  ( pre-Step = 120.608 ) 
+   momentum = (118.505,24.1082,6.70253) mag= 121.118
+   position = (4187.24,1648.34,438.929) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 26889.1 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 14140341 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT10 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 140.968 MeV energy  ( pre-Step = 140.968 ) 
+   momentum = (37.6574,-111.491,78.5347) mag= 141.478
+   position = (1839.53,-4106.84,2542.31) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 7
+ Length of this step = 34776.6 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 13320989 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT10 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 162.512 MeV energy  ( pre-Step = 162.512 ) 
+   momentum = (-25.1724,66.1535,146.855) mag= 163.022
+   position = (-864.395,2330.44,5000) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 4
+ Length of this step = 41034.1 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 13414014 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT15 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 162.389 MeV energy  ( pre-Step = 162.389 ) 
+   momentum = (2.19049,131.363,-96.3068) mag= 162.899
+   position = (1188.59,4340.19,2666.39) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 29456.3 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 14133450 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT2 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 116.266 MeV energy  ( pre-Step = 116.266 ) 
+   momentum = (-94.8676,59.6645,32.8162) mag= 116.776
+   position = (-3288.64,3071.62,-2458.51) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 5
+ Length of this step = 23619.9 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 13081192 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT10 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 110.209 MeV energy  ( pre-Step = 110.209 ) 
+   momentum = (-107.343,26.9806,2.88705) mag= 110.719
+   position = (-4350.24,1151.25,126.849) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 29744 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 13859577 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT2 > --> Event 4000 starts with initial seeds (82600492,26305067).
+G4WT10 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 117.602 MeV energy  ( pre-Step = 117.602 ) 
+   momentum = (43.3751,84.8908,-69.7328) mag= 118.112
+   position = (1954.41,4053.43,-3314.18) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 3
+ Length of this step = 39098.1 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 14147235 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT11 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 109.241 MeV energy  ( pre-Step = 109.241 ) 
+   momentum = (109.568,6.26816,0.892029) mag= 109.75
+   position = (4385.38,1009.16,134.997) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 41101.7 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 13230509 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT11 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 100.9 MeV energy  ( pre-Step = 100.9 ) 
+   momentum = (98.3306,-10.4668,-22.482) mag= 101.41
+   position = (4334.78,-1208.17,52.5715) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 246
+ Length of this step = 29343.9 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 13236320 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT7 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 162.156 MeV energy  ( pre-Step = 162.156 ) 
+   momentum = (-65.8652,134.557,-63.3765) mag= 162.667
+   position = (-2128.58,3964.74,-1858.84) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 4
+ Length of this step = 31776.4 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 12720891 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT13 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 145.247 MeV energy  ( pre-Step = 145.247 ) 
+   momentum = (-124.313,41.9243,-63.5124) mag= 145.757
+   position = (-3717.82,-2535.31,4495.9) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 5
+ Length of this step = 36353.7 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 14757653 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT8 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 151.233 MeV energy  ( pre-Step = 151.233 ) 
+   momentum = (54.7823,-125.958,-64.4929) mag= 151.743
+   position = (1461.07,-4256.2,-2339.56) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 3
+ Length of this step = 40168.6 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 14301770 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT7 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 131.37 MeV energy  ( pre-Step = 131.37 ) 
+   momentum = (-100.004,-78.8527,34.2608) mag= 131.88
+   position = (-4329.31,-1227.62,2409.35) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 250
+ Length of this step = 28227.8 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 14340706 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT2 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 145.601 MeV energy  ( pre-Step = 145.601 ) 
+   momentum = (124.788,36.3273,-66.7574) mag= 146.111
+   position = (3884.51,2271.69,-15.1971) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 145
+ Length of this step = 34219.3 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 15098133 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT10 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 139.427 MeV energy  ( pre-Step = 139.427 ) 
+   momentum = (125.112,29.6064,-55.2532) mag= 139.937
+   position = (3982.17,-2095.79,-473.239) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 253
+ Length of this step = 30010.3 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 16639841 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT8 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 165.442 MeV energy  ( pre-Step = 165.442 ) 
+   momentum = (-71.445,132.511,69.8343) mag= 165.953
+   position = (-2085.54,3987.55,1990.35) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 31583.3 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 15127984 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT2 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 101.873 MeV energy  ( pre-Step = 101.873 ) 
+   momentum = (89.5052,49.7057,0.699625) mag= 102.383
+   position = (3918.74,2212.12,-61.9881) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 3
+ Length of this step = 29603.9 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 15547222 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT2 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 132.621 MeV energy  ( pre-Step = 132.621 ) 
+   momentum = (-132.448,6.34792,11.8852) mag= 133.131
+   position = (-4286.54,1369.52,-449.836) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 5
+ Length of this step = 31109 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 15667831 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT7 > --> Event 4500 starts with initial seeds (11577359,21770356).
+G4WT2 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 123.183 MeV energy  ( pre-Step = 123.183 ) 
+   momentum = (-101.422,31.4424,63.4418) mag= 123.693
+   position = (-4262.35,1443.04,1875.71) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 6
+ Length of this step = 41118 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 15967733 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT15 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 107.129 MeV energy  ( pre-Step = 107.129 ) 
+   momentum = (88.5999,43.6583,42.7787) mag= 107.638
+   position = (3987.65,-2085.34,-896.349) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 5
+ Length of this step = 28955.8 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 16478907 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT2 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 113.989 MeV energy  ( pre-Step = 113.989 ) 
+   momentum = (-66.4827,65.9512,65.8824) mag= 114.499
+   position = (-4218.62,-1566.29,-142.792) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 154
+ Length of this step = 30105.3 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 16165072 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT10 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 135.943 MeV energy  ( pre-Step = 135.943 ) 
+   momentum = (-2.10327,-39.6605,130.545) mag= 136.453
+   position = (3453.18,-5991.85,-975.804) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 4
+ Length of this step = 39961.1 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 17227577 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT11 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 179.372 MeV energy  ( pre-Step = 179.372 ) 
+   momentum = (-157.689,-82.7336,25.4342) mag= 179.882
+   position = (-3981.35,-2097.35,662.042) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 3
+ Length of this step = 38180.4 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 15788480 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT11 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 130.026 MeV energy  ( pre-Step = 130.026 ) 
+   momentum = (53.2396,92.87,-74.7013) mag= 130.536
+   position = (245.608,4493.29,-1433.62) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 5
+ Length of this step = 36737.8 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 16145243 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT12 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 141.368 MeV energy  ( pre-Step = 141.368 ) 
+   momentum = (-101.995,3.73443,-98.5509) mag= 141.878
+   position = (-4080.67,-1896.88,181.923) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 125
+ Length of this step = 33056 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 14946061 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT4 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 104.66 MeV energy  ( pre-Step = 104.66 ) 
+   momentum = (65.4111,-36.579,73.7843) mag= 105.17
+   position = (4144.78,-1752.37,4786.86) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 3
+ Length of this step = 35002.1 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 14656381 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT8 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 104.635 MeV energy  ( pre-Step = 104.635 ) 
+   momentum = (-63.5543,83.1981,-9.71355) mag= 105.145
+   position = (3858.01,-5321.85,-717.778) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 24477.4 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 15891421 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT12 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 187.325 MeV energy  ( pre-Step = 187.325 ) 
+   momentum = (-79.448,-169.132,-19.0939) mag= 187.835
+   position = (-1744.77,-4147.98,-478.039) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 5
+ Length of this step = 35900.1 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 16076569 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT12 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 213.833 MeV energy  ( pre-Step = 213.833 ) 
+   momentum = (-59.5493,203.725,29.8826) mag= 214.343
+   position = (-1319.1,4302.32,640.51) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 5
+ Length of this step = 29948.8 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 16111650 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT3 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 115.853 MeV energy  ( pre-Step = 115.853 ) 
+   momentum = (73.083,87.2443,24.2431) mag= 116.363
+   position = (1113.93,4359.95,3709.81) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 41
+ Length of this step = 30093.4 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 15047287 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT12 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 106.45 MeV energy  ( pre-Step = 106.45 ) 
+   momentum = (73.3834,-76.6452,13.4484) mag= 106.96
+   position = (3057.42,-3301.85,713.675) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 21665.8 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 16276050 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT14 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 108.538 MeV energy  ( pre-Step = 108.538 ) 
+   momentum = (-36.5946,-68.5356,-76.5184) mag= 109.048
+   position = (-2160.28,-3947.55,-4439.28) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 3
+ Length of this step = 32961.2 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 18212098 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT10 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 144.282 MeV energy  ( pre-Step = 144.282 ) 
+   momentum = (39.9474,129.628,-50.6502) mag= 144.792
+   position = (1095.26,4364.68,-1672.41) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 5
+ Length of this step = 40069.1 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 18671173 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT10 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 141.837 MeV energy  ( pre-Step = 141.837 ) 
+   momentum = (132.292,-51.8913,-8.28928) mag= 142.347
+   position = (4190.19,-1640.83,-315.698) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 4
+ Length of this step = 36609.2 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 19294135 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT3 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 101.479 MeV energy  ( pre-Step = 101.479 ) 
+   momentum = (29.6593,90.8792,35.5385) mag= 101.989
+   position = (1341.91,4295.26,1484.53) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 3
+ Length of this step = 28123.1 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 15665508 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT3 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 115.302 MeV energy  ( pre-Step = 115.302 ) 
+   momentum = (27.6437,102.02,47.3284) mag= 115.812
+   position = (1046.04,4376.73,2131.33) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 4
+ Length of this step = 33940.4 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 15951887 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT3 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 229.442 MeV energy  ( pre-Step = 229.442 ) 
+   momentum = (184.142,-132.783,-36.5846) mag= 229.952
+   position = (3568.58,-2741.4,-610.414) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 2
+ Length of this step = 39442 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 16213118 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT3 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 121.124 MeV energy  ( pre-Step = 121.124 ) 
+   momentum = (-84.2378,-79.0127,-38.155) mag= 121.634
+   position = (-4109.36,1833.9,-1312.63) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 3
+ Length of this step = 29526.7 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 16425932 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT15 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 144.275 MeV energy  ( pre-Step = 144.275 ) 
+   momentum = (119.228,-69.3155,44.0762) mag= 144.785
+   position = (3846.8,-2334.98,1280.52) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 3
+ Length of this step = 33580.2 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 19297744 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT6 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 103.256 MeV energy  ( pre-Step = 103.256 ) 
+   momentum = (88.4601,34.914,41.5102) mag= 103.765
+   position = (2604.9,3669.4,564.535) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 73
+ Length of this step = 18350.1 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 20802659 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT7 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e- and has 147.709 MeV energy  ( pre-Step = 147.709 ) 
+   momentum = (-110.588,-92.0758,35.5149) mag= 148.22
+   position = (-3247.98,-3114.58,1199.06) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 3
+ Length of this step = 32736.8 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 18645843 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+G4WT13 > 
+-------- WWWW ------- G4Exception-START -------- WWWW -------
+*** G4Exception : Transport-001-ExcessSteps
+      issued by : G4Transportation::AlongStepDoIt
+ Transportation is killing track that is looping or stuck. 
+   Track is e+ and has 128.631 MeV energy  ( pre-Step = 128.631 ) 
+   momentum = (22.8714,121.522,-37.2386) mag= 129.141
+   position = (670.635,4449.75,-972.589) is in volume 'MagnetEnvelope',  its material is 'G4_Galactic' with density = 1e-25 g/cm^3 
+ Total number of Steps by this track: 5
+ Length of this step = 27339.8 mm 
+ Number of propagation trials = 1 ( vs maximum = 10 for 'important' particles ) 
+   ( Number of *calls* of Transport/AlongStepDoIt = 19366514 )
+
+*** This is just a warning message. ***
+-------- WWWW -------- G4Exception-END --------- WWWW -------
+
+/score/dumpQuantityToFile PhantomMesh energyDeposit PhantomMesh_Edep.txt
+ICRP110UserScorer-defined DumpQuantityToFile() method is invoked.
+Phantom Sex: male
+Phantom Section: full
+Selecting data file ICRPdata/MaleData.dat...
+Opening Data.dat File...
+Number of Phantom Slices Simulated = 222
+Number of X Voxels per slice = 254
+Number of Y Voxels per slice = 127
+Opening Phantom Slice File: AM_slice1.g4dat
+Opening Phantom Slice File: AM_slice2.g4dat
+Opening Phantom Slice File: AM_slice3.g4dat
+Opening Phantom Slice File: AM_slice4.g4dat
+Opening Phantom Slice File: AM_slice5.g4dat
+Opening Phantom Slice File: AM_slice6.g4dat
+Opening Phantom Slice File: AM_slice7.g4dat
+Opening Phantom Slice File: AM_slice8.g4dat
+Opening Phantom Slice File: AM_slice9.g4dat
+Opening Phantom Slice File: AM_slice10.g4dat
+Opening Phantom Slice File: AM_slice11.g4dat
+Opening Phantom Slice File: AM_slice12.g4dat
+Opening Phantom Slice File: AM_slice13.g4dat
+Opening Phantom Slice File: AM_slice14.g4dat
+Opening Phantom Slice File: AM_slice15.g4dat
+Opening Phantom Slice File: AM_slice16.g4dat
+Opening Phantom Slice File: AM_slice17.g4dat
+Opening Phantom Slice File: AM_slice18.g4dat
+Opening Phantom Slice File: AM_slice19.g4dat
+Opening Phantom Slice File: AM_slice20.g4dat
+Opening Phantom Slice File: AM_slice21.g4dat
+Opening Phantom Slice File: AM_slice22.g4dat
+Opening Phantom Slice File: AM_slice23.g4dat
+Opening Phantom Slice File: AM_slice24.g4dat
+Opening Phantom Slice File: AM_slice25.g4dat
+Opening Phantom Slice File: AM_slice26.g4dat
+Opening Phantom Slice File: AM_slice27.g4dat
+Opening Phantom Slice File: AM_slice28.g4dat
+Opening Phantom Slice File: AM_slice29.g4dat
+Opening Phantom Slice File: AM_slice30.g4dat
+Opening Phantom Slice File: AM_slice31.g4dat
+Opening Phantom Slice File: AM_slice32.g4dat
+Opening Phantom Slice File: AM_slice33.g4dat
+Opening Phantom Slice File: AM_slice34.g4dat
+Opening Phantom Slice File: AM_slice35.g4dat
+Opening Phantom Slice File: AM_slice36.g4dat
+Opening Phantom Slice File: AM_slice37.g4dat
+Opening Phantom Slice File: AM_slice38.g4dat
+Opening Phantom Slice File: AM_slice39.g4dat
+Opening Phantom Slice File: AM_slice40.g4dat
+Opening Phantom Slice File: AM_slice41.g4dat
+Opening Phantom Slice File: AM_slice42.g4dat
+Opening Phantom Slice File: AM_slice43.g4dat
+Opening Phantom Slice File: AM_slice44.g4dat
+Opening Phantom Slice File: AM_slice45.g4dat
+Opening Phantom Slice File: AM_slice46.g4dat
+Opening Phantom Slice File: AM_slice47.g4dat
+Opening Phantom Slice File: AM_slice48.g4dat
+Opening Phantom Slice File: AM_slice49.g4dat
+Opening Phantom Slice File: AM_slice50.g4dat
+Opening Phantom Slice File: AM_slice51.g4dat
+Opening Phantom Slice File: AM_slice52.g4dat
+Opening Phantom Slice File: AM_slice53.g4dat
+Opening Phantom Slice File: AM_slice54.g4dat
+Opening Phantom Slice File: AM_slice55.g4dat
+Opening Phantom Slice File: AM_slice56.g4dat
+Opening Phantom Slice File: AM_slice57.g4dat
+Opening Phantom Slice File: AM_slice58.g4dat
+Opening Phantom Slice File: AM_slice59.g4dat
+Opening Phantom Slice File: AM_slice60.g4dat
+Opening Phantom Slice File: AM_slice61.g4dat
+Opening Phantom Slice File: AM_slice62.g4dat
+Opening Phantom Slice File: AM_slice63.g4dat
+Opening Phantom Slice File: AM_slice64.g4dat
+Opening Phantom Slice File: AM_slice65.g4dat
+Opening Phantom Slice File: AM_slice66.g4dat
+Opening Phantom Slice File: AM_slice67.g4dat
+Opening Phantom Slice File: AM_slice68.g4dat
+Opening Phantom Slice File: AM_slice69.g4dat
+Opening Phantom Slice File: AM_slice70.g4dat
+Opening Phantom Slice File: AM_slice71.g4dat
+Opening Phantom Slice File: AM_slice72.g4dat
+Opening Phantom Slice File: AM_slice73.g4dat
+Opening Phantom Slice File: AM_slice74.g4dat
+Opening Phantom Slice File: AM_slice75.g4dat
+Opening Phantom Slice File: AM_slice76.g4dat
+Opening Phantom Slice File: AM_slice77.g4dat
+Opening Phantom Slice File: AM_slice78.g4dat
+Opening Phantom Slice File: AM_slice79.g4dat
+Opening Phantom Slice File: AM_slice80.g4dat
+Opening Phantom Slice File: AM_slice81.g4dat
+Opening Phantom Slice File: AM_slice82.g4dat
+Opening Phantom Slice File: AM_slice83.g4dat
+Opening Phantom Slice File: AM_slice84.g4dat
+Opening Phantom Slice File: AM_slice85.g4dat
+Opening Phantom Slice File: AM_slice86.g4dat
+Opening Phantom Slice File: AM_slice87.g4dat
+Opening Phantom Slice File: AM_slice88.g4dat
+Opening Phantom Slice File: AM_slice89.g4dat
+Opening Phantom Slice File: AM_slice90.g4dat
+Opening Phantom Slice File: AM_slice91.g4dat
+Opening Phantom Slice File: AM_slice92.g4dat
+Opening Phantom Slice File: AM_slice93.g4dat
+Opening Phantom Slice File: AM_slice94.g4dat
+Opening Phantom Slice File: AM_slice95.g4dat
+Opening Phantom Slice File: AM_slice96.g4dat
+Opening Phantom Slice File: AM_slice97.g4dat
+Opening Phantom Slice File: AM_slice98.g4dat
+Opening Phantom Slice File: AM_slice99.g4dat
+Opening Phantom Slice File: AM_slice100.g4dat
+Opening Phantom Slice File: AM_slice101.g4dat
+Opening Phantom Slice File: AM_slice102.g4dat
+Opening Phantom Slice File: AM_slice103.g4dat
+Opening Phantom Slice File: AM_slice104.g4dat
+Opening Phantom Slice File: AM_slice105.g4dat
+Opening Phantom Slice File: AM_slice106.g4dat
+Opening Phantom Slice File: AM_slice107.g4dat
+Opening Phantom Slice File: AM_slice108.g4dat
+Opening Phantom Slice File: AM_slice109.g4dat
+Opening Phantom Slice File: AM_slice110.g4dat
+Opening Phantom Slice File: AM_slice111.g4dat
+Opening Phantom Slice File: AM_slice112.g4dat
+Opening Phantom Slice File: AM_slice113.g4dat
+Opening Phantom Slice File: AM_slice114.g4dat
+Opening Phantom Slice File: AM_slice115.g4dat
+Opening Phantom Slice File: AM_slice116.g4dat
+Opening Phantom Slice File: AM_slice117.g4dat
+Opening Phantom Slice File: AM_slice118.g4dat
+Opening Phantom Slice File: AM_slice119.g4dat
+Opening Phantom Slice File: AM_slice120.g4dat
+Opening Phantom Slice File: AM_slice121.g4dat
+Opening Phantom Slice File: AM_slice122.g4dat
+Opening Phantom Slice File: AM_slice123.g4dat
+Opening Phantom Slice File: AM_slice124.g4dat
+Opening Phantom Slice File: AM_slice125.g4dat
+Opening Phantom Slice File: AM_slice126.g4dat
+Opening Phantom Slice File: AM_slice127.g4dat
+Opening Phantom Slice File: AM_slice128.g4dat
+Opening Phantom Slice File: AM_slice129.g4dat
+Opening Phantom Slice File: AM_slice130.g4dat
+Opening Phantom Slice File: AM_slice131.g4dat
+Opening Phantom Slice File: AM_slice132.g4dat
+Opening Phantom Slice File: AM_slice133.g4dat
+Opening Phantom Slice File: AM_slice134.g4dat
+Opening Phantom Slice File: AM_slice135.g4dat
+Opening Phantom Slice File: AM_slice136.g4dat
+Opening Phantom Slice File: AM_slice137.g4dat
+Opening Phantom Slice File: AM_slice138.g4dat
+Opening Phantom Slice File: AM_slice139.g4dat
+Opening Phantom Slice File: AM_slice140.g4dat
+Opening Phantom Slice File: AM_slice141.g4dat
+Opening Phantom Slice File: AM_slice142.g4dat
+Opening Phantom Slice File: AM_slice143.g4dat
+Opening Phantom Slice File: AM_slice144.g4dat
+Opening Phantom Slice File: AM_slice145.g4dat
+Opening Phantom Slice File: AM_slice146.g4dat
+Opening Phantom Slice File: AM_slice147.g4dat
+Opening Phantom Slice File: AM_slice148.g4dat
+Opening Phantom Slice File: AM_slice149.g4dat
+Opening Phantom Slice File: AM_slice150.g4dat
+Opening Phantom Slice File: AM_slice151.g4dat
+Opening Phantom Slice File: AM_slice152.g4dat
+Opening Phantom Slice File: AM_slice153.g4dat
+Opening Phantom Slice File: AM_slice154.g4dat
+Opening Phantom Slice File: AM_slice155.g4dat
+Opening Phantom Slice File: AM_slice156.g4dat
+Opening Phantom Slice File: AM_slice157.g4dat
+Opening Phantom Slice File: AM_slice158.g4dat
+Opening Phantom Slice File: AM_slice159.g4dat
+Opening Phantom Slice File: AM_slice160.g4dat
+Opening Phantom Slice File: AM_slice161.g4dat
+Opening Phantom Slice File: AM_slice162.g4dat
+Opening Phantom Slice File: AM_slice163.g4dat
+Opening Phantom Slice File: AM_slice164.g4dat
+Opening Phantom Slice File: AM_slice165.g4dat
+Opening Phantom Slice File: AM_slice166.g4dat
+Opening Phantom Slice File: AM_slice167.g4dat
+Opening Phantom Slice File: AM_slice168.g4dat
+Opening Phantom Slice File: AM_slice169.g4dat
+Opening Phantom Slice File: AM_slice170.g4dat
+Opening Phantom Slice File: AM_slice171.g4dat
+Opening Phantom Slice File: AM_slice172.g4dat
+Opening Phantom Slice File: AM_slice173.g4dat
+Opening Phantom Slice File: AM_slice174.g4dat
+Opening Phantom Slice File: AM_slice175.g4dat
+Opening Phantom Slice File: AM_slice176.g4dat
+Opening Phantom Slice File: AM_slice177.g4dat
+Opening Phantom Slice File: AM_slice178.g4dat
+Opening Phantom Slice File: AM_slice179.g4dat
+Opening Phantom Slice File: AM_slice180.g4dat
+Opening Phantom Slice File: AM_slice181.g4dat
+Opening Phantom Slice File: AM_slice182.g4dat
+Opening Phantom Slice File: AM_slice183.g4dat
+Opening Phantom Slice File: AM_slice184.g4dat
+Opening Phantom Slice File: AM_slice185.g4dat
+Opening Phantom Slice File: AM_slice186.g4dat
+Opening Phantom Slice File: AM_slice187.g4dat
+Opening Phantom Slice File: AM_slice188.g4dat
+Opening Phantom Slice File: AM_slice189.g4dat
+Opening Phantom Slice File: AM_slice190.g4dat
+Opening Phantom Slice File: AM_slice191.g4dat
+Opening Phantom Slice File: AM_slice192.g4dat
+Opening Phantom Slice File: AM_slice193.g4dat
+Opening Phantom Slice File: AM_slice194.g4dat
+Opening Phantom Slice File: AM_slice195.g4dat
+Opening Phantom Slice File: AM_slice196.g4dat
+Opening Phantom Slice File: AM_slice197.g4dat
+Opening Phantom Slice File: AM_slice198.g4dat
+Opening Phantom Slice File: AM_slice199.g4dat
+Opening Phantom Slice File: AM_slice200.g4dat
+Opening Phantom Slice File: AM_slice201.g4dat
+Opening Phantom Slice File: AM_slice202.g4dat
+Opening Phantom Slice File: AM_slice203.g4dat
+Opening Phantom Slice File: AM_slice204.g4dat
+Opening Phantom Slice File: AM_slice205.g4dat
+Opening Phantom Slice File: AM_slice206.g4dat
+Opening Phantom Slice File: AM_slice207.g4dat
+Opening Phantom Slice File: AM_slice208.g4dat
+Opening Phantom Slice File: AM_slice209.g4dat
+Opening Phantom Slice File: AM_slice210.g4dat
+Opening Phantom Slice File: AM_slice211.g4dat
+Opening Phantom Slice File: AM_slice212.g4dat
+Opening Phantom Slice File: AM_slice213.g4dat
+Opening Phantom Slice File: AM_slice214.g4dat
+Opening Phantom Slice File: AM_slice215.g4dat
+Opening Phantom Slice File: AM_slice216.g4dat
+Opening Phantom Slice File: AM_slice217.g4dat
+Opening Phantom Slice File: AM_slice218.g4dat
+Opening Phantom Slice File: AM_slice219.g4dat
+Opening Phantom Slice File: AM_slice220.g4dat
+Opening Phantom Slice File: AM_slice221.g4dat
+Opening Phantom Slice File: AM_slice222.g4dat
+Opening File: PhantomMesh_Edep.txt
+Reading AM_organs.dat
+Reading OrganMasses.dat
+NOrganIDs: 142
+Writing output to ICRP110.out
+Total energy deposited over all Organs within the Phantom is 6.76185e-07 J
+Total absorbed dose over all phantom organs is 1.02091e-06 Gy 
+/control/shell cp ICRP110.out /home/bryam/Documents/iac-project/geant4/ActiveShield_Sim/scripts/pilots/results/intrarun_pilot_20260921T022121Z/checkpoints/run_GCR_He_min_6_M5000_seed0.out
+Graphics systems deleted.
+Visualization Manager deleting...
