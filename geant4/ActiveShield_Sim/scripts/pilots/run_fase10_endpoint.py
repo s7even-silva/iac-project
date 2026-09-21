@@ -278,7 +278,10 @@ def dose_and_variance(species, phase, config, runs, area_cm2):
             continue
         rows = pc.parse_organ_table_full(Path(out_path))
         total_dep_j = sum(r["edep_J"] for oid, r in rows.items() if oid != 0)
-        se_total = math.sqrt(sum(r.get("se_run_j", 0.0) ** 2 for oid, r in rows.items() if oid != 0))
+        # se_run_total_j (no se_run_j): este ultimo es el SE de la MEDIA por
+        # par (voxel,evento), no del total del organo -- ver bug real
+        # corregido 2026-09-21 en run_intrarun_pilot.py (mismo docstring).
+        se_total = math.sqrt(sum(r.get("se_run_total_j", 0.0) ** 2 for oid, r in rows.items() if oid != 0))
         w_b = area_cm2 * data["flux_bin"]
         m_b = data["m_b"]
         r_b = total_dep_j / m_b

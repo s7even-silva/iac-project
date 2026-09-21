@@ -595,7 +595,7 @@ RESULTS_FIELDNAMES = ["especie", "fase", "bin_index", "energy_mev", "offset_x_m"
 # ver run_organ_sweep.py:parse_icrp110_out() para el formato exacto.
 RESULTS_FIELDNAMES_V2 = ["especie", "fase", "bin_index", "n_bins", "energy_mev", "offset_x_m",
                           "repeticion", "organo_id", "edep_J", "dose_gy_run", "n_eventos",
-                          "s1_j", "s2_j2", "n", "se_run_j"]
+                          "s1_j", "s2_j2", "n", "se_run_j", "se_run_total_j"]
 
 
 def get_or_create_worker_id() -> str:

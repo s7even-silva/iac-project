@@ -48,7 +48,7 @@ def test_build_command_omits_n_bins_when_absent():
 
 
 def test_results_fieldnames_v2_includes_stat_columns():
-    for col in ('n_bins', 's1_j', 's2_j2', 'n', 'se_run_j'):
+    for col in ('n_bins', 's1_j', 's2_j2', 'n', 'se_run_j', 'se_run_total_j'):
         assert col in worker.RESULTS_FIELDNAMES_V2
 
 
@@ -58,8 +58,8 @@ def test_filter_results_csv_v2_filters_by_n_bins(tmp_path):
     # job trae n_bins (ver db_v2.py, UNIQUE incluye n_bins).
     header = ','.join(worker.RESULTS_FIELDNAMES_V2)
     rows = [
-        'GCR_H,min,3,8,100.0,0.0,0,1,1e-10,1e-12,200,1e-10,1e-20,100,1e-19',
-        'GCR_H,min,3,16,100.0,0.0,0,1,2e-10,2e-12,200,2e-10,2e-20,200,2e-19',
+        'GCR_H,min,3,8,100.0,0.0,0,1,1e-10,1e-12,200,1e-10,1e-20,100,1e-19,1e-17',
+        'GCR_H,min,3,16,100.0,0.0,0,1,2e-10,2e-12,200,2e-10,2e-20,200,2e-19,4e-17',
     ]
     (tmp_path/'resultados_organo_sweep.csv').write_text(header + '\n' + '\n'.join(rows) + '\n')
 
@@ -76,7 +76,7 @@ def test_filter_results_csv_tolerates_extra_columns_for_v1(tmp_path):
     # un job v1 (fieldnames=RESULTS_FIELDNAMES, sin esas columnas) no debe
     # fallar por eso (extrasaction='ignore').
     header = ','.join(worker.RESULTS_FIELDNAMES_V2)
-    row = 'GCR_H,min,0,8,10.0,0.0,0,1,1e-10,1e-12,200,1e-10,1e-20,100,1e-19'
+    row = 'GCR_H,min,0,8,10.0,0.0,0,1,1e-10,1e-12,200,1e-10,1e-20,100,1e-19,1e-17'
     (tmp_path/'resultados_organo_sweep.csv').write_text(header + '\n' + row + '\n')
 
     job = dict(species='GCR_H', phase='min', bin_index=0, offset_x_m=0., repeticion=0)  # sin n_bins -- job v1
