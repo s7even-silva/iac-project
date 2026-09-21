@@ -648,7 +648,37 @@ positiva entre vóxeles del mismo evento (la limitación de "Camino B" ya
 documentada), pero ya no por 4 órdenes de magnitud — no hay evidencia
 todavía de que la causa sea otra cosa, pero tampoco está demostrado que
 esa covarianza sea la única causa (una sola combinación, sin M=20000,
-`s_between` de solo 3 seeds).
+`s_between` de solo 3 seeds). **Reanálisis confirmado con datos reales**
+(sesión `iac-project-1d`, mismas 9 corridas parciales): ratio mediano
+0.42/0.38/0.51 para M=2500/5000/10000, coherente con el estimado a mano.
+
+**Dos bugs adicionales encontrados de paso al reanalizar (2026-09-21),
+ambos corregidos:**
+
+1. `convergencia_1_sobre_sqrtM.csv` multiplicaba `SE_within` por `sqrt(M)`
+   — correcto cuando `SE_within` era el SE de una *media* (decrece con M),
+   pero inválido ahora que es `se_run_total_j` (el SE del *total*, que
+   *crece* con M). Se corrigió a dividir en vez de multiplicar
+   (`SE_total(M) / sqrt(M)`, la cantidad que sí debería quedar
+   aproximadamente constante), y la columna se renombró de `SE_sqrtM_M*`
+   a `SE_total_sobre_sqrtM_M*` para que el nombre no siga sugiriendo la
+   fórmula vieja.
+2. `write_fase7_state()` escribía siempre `"Piloto A completo"` con
+   veredicto REVISAR en cuanto había ≥1 fila comparable, sin verificar
+   cobertura real — con el piloto parcial (9/36) el estado igual decía
+   "completo". Se agregó conteo `n_esperado`/`n_encontrado` (combo × M ×
+   seed) dentro de `analyze()`, propagado a `write_fase7_state()`: si hay
+   cobertura incompleta, el resumen/instrucciones lo dicen explícitamente
+   en vez de "completo".
+
+**Nuevo (2026-09-21): `--skip-m`/`--only-m`** en `run_intrarun_pilot.py`
+para repartir el piloto por valor de `M` además de por `--combos` — por
+ejemplo, correr `SEP_p/max` y `GCR_H/min` completos salvo `M=20000` en una
+máquina, mientras `GCR_He/min/6 M=20000` se retoma aparte en otra. El
+índice de semilla (`m_idx`) sigue viniendo de `CHECKPOINTS_M.index(m)` (la
+lista global completa, no la filtrada) — verificado numéricamente que las
+semillas de los `M` que sí se corren no cambian según qué otros `M` se
+excluyan, mismo criterio que ya se aplicó a `combo_idx` (ver arriba).
 
 ## Checklist
 
