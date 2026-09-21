@@ -776,6 +776,17 @@ fase** — Fase 7 solo cubrió 2 de las 3 combinaciones de producción y
 nunca los bins específicos que usa Fase 8; se documenta como tal en el
 código, no se oculta detrás del número corregido.
 
+**Análisis de sensibilidad al factor (2026-09-21):** el veredicto/gate
+automatizado siempre usa el factor conservador (`FASE7_SE_CORRECTION_FACTOR`,
+el peor caso, no la mediana) — pero `total_dose_for_grid()` no vuelve a
+correr Geant4, solo relee los `.out` ya generados, así que reanalizar la
+misma corrida con otros factores es barato (reescala el SE ya calculado,
+sin volver a leer los `.out`). `--se-correction-factors '0.2,0.3'` agrega
+`epsilon_binning_sensibilidad.csv` (una fila por combo/par/factor) sin
+tocar el CSV/veredicto principal — útil para ver cuánto cambiaría
+`compatible_con_ruido_mc` con un factor menos conservador (ej. la mediana
+observada en Fase 7, ~0.3) en vez del peor caso (0.08).
+
 ## Objetivo
 
 Determinar si la discretización actual de 8 bins es suficientemente precisa **antes** de optimizar `M_b` o comprobar la precisión de la comparación shield/control.

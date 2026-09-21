@@ -89,7 +89,13 @@ por una diferencia compatible con ruido Monte Carlo"). Es una
 EXTRAPOLACION explicita del resultado de Fase 7 (que no cubrio los mismos
 bins ni las 3 combinaciones), no una medicion propia de esta fase --
 columna `compatible_con_ruido_mc` en epsilon_binning_por_combo.csv, y
-advertencia en el resumen si aplica.
+advertencia en el resumen si aplica. El factor conservador (peor caso) es
+el unico que afecta el veredicto/gate automatizado -- para ver como
+cambiaria con un factor menos conservador (ej. la mediana de Fase 7,
+~0.3, en vez del peor caso 0.08), usar --se-correction-factors '0.3' (o
+varios: '0.2,0.3'), que agrega epsilon_binning_sensibilidad.csv sin tocar
+el CSV/veredicto principal (barato: re-escala el SE ya calculado, no
+relee los .out ni vuelve a correr Geant4).
 """
 import argparse
 import csv
@@ -243,8 +249,27 @@ def main():
     parser.add_argument("--out-dir", type=Path, default=None,
                          help="Reusar un directorio de una corrida anterior (ej. cortada a mitad) "
                               "para retomarla -- ver --no-resume.")
+    parser.add_argument("--se-correction-factors", type=str, default=None,
+                         help="Lista separada por comas de factores ADICIONALES a "
+                              f"FASE7_SE_CORRECTION_FACTOR ({FASE7_SE_CORRECTION_FACTOR}, el peor caso de "
+                              "Fase 7, usado siempre para epsilon_binning_por_combo.csv y el veredicto) "
+                              "para un analisis de sensibilidad -- ej. '0.2,0.3' para ver que tan distinto "
+                              "seria compatible_con_ruido_mc con un factor menos conservador (0.2) o la "
+                              "mediana de Fase 7 (~0.3) en vez del peor caso. Escribe "
+                              "epsilon_binning_sensibilidad.csv ADEMAS del CSV principal -- NO cambia el "
+                              "gate automatizado de pilot_state, que siempre usa el factor conservador.")
     pc.add_resume_arg(parser)
     args = parser.parse_args()
+
+    se_correction_factors = None
+    if args.se_correction_factors:
+        try:
+            se_correction_factors = [float(x) for x in args.se_correction_factors.split(",")]
+        except ValueError:
+            sys.exit(f"ERROR: --se-correction-factors '{args.se_correction_factors}' invalido -- "
+                      "debe ser una lista de numeros separados por comas, ej. '0.2,0.3'.")
+        if any(f <= 0 for f in se_correction_factors):
+            sys.exit("ERROR: --se-correction-factors debe ser > 0 (es un divisor).")
 
     import os
     n_threads = args.threads or os.cpu_count()
@@ -402,7 +427,8 @@ def main():
     # produccion (ver run_organ_sweep.py), sin flag propio: esta fase no
     # cambia geometria de nave, solo el binning energetico.
     analyze(combos_spec, runs, spectra_dir, args.n_events, n_bins_grid,
-            ros.SHIP_RADIUS_M, ros.SHIP_HALF_LENGTH_M, out_dir)
+            ros.SHIP_RADIUS_M, ros.SHIP_HALF_LENGTH_M, out_dir,
+            se_correction_factors=se_correction_factors)
 
 
 def source_area_cm2(ship_radius_m, ship_half_length_m, hull_thickness_cm=1.5):
@@ -414,7 +440,8 @@ def source_area_cm2(ship_radius_m, ship_half_length_m, hull_thickness_cm=1.5):
     return math.pi * source_radius_cm**2
 
 
-def total_dose_for_grid(species, phase, n_bins, runs, spectra_dir, area_cm2, n_events):
+def total_dose_for_grid(species, phase, n_bins, runs, spectra_dir, area_cm2, n_events,
+                         se_correction_factor=FASE7_SE_CORRECTION_FACTOR):
     """D = suma_b W_b * R_b, con W_b = area_cm2 * flujo_integrado_del_bin
     (energy_bins.py) y R_b = edep_J_total_del_organo_relevante /
     (masa*N) -- aqui usa TotalDep (todos los organos del cuerpo, ya
@@ -426,9 +453,16 @@ def total_dose_for_grid(species, phase, n_bins, runs, spectra_dir, area_cm2, n_e
     ver FASE7_SE_CORRECTION_FACTOR) propaga se_run_total_j de CADA bin
     (independientes entre si -- bins de energia distintos, corridas
     Geant4 separadas -- asi que las varianzas se SUMAN, no los SE) y lo
-    corrige por el peor-caso de Fase 7 antes de devolverlo, para dar una
+    corrige por se_correction_factor antes de devolverlo, para dar una
     barra de ruido MC de referencia sobre D (NO una barra de error real
-    calibrada -- ver la nota extensa en FASE7_SE_CORRECTION_FACTOR)."""
+    calibrada -- ver la nota extensa en FASE7_SE_CORRECTION_FACTOR).
+
+    se_correction_factor (default FASE7_SE_CORRECTION_FACTOR, el peor
+    caso de Fase 7): parametrizable porque esta funcion NO vuelve a
+    correr Geant4 -- solo relee los .out ya generados, asi que analizar
+    la MISMA corrida con varios factores (ej. 0.08 peor-caso, 0.3
+    mediana) es barato y sirve como analisis de sensibilidad. Ver
+    --se-correction-factors en main()/analyze()."""
     bins = energy_bins.build_bins(spectra_dir, n_bins=n_bins)[(species, phase)]
     key = (species, phase, n_bins)
     total_d = 0.0
@@ -450,7 +484,7 @@ def total_dose_for_grid(species, phase, n_bins, runs, spectra_dir, area_cm2, n_e
         # (se_bin_j queda 0.0, ese bin simplemente no aporta ruido MC a
         # la barra de referencia -- subestima el total en ese caso, no lo
         # sobreestima, coherente con el resto de este calculo siendo
-        # conservador en la direccion opuesta via FASE7_SE_CORRECTION_FACTOR).
+        # conservador en la direccion opuesta via se_correction_factor).
         se_bin_total_j = sum(r.get("se_run_total_j", 0.0) for oid, r in rows.items() if oid != 0)
         w_b = area_cm2 * flux_bin
         r_b = total_dep_j / n_events  # Gy*kg-equivalente por primario -- sin dividir por masa (D relativa, ok para epsilon)
@@ -458,16 +492,28 @@ def total_dose_for_grid(species, phase, n_bins, runs, spectra_dir, area_cm2, n_e
         total_d += r_b * w_b
         var_d_ruido_mc += (w_b ** 2) * (se_r_b ** 2)
     se_d_crudo = math.sqrt(var_d_ruido_mc)
-    se_d_ruido_mc = se_d_crudo / FASE7_SE_CORRECTION_FACTOR
+    se_d_ruido_mc = se_d_crudo / se_correction_factor
     return total_d, se_d_ruido_mc, missing
 
 
-def analyze(combos_spec, runs, spectra_dir, n_events, n_bins_grid, ship_radius_m, ship_half_length_m, out_dir):
+def analyze(combos_spec, runs, spectra_dir, n_events, n_bins_grid, ship_radius_m, ship_half_length_m, out_dir,
+            se_correction_factors=None):
     """Calcula D_N para cada grilla de n_bins_grid, y epsilon_binning
     entre CADA PAR CONSECUTIVO (n_bins_grid[i] vs n_bins_grid[i+1]) --
     una fila por (combo, par) en vez de una columna fija D_8bins/D_16bins
     como antes de generalizar a mas de 2 grillas (2026-09-20). Con
-    n_bins_grid=[8,16] da exactamente 1 fila por combo, igual que antes."""
+    n_bins_grid=[8,16] da exactamente 1 fila por combo, igual que antes.
+
+    se_correction_factors (2026-09-21, opcional, ver --se-correction-factors
+    en main()): lista de factores ADICIONALES a FASE7_SE_CORRECTION_FACTOR
+    para un analisis de sensibilidad -- epsilon_binning_por_combo.csv y el
+    veredicto de pilot_state SIEMPRE usan solo FASE7_SE_CORRECTION_FACTOR
+    (el peor caso, conservador por diseño -- no se cambia el gate
+    automatizado por esto). Si se pasan factores extra, se escribe ADEMAS
+    epsilon_binning_sensibilidad.csv con epsilon_ruido_mc_pct para cada
+    factor -- barato de calcular (se_d_ruido_mc escala linealmente en
+    1/factor, no hace falta releer los .out por cada uno, ver
+    total_dose_for_grid())."""
     area_cm2 = source_area_cm2(ship_radius_m, ship_half_length_m)
 
     # Dosis por (combo, n_bins) -- calculada una sola vez por grilla,
@@ -524,6 +570,47 @@ def analyze(combos_spec, runs, spectra_dir, n_events, n_bins_grid, ship_radius_m
         writer.writeheader()
         writer.writerows(resultado_rows)
     print(f"  epsilon_binning por combo/par: {resultado_path}")
+
+    if se_correction_factors:
+        # Analisis de sensibilidad (2026-09-21): mismo D_lo/D_hi ya
+        # calculados arriba, solo se re-escala se_d_ruido_mc a cada factor
+        # extra (se_d_ruido_mc = se_d_crudo / factor, lineal en 1/factor --
+        # recuperar se_d_crudo dividiendo por el factor default usado en
+        # dose_by_combo_and_n evita releer los .out por cada factor).
+        # NO reemplaza epsilon_binning_por_combo.csv ni el veredicto --
+        # solo da contexto de cuanto cambiaria compatible_con_ruido_mc con
+        # un factor menos conservador (ej. la mediana de Fase 7 en vez del
+        # peor caso).
+        todos_los_factores = sorted(set(se_correction_factors) | {FASE7_SE_CORRECTION_FACTOR})
+        sens_rows = []
+        sens_fieldnames = ["species", "phase", "n_bins_lo", "n_bins_hi", "se_correction_factor",
+                            "epsilon_binning_pct", "epsilon_ruido_mc_pct", "compatible_con_ruido_mc"]
+        for species, phase in combos_spec:
+            for n_lo, n_hi in zip(n_bins_grid, n_bins_grid[1:]):
+                d_lo, se_lo_default, _ = dose_by_combo_and_n[(species, phase, n_lo)]
+                d_hi, se_hi_default, _ = dose_by_combo_and_n[(species, phase, n_hi)]
+                if d_hi == 0:
+                    continue
+                eps_pct = abs(d_hi - d_lo) / abs(d_hi) * 100.0
+                se_lo_crudo = se_lo_default * FASE7_SE_CORRECTION_FACTOR
+                se_hi_crudo = se_hi_default * FASE7_SE_CORRECTION_FACTOR
+                for factor in todos_los_factores:
+                    se_lo = se_lo_crudo / factor
+                    se_hi = se_hi_crudo / factor
+                    se_diff = math.sqrt(se_lo ** 2 + se_hi ** 2)
+                    eps_ruido_mc_pct = (se_diff / abs(d_hi)) * 100.0
+                    sens_rows.append({
+                        "species": species, "phase": phase, "n_bins_lo": n_lo, "n_bins_hi": n_hi,
+                        "se_correction_factor": factor, "epsilon_binning_pct": eps_pct,
+                        "epsilon_ruido_mc_pct": eps_ruido_mc_pct,
+                        "compatible_con_ruido_mc": eps_pct <= eps_ruido_mc_pct,
+                    })
+        sens_path = out_dir / "epsilon_binning_sensibilidad.csv"
+        with open(sens_path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=sens_fieldnames)
+            writer.writeheader()
+            writer.writerows(sens_rows)
+        print(f"  Sensibilidad al factor de correccion ({todos_los_factores}): {sens_path}")
 
     write_fase8_state(resultado_rows, n_bins_grid, out_dir)
 
