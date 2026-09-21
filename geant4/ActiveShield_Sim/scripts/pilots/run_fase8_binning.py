@@ -35,6 +35,21 @@ antes de este cambio, eso exigia correr el script dos veces con un
 --n-bins fijo distinto cada vez y comparar los CSV a mano; ahora una
 sola invocacion con la grilla completa da todos los pares de una vez.
 
+BUG DE SEMILLAS CORREGIDO 2026-09-21: combo_idx (usado por seed_for())
+solia ser la POSICION de cada combinacion dentro de --combos, no un id
+fijo por especie/fase -- dos invocaciones de "las mismas" combinaciones
+con --combos en distinto orden generaban semillas de Geant4 DISTINTAS
+para cada una, sin ningun aviso. Confirmado con datos reales: la misma
+combinacion GCR_H/min corrida en dos sesiones con --combos en orden
+distinto dio epsilon_binning(8vs16) de 2.78% en una y 37.84% en la otra
+-- no era evidencia de ruido/no-convergencia, eran dos experimentos con
+semilla distinta comparados como si fueran el mismo. Corregido anclando
+combo_idx a la posicion en run_organ_sweep.SPECIES_PHASE (ver
+combo_idx_for()), no a --combos -- el resultado ya no depende del orden
+del flag. CUALQUIER out-dir de Fase 8 generado antes de este fix
+(2026-09-20 o anterior) quedo con semillas no reproducibles y debe
+descartarse, no retomarse con --out-dir.
+
 ALCANCE REDUCIDO respecto del plan completo, documentado explicitamente:
 la Fase 8 del plan pide idealmente comparar el ENDPOINT shield/control
 (eta_16 vs eta_8, B_8_16 = |eta_16-eta_8|) -- eso requiere el caso
@@ -107,11 +122,46 @@ EPSILON_MARGIN_PCT = 0.5
 # fallback determinista de abajo, sin colision con las ya asignadas.
 _SEED_MARKER_BY_N_BINS = {8: 0, 16: 1, 32: 2}
 
+# BUG REAL encontrado y corregido (2026-09-21): combo_idx solia ser
+# enumerate(combos_spec), es decir la POSICION dentro de --combos, no un
+# identificador fijo de la combinacion -- dos invocaciones de la misma
+# combinacion species/phase con --combos en distinto orden generaban
+# semillas de Geant4 DISTINTAS para "la misma" corrida (confirmado con
+# datos reales: GCR_H/min en --combos "GCR_H/min,..." vs en --combos
+# "...,GCR_H/min" broto epsilon_binning 8vs16 de 2.78% contra 37.84% --
+# no era ruido MC ni evidencia de no convergencia, eran dos experimentos
+# con distinta semilla comparados como si fueran el mismo). Corregido
+# anclando combo_idx a la posicion de (species, phase) en
+# run_organ_sweep.SPECIES_PHASE (la lista canonica ya usada en toda la
+# produccion real, con orden estable documentado ahi) en vez de a
+# --combos -- asi el resultado no depende del orden en que se pase el
+# flag, sin importar quien corra el script o en que maquina.
+#
+# ROMPE retrocompatibilidad de semillas con manifest.csv generados ANTES
+# de este fix (2026-09-20 y antes) -- estaban expuestos al mismo bug, asi
+# que no son un dato valido que preservar: cualquier out-dir de Fase 8
+# anterior a este commit debe descartarse y recorrerse desde cero, no
+# retomarse con --out-dir/resume.
+_COMBO_IDX_BY_SPECIES_PHASE = {sp: i for i, sp in enumerate(ros.SPECIES_PHASE)}
+
+
+def combo_idx_for(species: str, phase: str) -> int:
+    key = (species, phase)
+    if key in _COMBO_IDX_BY_SPECIES_PHASE:
+        return _COMBO_IDX_BY_SPECIES_PHASE[key]
+    # Fallback para una combinacion fuera de SPECIES_PHASE (ej. un caso
+    # experimental que production todavia no adopto) -- determinista por
+    # hash del par, con offset para no colisionar con los indices reales
+    # 0/1/2 de arriba.
+    return len(_COMBO_IDX_BY_SPECIES_PHASE) + (hash(key) % 1000)
+
 
 def seed_for(combo_idx: int, n_bins: int, bin_index: int) -> tuple[int, int]:
     """Determinista, sin repeticiones (esta fase no mide ruido MC) --
     n_bins entra en la formula para que corridas de grillas distintas
-    nunca compartan semilla, aunque compartan bin_index."""
+    nunca compartan semilla, aunque compartan bin_index. combo_idx debe
+    venir de combo_idx_for(species, phase), NUNCA de la posicion en
+    --combos (ver nota de bug arriba)."""
     if n_bins in _SEED_MARKER_BY_N_BINS:
         n_bins_marker = _SEED_MARKER_BY_N_BINS[n_bins]
     else:
@@ -220,7 +270,7 @@ def main():
     # la corrida de forma comparable entre invocaciones (mismo criterio
     # que la clave de reference_key()): "n_bins=N/bin=N".
     all_work = []
-    for combo_idx, (species, phase) in enumerate(combos_spec):
+    for species, phase in combos_spec:
         for n_bins in n_bins_grid:
             bins = energy_bins.build_bins(spectra_dir, n_bins=n_bins)[(species, phase)]
             for bin_index, _energy_rep, _flux_bin in bins:
@@ -239,7 +289,8 @@ def main():
         print(f"Sin referencia de tiempo previa para ninguna de las {len(pending_work)} corrida(s) "
               f"pendientes en esta maquina -- se ira midiendo y mostrando desde la primera.")
 
-    for combo_idx, (species, phase) in enumerate(combos_spec):
+    for species, phase in combos_spec:
+        combo_idx = combo_idx_for(species, phase)
         for n_bins in n_bins_grid:
             bins = energy_bins.build_bins(spectra_dir, n_bins=n_bins)[(species, phase)]
             for bin_index, energy_rep, _flux_bin in bins:
