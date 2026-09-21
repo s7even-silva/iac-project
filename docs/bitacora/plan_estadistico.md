@@ -623,12 +623,39 @@ punto (ver `comparacion_se_within_vs_s_between.csv` del script). Costo:
 sube de `n_combos*n_seeds` corridas a `n_combos*n_seeds*4` corridas (una
 por cada M, ya no compartidas dentro de una sola corrida larga).
 
+### Bug de normalización de `SE_run_J` corregido (2026-09-21)
+
+`SE_run_J`, tal como lo escribe el scorer C++ (`ICRP110UserScoreWriter.cc`),
+es `sqrt(variance/N)` con `N` = número de **pares (vóxel, evento)** — el
+error estándar de la **media** de un par, no del total del órgano. Pero
+`s1_j`/`edep_J` (con los que se compara contra `s_between` entre seeds) es
+la suma **total** del órgano. Comparar "SE de la media" contra "dispersión
+del total" mezclaba dos escalas — un piloto parcial (9/36 corridas,
+`GCR_He/min` bin 6, M=2500/5000/10000) dio un ratio `SE_within/s_between`
+mediano de ~0.0001-0.0003 con esta comparación inválida, que subió a
+~0.4-0.5 (mediana; percentil 10-90 ≈ 0.2-1.1) al usar la magnitud correcta
+del total (`SE_total = SE_media * N`, bajo el supuesto de pares iid del
+"Camino B" ya documentado arriba). **Se corrigió en Python, no en C++**
+(evita forzar una recompilación del binario en todas las máquinas a mitad
+de un piloto en curso): `parse_icrp110_out()` en `run_organ_sweep.py`
+agrega el campo derivado `se_run_total_j = se_run_j * n`; los consumidores
+(`run_intrarun_pilot.py`, `run_fase9_calibracion_mb.py`,
+`run_fase10_endpoint.py`) migraron de `se_run_j` a `se_run_total_j`. El
+`.out` crudo y `se_run_j` no cambiaron — el fix es aditivo. Con la
+corrección, `SE_within` sigue por debajo de `s_between` (~0.4-0.5 en
+mediana), coherente con la subestimación esperada si hay covarianza
+positiva entre vóxeles del mismo evento (la limitación de "Camino B" ya
+documentada), pero ya no por 4 órdenes de magnitud — no hay evidencia
+todavía de que la causa sea otra cosa, pero tampoco está demostrado que
+esa covarianza sea la única causa (una sola combinación, sin M=20000,
+`s_between` de solo 3 seeds).
+
 ## Checklist
 
 - [x] `S1`, `S2` y `N` superan tests sintéticos y de regresión (comparado contra `statistics.stdev()` con 4 casos sintéticos + caso límite N=1, ver commit del scorer).
 - [x] El nuevo scorer reproduce el mismo punto estimado que el scorer anterior (verificado bit a bit antes del fix del bug de relectura de `PhantomMesh_Edep.txt` encontrado de paso el mismo día, ver `docs/bitacora/activeshield_sim_historia.md` o el propio historial de commits — ese bug era preexistente, no introducido por este cambio, y se corrigió en el mismo commit).
 - [x] Script del piloto (`geant4/ActiveShield_Sim/scripts/pilots/run_intrarun_pilot.py`) implementado, probado de punta a punta localmente (combinación barata, 2 seeds) — streaming de progreso en vivo, checkpoint de que el binario tiene las columnas intra-run antes de correr el piloto completo.
-- [ ] `SE_within(M)` es compatible con `s_between` (para cada M — ver corrección de diseño arriba) en una corrida real del piloto con las combinaciones representativas (`GCR_He/min/6`, `SEP_p/max/0`, `GCR_H/min/2` — las 3 combinaciones reales de producción, `SEP_p` es `max`/Oct1989, no `min`; corregido 2026-09-20, un bug anterior en los scripts usaba `SEP_p/min`) — pendiente de ejecutar en una máquina de `cpu_score` alto (ej. `fcm-pc1`, ~21 vs. la referencia de 4.461), ver `geant4/ActiveShield_Sim/scripts/pilots/README.md`.
+- [ ] `SE_within(M)` es compatible con `s_between` (para cada M — ver corrección de diseño arriba, y el bug de normalización corregido 2026-09-21 justo arriba) en una corrida real del piloto con las combinaciones representativas (`GCR_He/min/6`, `SEP_p/max/0`, `GCR_H/min/2` — las 3 combinaciones reales de producción, `SEP_p` es `max`/Oct1989, no `min`; corregido 2026-09-20, un bug anterior en los scripts usaba `SEP_p/min`) — pendiente de ejecutar en una máquina de `cpu_score` alto (ej. `fcm-pc1`, ~21 vs. la referencia de 4.461), ver `geant4/ActiveShield_Sim/scripts/pilots/README.md`. Parcial: 9/36 corridas hechas (solo `GCR_He/min/6`, M≤10000), detenido para dejar descansar la máquina; retomar con el fix de normalización ya aplicado, no con el binario/script de antes del 2026-09-21.
 - [ ] No existe discrepancia sistemática entre ambos estimadores.
 - [ ] `SE(M) * sqrt(M)` permanece aproximadamente constante.
 - [ ] El punto estimado se estabiliza al aumentar `M`.

@@ -290,7 +290,11 @@ def analyze(combos_spec, runs, n_events_probe, n_bins, out_dir):
             # Air, organo_id=0) -- suma de varianzas de organos
             # independientes (mismo criterio que aggregate_organ_doses.py
             # Fase 2/3: V(suma) = suma V si son independientes).
-            se_total_sq = sum(r.get("se_run_j", 0.0) ** 2 for oid, r in rows.items() if oid != 0)
+            # se_run_total_j (no se_run_j): este ultimo es el SE de la MEDIA
+            # por par (voxel,evento), no del total del organo -- usarlo aqui
+            # subestimaba sigma_b por un factor ~N (mismo bug real corregido
+            # 2026-09-21 en run_intrarun_pilot.py, ver su docstring).
+            se_total_sq = sum(r.get("se_run_total_j", 0.0) ** 2 for oid, r in rows.items() if oid != 0)
             sigma_b = math.sqrt(se_total_sq) * math.sqrt(n_events_probe)  # SE = sigma/sqrt(N) invertido
             w_b = area_cm2 * data["flux_bin"]
             c_b = data["duration_s"] / n_events_probe if n_events_probe else float("nan")

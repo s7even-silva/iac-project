@@ -234,7 +234,7 @@ def validate_resume_grid(build_dir, n_bins):
             reader = csv.DictReader(stream)
             required = {"n_bins"}
             if filename.startswith("resultados"):
-                required.update(("s1_j", "s2_j2", "n", "se_run_j"))
+                required.update(("s1_j", "s2_j2", "n", "se_run_j", "se_run_total_j"))
             if not required.issubset(reader.fieldnames or []):
                 raise ValueError(f"{path}: esquema antiguo; conservarlo y usar otro directorio de build/salida")
             if any(int(row["n_bins"]) != n_bins for row in reader):
@@ -255,10 +255,10 @@ def parse_icrp110_out(out_path):
     [S1_J S2_J2 N SE_run_J]", todos los IDs 0..NOrganIDs-1).
 
     Devuelve {organ_id: {"edep_J", "dose_Gy", ["s1_j", "s2_j2", "n",
-    "se_run_j"]}} -- las ultimas 4 keys solo estan presentes si el .out
-    trae las columnas 3-6 (binario compilado con el scorer instrumentado,
-    ver ICRP110UserScoreWriter.cc); ausentes en un .out del formato viejo
-    (2 columnas), sin fallar por eso.
+    "se_run_j", "se_run_total_j"]}} -- las ultimas 5 keys solo estan
+    presentes si el .out trae las columnas 3-6 (binario compilado con el
+    scorer instrumentado, ver ICRP110UserScoreWriter.cc); ausentes en un
+    .out del formato viejo (2 columnas), sin fallar por eso.
 
     2026-09-20: reescrita de "devuelve list[(organ_id, edep_J, dose_Gy)]"
     a este dict con S1/S2/N/SE_run -- identica a lo que hasta ahora vivia
@@ -268,6 +268,28 @@ def parse_icrp110_out(out_path):
     implementacion, no dos que pudieran divergir con el tiempo. El unico
     call-site real de esta funcion (mas abajo en este modulo) se ajusto al
     nuevo formato de retorno.
+
+    2026-09-21: BUG REAL encontrado (sesion "iac-project-1d", piloto Fase 7
+    parcial 9/36) y corregido aqui -- "se_run_j" tal como lo escribe el C++
+    es sqrt(variance/N) con N = numero de PARES (voxel,evento), es decir el
+    error estandar de la MEDIA de un par, no del total del organo. Pero
+    "s1_j"/"edep_J" (con los que se compara contra s_between entre seeds
+    en run_intrarun_pilot.py) es la suma TOTAL, no la media -- comparar
+    "se_run_j" contra la dispersion del total mezclaba dos escalas
+    distintas (ratio ~1e-4 en vez de ~0.4-0.5 real, ver analisis de esa
+    sesion). Bajo el supuesto de pares iid (Camino B, ver comentario en
+    ICRP110UserScoreWriter.cc), el SE del TOTAL de N pares con la misma
+    varianza es N veces el SE de la media: se_run_total_j = se_run_j * n.
+    Se agrega como campo NUEVO ("se_run_total_j") en vez de redefinir
+    "se_run_j" para no romper que el nombre siga describiendo lo que el
+    C++ realmente calcula (la media) -- ver tambien la nota en el mismo
+    sentido puesta en ICRP110UserScoreWriter.cc. Se corrige aqui, en
+    Python, y NO en el C++: evita forzar una recompilacion del binario en
+    todas las maquinas a mitad de un piloto en curso, y el .out crudo ya
+    trae (s1, s2, n) suficientes para derivar el total sin perder
+    informacion. Todo consumidor de "se_run_j" como si fuera el SE del
+    total (run_intrarun_pilot.py, run_fase9_calibracion_mb.py,
+    run_fase10_endpoint.py) debe migrar a "se_run_total_j".
     """
     text = out_path.read_text()
     marker = "ORGAN ENERGY DEPOSITIONS AND ABSORBED DOSE"
@@ -297,6 +319,9 @@ def parse_icrp110_out(out_path):
             entry["s2_j2"] = float(parts[3])
             entry["n"] = int(parts[4])
             entry["se_run_j"] = float(parts[5])
+            # SE del TOTAL del organo (no de la media por par voxel-evento)
+            # -- ver nota de 2026-09-21 en el docstring de esta funcion.
+            entry["se_run_total_j"] = entry["se_run_j"] * entry["n"]
         rows[organ_id] = entry
     if not rows:
         raise ValueError(f"{out_path}: no se pudo parsear ninguna fila de la tabla de organos")
@@ -457,7 +482,7 @@ def main():
     # nuevos en el mismo CSV (mismo criterio que parse_icrp110_out()).
     results_fieldnames = ["especie", "fase", "bin_index", "n_bins", "energy_mev", "offset_x_m", "repeticion",
                            "organo_id", "edep_J", "dose_gy_run", "n_eventos",
-                           "s1_j", "s2_j2", "n", "se_run_j"]
+                           "s1_j", "s2_j2", "n", "se_run_j", "se_run_total_j"]
     results_mode = "a" if (args.resume and results_path.is_file()) else "w"
     results_file = open(results_path, results_mode, newline="")
     results_writer = csv.DictWriter(results_file, fieldnames=results_fieldnames, restval="")
@@ -537,14 +562,19 @@ def main():
                             "organo_id": organ_id, "edep_J": stats["edep_J"],
                             "dose_gy_run": stats["dose_Gy"], "n_eventos": args.n_events,
                         }
-                        # s1_j/s2_j2/n/se_run_j solo presentes si el binario
-                        # tiene el scorer instrumentado -- ausentes en un
-                        # .out del formato viejo, sin que eso sea un error
-                        # (restval="" en el DictWriter de mas abajo cubre
-                        # esas columnas para esas filas).
+                        # s1_j/s2_j2/n/se_run_j/se_run_total_j solo presentes
+                        # si el binario tiene el scorer instrumentado --
+                        # ausentes en un .out del formato viejo, sin que eso
+                        # sea un error (restval="" en el DictWriter de mas
+                        # abajo cubre esas columnas para esas filas).
+                        # se_run_j = SE de la MEDIA por par (voxel,evento);
+                        # se_run_total_j = SE del TOTAL del organo (ver nota
+                        # 2026-09-21 en parse_icrp110_out()) -- este ultimo
+                        # es el que se compara contra s_between entre seeds.
                         if "se_run_j" in stats:
                             row.update(s1_j=stats["s1_j"], s2_j2=stats["s2_j2"],
-                                       n=stats["n"], se_run_j=stats["se_run_j"])
+                                       n=stats["n"], se_run_j=stats["se_run_j"],
+                                       se_run_total_j=stats["se_run_total_j"])
                         results_writer.writerow(row)
                     results_file.flush()
                     parsed_ok = True

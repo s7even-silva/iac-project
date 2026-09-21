@@ -58,6 +58,28 @@ no reproducibles (combo_idx=0 en vez del index real=14) y se descartaron
 -- cualquier out-dir de Fase 7 anterior a este commit debe recorrerse
 desde cero, no retomarse con --out-dir.
 
+BUG DE NORMALIZACION CORREGIDO 2026-09-21 (encontrado por la sesion
+"iac-project-1d" en el piloto parcial 9/36 corridas, out-dir
+intrarun_pilot_20260921T022121Z): SE_run_J tal como lo escribe el C++
+(ICRP110UserScoreWriter.cc) es sqrt(variance/N) con N = numero de PARES
+(voxel,evento) -- el error estandar de la MEDIA de un par, NO del total
+del organo. Pero edep_J/s1_j (con los que se compara via s_between entre
+seeds, mas abajo en analyze()) es la suma TOTAL del organo. Comparar
+"SE de la media" contra "dispersion del total" mezclaba dos escalas
+(ratio observado ~1e-4, cuando el esperado -- bajo el supuesto de pares
+iid del "Camino B" -- es N veces mayor: SE_total = SE_media * N). Fix:
+parse_icrp110_out() en run_organ_sweep.py ahora tambien devuelve
+"se_run_total_j" = se_run_j * n; analyze() usa ese campo (no se_run_j
+crudo) para se_within_by_m. Con la correccion, el ratio SE_within/
+s_between subio de ~1e-4 (mediana) a ~0.4-0.5 (mediana; ver analisis
+parcial de esa sesion, /tmp en su maquina, no en este repo) -- SE sigue
+por debajo de s_between (esperable si hay covarianza positiva entre
+voxels del mismo evento, la limitacion ya documentada del "Camino B"),
+pero ya no por 4 ordenes de magnitud. Este fix es solo en Python/analisis
+-- el C++ NO se toco ni se recompilo (evita forzar una recompilacion en
+todas las maquinas a mitad de un piloto en curso; el .out crudo ya trae
+(s1, s2, n) suficientes para derivar el total sin perder informacion).
+
 Que hace, por cada combinacion representativa elegida (--combos):
 
   1. Para cada M en {2500, 5000, 10000, 20000}: corre N_SEEDS corridas
@@ -362,7 +384,7 @@ def analyze(requested, n_seeds, checkpoints_dir, out_dir):
     independientes, asi que se puede comparar en los 4 valores de M)."""
     resumen_path = out_dir / "resumen_por_organo.csv"
     resumen_fieldnames = ["combo_label", "M", "seed_idx", "organo_id", "edep_J",
-                           "s1_j", "s2_j2", "n", "se_run_j"]
+                           "s1_j", "s2_j2", "n", "se_run_j", "se_run_total_j"]
     resumen_rows = []
 
     # data_by_m[(combo_label, M, organo_id)] = [edep_j por seed]
@@ -386,9 +408,18 @@ def analyze(requested, n_seeds, checkpoints_dir, out_dir):
                         "organo_id": organo_id, "edep_J": entry["edep_J"],
                         "s1_j": entry["s1_j"], "s2_j2": entry["s2_j2"],
                         "n": entry["n"], "se_run_j": entry["se_run_j"],
+                        "se_run_total_j": entry["se_run_total_j"],
                     })
                     data_by_m.setdefault((combo_label, m, organo_id), []).append(entry["edep_J"])
-                    se_within_by_m.setdefault((combo_label, m, organo_id), []).append(entry["se_run_j"])
+                    # se_within_by_m usa se_run_total_j, NO se_run_j: edep_J
+                    # (con el que se compara mas abajo via s_between) es el
+                    # TOTAL del organo, y se_run_j es el SE de la MEDIA por
+                    # par (voxel,evento) -- comparar SE de la media contra
+                    # dispersion del total subestimaba el ratio por un
+                    # factor ~N (bug real encontrado 2026-09-21 por la
+                    # sesion iac-project-1d en el piloto parcial 9/36, ver
+                    # nota en parse_icrp110_out() de run_organ_sweep.py).
+                    se_within_by_m.setdefault((combo_label, m, organo_id), []).append(entry["se_run_total_j"])
 
     with open(resumen_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=resumen_fieldnames)
