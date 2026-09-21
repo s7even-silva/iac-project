@@ -3,7 +3,7 @@
 Esta rama (`results/fase7-intrarun`) solo guarda resultados parciales del piloto
 `run_intrarun_pilot.py` (36 corridas: 3 combos x 3 seeds x M in 2500/5000/10000/20000),
 lanzado con los defaults del script en el commit `06fa973` de `main`. No es codigo.
-Se guardan `manifest.csv` y `checkpoints/*.out` (lo unico que necesita el resume); los logs no.
+Se guardan `manifest.csv` y `checkpoints/*.out` (lo unico que necesita el resume) y, para diagnostico, `logs/*.log` de las corridas ya terminadas.
 
 ## Pasos
 ```bash
