@@ -97,10 +97,13 @@ Que hace, por cada combinacion representativa elegida (--combos):
      criterio de aceptacion (Fase 7): deben ser "aproximadamente
      compatibles", sin un umbral numerico fijo todavia en el plan (queda
      a criterio del equipo al revisar el reporte).
-  5. Ademas verifica SE(M) * sqrt(M) ~ constante (ley 1/sqrt(M)) usando
-     el SE_within medio de cada M -- YA NO dentro de una sola seed (eso
-     exigiria el diseño de checkpoints que resulto invalido), sino entre
-     los 4 valores de M, cada uno con su propio conjunto de seeds.
+  5. Ademas verifica SE_total(M) / sqrt(M) ~ constante (ley 1/sqrt(M),
+     ver nota "BUG REAL corregido 2026-09-21" en analyze(): SE_total
+     CRECE con M, a diferencia del SE de una media, por eso se divide y
+     no se multiplica) usando el SE_within medio de cada M -- YA NO
+     dentro de una sola seed (eso exigiria el diseño de checkpoints que
+     resulto invalido), sino entre los 4 valores de M, cada uno con su
+     propio conjunto de seeds.
 
 LIMITACION DE DISEnO explicita (Camino B, ver docstring de
 ICRP110UserScoreWriter.cc): SE_within se calcula agregando S1/S2 POR VOXEL
@@ -129,10 +132,17 @@ Uso:
     python3 pilots/run_intrarun_pilot.py --combos GCR_He/min/6,SEP_p/max/0
     python3 pilots/run_intrarun_pilot.py --n-seeds 3 --threads 20
 
+    # Repartir por M (2026-09-21, --skip-m/--only-m): correr un subconjunto
+    # de combinaciones dejando M=20000 (el mas caro, ~8000s) para otra
+    # maquina/despues. Las semillas de los M que SI se corren no cambian
+    # (ver seed_for()), asi que esto es seguro de combinar entre maquinas.
+    python3 pilots/run_intrarun_pilot.py --combos SEP_p/max/0,GCR_H/min/2 --skip-m 20000
+
 Costo: n_combos * n_seeds * 4 corridas independientes de Geant4 (una por
-cada M en CHECKPOINTS_M) -- con los defaults (3 combos, 3 seeds), 36
-corridas. Ver tiempos estimados reales en infra/coordinator/db.py
-(REFERENCE_TIMINGS_S, escalado por cpu_score de la maquina que corra esto).
+cada M en CHECKPOINTS_M, salvo que se use --skip-m/--only-m) -- con los
+defaults (3 combos, 3 seeds), 36 corridas. Ver tiempos estimados reales en
+infra/coordinator/db.py (REFERENCE_TIMINGS_S, escalado por cpu_score de la
+maquina que corra esto).
 
 Salida: pilots/results/intrarun_pilot_<timestamp>/
     - run_<combo>_seed<seed_idx>_M<M>.out      (tabla completa de organos, cruda)
@@ -230,6 +240,18 @@ def main():
                          help="Seeds independientes por combinacion (default 3, minimo del plan "
                               "para poder calcular s_between con algo de margen -- N=2 da un IC "
                               "extremadamente ancho, ver discusion estadistica previa del equipo).")
+    parser.add_argument("--skip-m", type=str, default=None,
+                         help="Lista separada por comas de valores de M (de CHECKPOINTS_M) a NO correr "
+                              "en esta invocacion, ej. '20000' para dejar M=20000 para despues/otra "
+                              "maquina. 2026-09-21: agregado para poder repartir el piloto por M ademas "
+                              "de por --combos (ej. correr SEP_p/GCR_H completos salvo M=20000, mientras "
+                              "GCR_He/min/6 M=20000 se retoma aparte). El m_idx de seed_for() SIEMPRE sale "
+                              "de CHECKPOINTS_M.index(m) (la lista COMPLETA, no la filtrada) -- las "
+                              "semillas de los M que SI se corren no cambian por este flag, mismo criterio "
+                              "que combo_idx viniendo de combo['index'] y no de la posicion en --combos.")
+    parser.add_argument("--only-m", type=str, default=None,
+                         help="Lista separada por comas de valores de M a correr, excluyendo el resto "
+                              "(alternativa a --skip-m; no combinar ambos).")
     parser.add_argument("--field-map", type=Path, default=ros.DEFAULT_FIELD_MAP)
     parser.add_argument("--coil-geometry", type=Path, default=ros.DEFAULT_COIL_GEOMETRY)
     parser.add_argument("--no-coil-geometry", action="store_true")
@@ -242,6 +264,32 @@ def main():
                               "directorio de una corrida anterior para retomarla -- ver --no-resume.")
     pc.add_resume_arg(parser)
     args = parser.parse_args()
+
+    if args.skip_m and args.only_m:
+        sys.exit("ERROR: --skip-m y --only-m son mutuamente excluyentes, usar solo uno.")
+
+    # checkpoints_m: subconjunto de CHECKPOINTS_M a correr en ESTA
+    # invocacion. La global CHECKPOINTS_M nunca se reasigna -- seed_for()
+    # necesita m_idx = CHECKPOINTS_M.index(m) (la lista COMPLETA) para que
+    # las semillas de los M que si se corren sean identicas sin importar
+    # que otros M se hayan excluido con --skip-m/--only-m (ver docstring
+    # de seed_for()).
+    if args.skip_m:
+        skip = {int(x) for x in args.skip_m.split(",")}
+        invalid = skip - set(CHECKPOINTS_M)
+        if invalid:
+            sys.exit(f"ERROR: --skip-m tiene valores fuera de CHECKPOINTS_M={CHECKPOINTS_M}: {sorted(invalid)}")
+        checkpoints_m = [m for m in CHECKPOINTS_M if m not in skip]
+    elif args.only_m:
+        wanted = {int(x) for x in args.only_m.split(",")}
+        invalid = wanted - set(CHECKPOINTS_M)
+        if invalid:
+            sys.exit(f"ERROR: --only-m tiene valores fuera de CHECKPOINTS_M={CHECKPOINTS_M}: {sorted(invalid)}")
+        checkpoints_m = [m for m in CHECKPOINTS_M if m in wanted]
+    else:
+        checkpoints_m = list(CHECKPOINTS_M)
+    if not checkpoints_m:
+        sys.exit("ERROR: --skip-m/--only-m no deja ningun valor de M por correr.")
 
     import os
     n_threads = args.threads or os.cpu_count()
@@ -277,11 +325,12 @@ def main():
                       f"revisa species/phase/bin_index (0-7).")
         requested.append((spec.strip(), combos_by_key[key]))
 
-    total_runs = len(requested) * len(CHECKPOINTS_M) * args.n_seeds
-    print(f"Piloto A (Fase 7): {len(requested)} combinacion(es) x {len(CHECKPOINTS_M)} valores de M "
+    total_runs = len(requested) * len(checkpoints_m) * args.n_seeds
+    print(f"Piloto A (Fase 7): {len(requested)} combinacion(es) x {len(checkpoints_m)} valores de M "
           f"x {args.n_seeds} seed(s) = {total_runs} corridas INDEPENDIENTES de Geant4 "
           f"(cada M es su propia corrida completa, ver nota de diseño al inicio del modulo).")
-    print(f"M = {CHECKPOINTS_M}")
+    print(f"M = {checkpoints_m}" + (f" (CHECKPOINTS_M completo es {CHECKPOINTS_M}, "
+                                     f"--skip-m/--only-m excluyo el resto)" if checkpoints_m != CHECKPOINTS_M else ""))
     print(f"Salida: {out_dir}")
     print()
 
@@ -301,7 +350,7 @@ def main():
     # pilot_common.py: es correcto que compartan referencia).
     all_work = [((combo_label_raw.replace("/", "_"), str(m), str(seed_idx)), combo_label_raw, f"M={m}", m)
                 for combo_label_raw, _combo in requested
-                for m in CHECKPOINTS_M
+                for m in checkpoints_m
                 for seed_idx in range(args.n_seeds)]
     pending_work = [(cl, wu, m) for key, cl, wu, m in all_work if key not in done_keys]
     eta_s, missing = pc.estimate_remaining_s("fase7", pending_work, score)
@@ -316,7 +365,12 @@ def main():
     for combo_label_raw, combo in requested:
         combo_idx = combo["index"]
         combo_label = combo_label_raw.replace("/", "_")
-        for m_idx, m in enumerate(CHECKPOINTS_M):
+        for m in checkpoints_m:
+            # m_idx SIEMPRE sale de CHECKPOINTS_M (la lista GLOBAL completa,
+            # no de checkpoints_m/enumerate) -- ver docstring de seed_for()
+            # y del flag --skip-m/--only-m: asi la semilla de un M dado no
+            # cambia segun que otros M se hayan excluido en esta invocacion.
+            m_idx = CHECKPOINTS_M.index(m)
             for seed_idx in range(args.n_seeds):
                 run_n += 1
                 run_out_path = checkpoints_dir / f"run_{combo_label}_M{m}_seed{seed_idx}.out"
@@ -391,6 +445,17 @@ def analyze(requested, n_seeds, checkpoints_dir, out_dir):
     data_by_m = {}
     se_within_by_m = {}
 
+    # Cobertura real vs. esperada (BUG REAL corregido 2026-09-21, sesion
+    # iac-project-1d: write_fase7_state() decia "Piloto A completo" aunque
+    # faltaran corridas -- ej. 9/36 -- porque nunca comparaba lo pedido
+    # contra lo realmente encontrado en checkpoints_dir). n_esperado cuenta
+    # (combo, M, seed) sin importar si el .out existe; n_encontrado, solo
+    # los que sí se pudieron leer -- la diferencia se propaga a
+    # write_fase7_state() para que el resumen/veredicto no diga "completo"
+    # sobre una corrida parcial.
+    n_esperado = len(requested) * len(CHECKPOINTS_M) * n_seeds
+    n_encontrado = 0
+
     for combo_label_raw, combo in requested:
         combo_label = combo_label_raw.replace("/", "_")
         for m in CHECKPOINTS_M:
@@ -399,6 +464,7 @@ def analyze(requested, n_seeds, checkpoints_dir, out_dir):
                 if not out_path.is_file():
                     print(f"  ADVERTENCIA: falta {out_path} -- corrida incompleta, se omite.")
                     continue
+                n_encontrado += 1
                 rows = pc.parse_organ_table_full(out_path)
                 for organo_id, entry in rows.items():
                     if "se_run_j" not in entry:
@@ -471,12 +537,21 @@ def analyze(requested, n_seeds, checkpoints_dir, out_dir):
         writer.writerows(comparacion_rows)
     print(f"  Comparacion SE_within vs s_between (por M): {comparacion_path} ({len(comparacion_rows)} filas)")
 
-    # Verificacion de la ley 1/sqrt(M): SE(M)*sqrt(M) deberia ser ~constante
-    # -- usando el SE_within MEDIO de cada M (entre sus propias seeds), ya
-    # no dentro de una sola seed a traves de checkpoints (ese diseño
-    # resulto invalido, ver nota al inicio del modulo).
+    # Verificacion de la ley 1/sqrt(M): SE(M)*sqrt(M) deberia ser ~constante.
+    # BUG REAL corregido 2026-09-21 (encontrado por la sesion iac-project-1d
+    # al reanalizar el piloto parcial con el fix de se_run_total_j): esta
+    # verificacion asume un SE que DECRECE como 1/sqrt(M) -- valido para el
+    # SE de una MEDIA (por evento). Pero se_within_by_m ahora guarda
+    # se_run_total_j, el SE del TOTAL del organo acumulado en M eventos,
+    # que CRECE con M (mas eventos, mas edep total, mas SE del total) --
+    # multiplicar por sqrt(M) exageraba ese crecimiento en vez de anularlo
+    # (verificado con datos reales: SE_sqrtM subia ~1.8-2.2x al doblar M,
+    # en vez de quedarse aprox. constante). La cantidad que SI decrece como
+    # 1/sqrt(M) es el SE de la dosis MEDIA POR EVENTO, es decir
+    # se_run_total_j/M -- por eso aqui se divide por sqrt(M), no se
+    # multiplica: (SE_total/M) * sqrt(M) = SE_total/sqrt(M).
     convergencia_rows = []
-    convergencia_fieldnames = ["combo_label", "organo_id"] + [f"SE_sqrtM_M{m}" for m in CHECKPOINTS_M]
+    convergencia_fieldnames = ["combo_label", "organo_id"] + [f"SE_total_sobre_sqrtM_M{m}" for m in CHECKPOINTS_M]
     for combo_label in combo_labels:
         for organo_id in organo_ids:
             values = []
@@ -489,18 +564,18 @@ def analyze(requested, n_seeds, checkpoints_dir, out_dir):
                     values.append(None)
                     continue
                 se_medio = statistics.fmean(se_nonzero)
-                values.append(se_medio * math.sqrt(m))
+                values.append(se_medio / math.sqrt(m))
             if any(v is not None for v in values):
                 row = {"combo_label": combo_label, "organo_id": organo_id}
                 for m, v in zip(CHECKPOINTS_M, values):
-                    row[f"SE_sqrtM_M{m}"] = v
+                    row[f"SE_total_sobre_sqrtM_M{m}"] = v
                 convergencia_rows.append(row)
     convergencia_path = out_dir / "convergencia_1_sobre_sqrtM.csv"
     with open(convergencia_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=convergencia_fieldnames)
         writer.writeheader()
         writer.writerows(convergencia_rows)
-    print(f"  Verificacion SE(M)*sqrt(M): {convergencia_path} ({len(convergencia_rows)} filas)")
+    print(f"  Verificacion SE_total(M)/sqrt(M): {convergencia_path} ({len(convergencia_rows)} filas)")
 
     # Reporte legible.
     reporte_path = out_dir / "reporte.txt"
@@ -548,10 +623,10 @@ def analyze(requested, n_seeds, checkpoints_dir, out_dir):
     print()
     print(reporte_path.read_text())
 
-    write_fase7_state(comparacion_rows, n_seeds, out_dir, reporte_path)
+    write_fase7_state(comparacion_rows, n_seeds, out_dir, reporte_path, n_esperado, n_encontrado)
 
 
-def write_fase7_state(comparacion_rows, n_seeds, out_dir, reporte_path):
+def write_fase7_state(comparacion_rows, n_seeds, out_dir, reporte_path, n_esperado=None, n_encontrado=None):
     """Escribe pilot_state.FaseResult para que el orquestador (Fase 22,
     run_pilot_workflow.py) sepa si puede seguir solo a la Fase 8.
 
@@ -561,12 +636,25 @@ def write_fase7_state(comparacion_rows, n_seeds, out_dir, reporte_path):
     (ver pilot_state.py), esto significa que Fase 7 casi nunca puede dar
     VERDICT_AUTO_CONTINUE por si sola -- el orquestador SIEMPRE se
     detiene aqui para que una persona revise el reporte, salvo el caso
-    obvio de que la corrida fallara del todo (FALLO)."""
+    obvio de que la corrida fallara del todo (FALLO).
+
+    n_esperado/n_encontrado (2026-09-21, BUG REAL corregido -- encontrado
+    por la sesion iac-project-1d): antes, el resumen SIEMPRE decia "Piloto
+    A completo" si habia >=1 fila comparable, incluso con 9/36 corridas
+    (analyze() sobre un out-dir parcial). Cuando ambos se pasan y son
+    distintos, el resumen/instrucciones lo reflejan explicitamente en vez
+    de decir "completo" -- evita que un orquestador automatico (o una
+    persona leyendo por encima) trate una corrida parcial como si fuera
+    el veredicto final de Fase 7."""
+    cobertura_incompleta = n_esperado is not None and n_encontrado is not None and n_encontrado < n_esperado
+    cobertura_txt = (f" ADVERTENCIA: cobertura INCOMPLETA -- {n_encontrado}/{n_esperado} corridas "
+                      f"(combo x M x seed) encontradas en checkpoints_dir; esto NO es el piloto completo."
+                      if cobertura_incompleta else "")
     if not comparacion_rows:
         result = pilot_state.FaseResult(
             fase="fase7", veredicto=pilot_state.VERDICT_FALLO,
-            resumen="Sin datos comparables -- ninguna combinacion/organo/M tuvo edep!=0 en >=2 seeds.",
-            detalle={"n_filas_comparables": 0},
+            resumen=f"Sin datos comparables -- ninguna combinacion/organo/M tuvo edep!=0 en >=2 seeds.{cobertura_txt}",
+            detalle={"n_filas_comparables": 0, "n_esperado": n_esperado, "n_encontrado": n_encontrado},
             instrucciones_si_no_auto=(
                 "Revisar manifest.csv/logs/ del piloto para ver si alguna corrida fallo, o si las "
                 "combinaciones elegidas son demasiado baratas (pocos organos con señal real). "
@@ -585,8 +673,10 @@ def write_fase7_state(comparacion_rows, n_seeds, out_dir, reporte_path):
                 f"n_seeds={n_seeds} < 3 -- s_between calculado con muy pocos puntos, no confiable "
                 "como validacion real (ver discusion estadistica del equipo: N=2 da un IC extremadamente "
                 "ancho). Esta corrida solo sirve para verificar que el mecanismo funciona, no como Piloto A real."
+                f"{cobertura_txt}"
             ),
-            detalle={"n_seeds": n_seeds, "n_filas_comparables": len(comparacion_rows)},
+            detalle={"n_seeds": n_seeds, "n_filas_comparables": len(comparacion_rows),
+                     "n_esperado": n_esperado, "n_encontrado": n_encontrado},
             instrucciones_si_no_auto=(
                 f"Volver a correr: python3 pilots/run_intrarun_pilot.py --n-seeds 3 (o mas) con las "
                 f"combinaciones representativas por defecto antes de decidir si continuar a la Fase 8."
@@ -600,15 +690,22 @@ def write_fase7_state(comparacion_rows, n_seeds, out_dir, reporte_path):
     ratios = [r["ratio_se_within_sobre_s_between"] for r in comparacion_rows
               if r["ratio_se_within_sobre_s_between"] == r["ratio_se_within_sobre_s_between"]]
     mediana = statistics.median(ratios) if ratios else float("nan")
+    estado_cobertura = (f"PARCIAL ({n_encontrado}/{n_esperado} corridas)" if cobertura_incompleta
+                         else "completo")
     result = pilot_state.FaseResult(
         fase="fase7", veredicto=pilot_state.VERDICT_REVISAR,
         resumen=(
-            f"Piloto A completo con n_seeds={n_seeds}, {len(comparacion_rows)} filas comparables, "
+            f"Piloto A {estado_cobertura} -- n_seeds={n_seeds}, {len(comparacion_rows)} filas comparables, "
             f"ratio SE_within/s_between mediana={mediana:.3f}. El plan no fija un umbral numerico "
             "para este criterio -- revisar el reporte antes de decidir si R=1 es defendible."
+            f"{cobertura_txt}"
         ),
-        detalle={"n_seeds": n_seeds, "n_filas_comparables": len(comparacion_rows), "ratio_mediana": mediana},
+        detalle={"n_seeds": n_seeds, "n_filas_comparables": len(comparacion_rows), "ratio_mediana": mediana,
+                 "n_esperado": n_esperado, "n_encontrado": n_encontrado},
         instrucciones_si_no_auto=(
+            (f"Cobertura INCOMPLETA ({n_encontrado}/{n_esperado}) -- retomar con --out-dir {out_dir} "
+             "(resume automatico) antes de tratar este resultado como el veredicto final de Fase 7. "
+             if cobertura_incompleta else "") +
             f"Revisar {reporte_path} y {out_dir / 'comparacion_se_within_vs_s_between.csv'}. "
             "Si el ratio es razonablemente cercano a 1.0 en los M grandes (10000-20000, mas "
             "representativos de produccion), correr: python3 pilots/run_pilot_workflow.py --continue-to fase8. "
