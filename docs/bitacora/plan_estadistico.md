@@ -142,6 +142,73 @@ H \le \frac{\delta}{2}
 
 en lugar de elegir 5% solo por conveniencia.
 
+## Elección recomendada de `delta` para blindaje vs. control
+
+`delta` **no debe salir del piloto**. El piloto estima la varianza y permite calcular cuánto `M` hace falta; si `delta` se eligiera después de ver el efecto del piloto, el criterio de precisión quedaría condicionado por los propios datos.
+
+La literatura de blindaje espacial sirve para **anclar la escala** de `delta`, aunque no existe un umbral universal equivalente a una “mínima diferencia clínicamente importante” para blindaje magnético. En estudios Geant4/SR2S se han reportado contribuciones del campo magnético del orden de:
+
+- ~10% para configuraciones de campo moderado (~6.3 Tm);
+- ~20–25% para una configuración toroidal de ~8 Tm;
+- ~45% para configuraciones de ~23 Tm;
+- de forma general, contribuciones del campo del orden de 10–50%, dependiendo de configuración, masa y métrica.
+
+Como referencia adicional, trabajos recientes de blindaje pasivo con Geant4 e ICRP110 obtienen reducciones de dosis efectiva que varían ampliamente (aprox. 7–44% según material, espesor, quality factor y modulación solar). Esto confirma que diferencias del orden de decenas de puntos porcentuales son físicamente plausibles, pero que el umbral relevante depende del objetivo de diseño.
+
+### Valor primario recomendado para este proyecto
+
+Para la comparación principal **shield vs. no-shield**, adoptar provisionalmente:
+
+\[
+\boxed{\delta_\eta = 10\ \text{puntos porcentuales}}
+\]
+
+donde:
+
+\[
+\eta = 1-\frac{D_{\rm shield}}{D_{\rm control}}.
+\]
+
+Entonces el criterio de precisión sería:
+
+\[
+\boxed{H_{\eta,95}\le 5\ \text{puntos porcentuales}}
+\]
+
+Esto significa que el estudio debe poder resolver razonablemente una reducción de dosis de 10 puntos porcentuales.
+
+**Interpretación:** `delta_eta = 10 pp` no afirma que 10% sea un umbral biológico o clínico universal. Es un **umbral de resolución científica/ingenieril** para este estudio, escogido porque se sitúa cerca del extremo inferior de efectos magnéticos publicados y evita exigir una precisión innecesariamente extrema.
+
+### Alternativas
+
+**Más estricta — `delta_eta = 5 pp`:**
+
+\[
+H_{\eta,95}\le2.5\text{ pp}
+\]
+
+Ventaja:
+- permite diferenciar configuraciones de blindaje muy parecidas.
+
+Limitación:
+- si todo lo demás permanece igual, reducir el semiancho objetivo de 5 pp a 2.5 pp requiere aproximadamente 4 veces más historias Monte Carlo, porque `H ∝ 1/sqrt(M)`.
+
+**Más laxa — `delta_eta = 15–20 pp`:**
+
+Ventaja:
+- reduce sustancialmente el costo computacional.
+
+Limitación:
+- puede ser demasiado gruesa para detectar efectos en el extremo bajo de lo publicado (~10–20%);
+- podría declarar “indistinguibles” configuraciones con diferencias físicamente interesantes.
+
+### Decisión que debe congelarse
+
+- [ ] Definir el endpoint primario exacto al que aplica `delta_eta` (por ejemplo, dosis equivalente efectiva total, dosis equivalente de órgano prioritario u otra magnitud).
+- [ ] Adoptar formalmente `delta_eta = 10 pp` como criterio primario, o documentar otra elección antes del Piloto B.
+- [ ] Registrar que el piloto **no se utilizará para redefinir `delta_eta` según el efecto observado**.
+- [ ] Permitir criterios secundarios más estrictos para comparaciones entre dos diseños de shield cercanos, sin cambiar retrospectivamente el criterio primario.
+
 ## Casos cercanos a cero
 
 Si `D_bar ≈ 0`, el porcentaje relativo deja de ser útil.
@@ -417,148 +484,692 @@ SE=\frac{s_{\rm batch}}{\sqrt{20}}
 
 ---
 
-# Fase 7 — Piloto de convergencia respecto de M
+# Secuencia de validación y calibración antes de producción
+
+Antes de liberar el barrido final, el trabajo se organiza en **cuatro etapas previas**, cada una con una función distinta y en un orden que evita optimizar una discretización que luego pudiera descartarse.
+
+| Etapa | Pregunta principal | Qué valida | Qué reutiliza |
+|---|---|---|---|
+| **Validación del estimador intra-run** | ¿Podemos confiar en la incertidumbre calculada dentro de una sola run? | `SE_within`, acumuladores por evento y comportamiento Monte Carlo | `s_between` de las runs históricas |
+| **Convergencia del binning energético** | ¿8 bins representan suficientemente bien el espectro y la respuesta física? | error de discretización 8→16, y 16→32 si hace falta | resultados 8-bin ya existentes |
+| **Calibración del número de eventos por bin** | Con el binning definitivo, ¿cuánto `M_b` necesita cada bin? | relación `SE(M)`, costo por evento y asignación de historias | resultados de las dos etapas anteriores |
+| **Comprobación de precisión shield/control** | ¿La configuración estadística elegida permite resolver el efecto científico mínimo? | `eta`, `H_eta`, `delta_eta` y posible utilidad de CRN | `M_b` ya fijado y binning definitivo |
+| **Producción definitiva** | Ejecutar el barrido completo bajo el protocolo congelado | resultados finales | puede incorporar datos previos solo si fueron generados bajo el protocolo definitivo |
+
+Flujo recomendado:
+
+\[
+\boxed{
+\text{validar incertidumbre intra-run}
+\rightarrow
+\text{validar binning}
+\rightarrow
+\text{calibrar }M_b
+\rightarrow
+\text{validar endpoint}
+\rightarrow
+\text{producción}
+}
+\]
+
+### Por qué este orden es importante
+
+El error de discretización energética y el error Monte Carlo son fuentes distintas:
+
+\[
+\text{error numérico por binning}
+\neq
+\text{ruido Monte Carlo}.
+\]
+
+Aumentar `M` reduce el ruido Monte Carlo, pero **no corrige** un binning insuficiente. Por eso no conviene fijar definitivamente `M_b` ni validar el endpoint shield/control antes de comprobar que la discretización energética es adecuada.
+
+### Regla metodológica
+
+- `delta_eta` se fija **antes** de comprobar la precisión del endpoint shield/control.
+- La validación técnica del estimador puede hacerse todavía con energías del esquema de 8 bins porque evalúa el estimador de incertidumbre y la ley `1/sqrt(M)`, no la suficiencia de la cuadratura espectral.
+- Si 8 bins resultan insuficientes, **no se pierde** la validación del estimador intra-run; lo que debe recalibrarse es `M_b` sobre la malla definitiva.
+- La comprobación del endpoint shield/control se hace únicamente después de congelar el binning.
+- Una simulación de validación puede incorporarse a producción solo si coincide exactamente con el protocolo definitivo.
+
+# Fase 7 — Validación del estimador de incertidumbre intra-run
 
 ## Objetivo
 
-Determinar cuántos eventos necesita realmente cada tipo de bin.
+Comprobar que la incertidumbre estadística calculada dentro de una sola run es correcta y que el Monte Carlo sigue el comportamiento esperado:
+
+\[
+SE(M)\propto\frac{1}{\sqrt{M}}.
+\]
+
+Esta fase **no fija todavía el `M_b` definitivo de producción**. Su objetivo es validar la maquinaria estadística que permitirá usar `R=1` de forma defendible en las simulaciones futuras.
+
+## Cómo reutiliza las simulaciones históricas
+
+Las runs ya terminadas no guardaron `S2` ni información evento-a-evento, por lo que no puede reconstruirse retrospectivamente `SE_within`. Sin embargo, donde existen varias seeds independientes sí puede calcularse:
+
+\[
+s_{\rm between}=SD(\hat\mu_1,\ldots,\hat\mu_R).
+\]
+
+Una nueva run instrumentada a `M=10000` produce:
+
+\[
+SE_{\rm within}.
+\]
+
+Ambas cantidades estiman la misma escala de ruido de una run de 10000 historias:
+
+\[
+SE_{\rm within}\approx s_{\rm between}.
+\]
+
+Así, las simulaciones históricas funcionan como **referencia externa de validación** y reducen el número de nuevas repeticiones instrumentadas necesarias.
 
 ## Diseño recomendado
 
-Usar runs largas con checkpoints:
+Seleccionar unas pocas combinaciones representativas y difíciles, priorizando aquellas con `R>=3` histórico.
 
-\[
-M=2500,\ 5000,\ 10000,\ 20000
-\]
+Para cada una:
 
-pero ejecutar solo:
+- usar 2–3 seeds instrumentadas;
+- ejecutar hasta `M_max = 20000`;
+- guardar checkpoints acumulados en:
+  - 2500;
+  - 5000;
+  - 10000;
+  - 20000 eventos.
 
-\[
-R_{\rm pilot}=3
-\]
+### ⚠️ Corrección real de diseño (2026-09-19): "checkpoints acumulados" es inviable en Geant4
 
-streams independientes hasta 20 000.
+El diseño de arriba ("guardar checkpoints acumulados", varios `/run/beamOn`
+sucesivos dentro de la misma sesión de macro, confiando en que el scorer
+acumularía entre ellos) se implementó primero y **resultó estar mal
+concebido, no solo caro** — verificado con datos reales, no solo por
+lectura de código:
 
-Costo:
+- Hipótesis original: como no se encontró ningún `G4VScoringMesh::ResetScore()`
+  invocado por defecto ni por el proyecto, se asumió que el scorer
+  acumulaba entre `/run/beamOn` sucesivos de la misma macro.
+- **La hipótesis era incorrecta.** Confirmado en un log real (`grep "###
+  Run"` sobre 4 `beamOn` sucesivos mostró `Run 0`, `Run 1`, `Run 2`,
+  `Run 3`): en Geant4, **cada `/run/beamOn` inicia un `G4Run` nuevo e
+  independiente**, con su propio ciclo de vida de scoring desde cero —
+  la ausencia de un reset explícito no implica acumulación; cada Run
+  simplemente empieza limpio por diseño del framework, sin relación con
+  el anterior.
+- Evidencia empírica que lo confirmó: el "edep total" de los
+  "checkpoints" sucesivos **no era monótono creciente**
+  (`M=2500→1.14e-10 J`, `M=5000→6.88e-11 J` — bajó, algo matemáticamente
+  imposible si de verdad fuera acumulado, ya que edep no puede
+  disminuir al agregar eventos no-negativos). Cada "checkpoint" medía en
+  realidad un lote de eventos distinto y no relacionado con el anterior.
 
-\[
-3\times20000=60000
-\]
+**Diseño corregido, ya implementado** (`geant4/ActiveShield_Sim/scripts/pilots/run_intrarun_pilot.py`):
+cada valor de `M ∈ {2500, 5000, 10000, 20000}` es ahora una **corrida
+independiente completa** (un solo `/run/beamOn M`, con su propia semilla
+determinista), no un checkpoint dentro de una corrida más grande — es
+exactamente la "alternativa más robusta" que ya estaba prevista más abajo
+en esta misma fase (ver "Alternativa robusta: correr cada tamaño M con
+seeds completamente nuevas... ~1.9x más eventos"), adoptada como diseño
+principal porque el esquema de checkpoints no era una opción más cara,
+era inválido.
 
-eventos por combinación piloto, frente a:
+Consecuencia en el análisis: `s_between` y `SE_within` ya no se comparan
+solo en `M=20000` — con este diseño, cada `M` tiene su propio conjunto de
+seeds independientes, así que la comparación se calcula en **los 4
+valores de M por separado**, dando una curva completa en vez de un solo
+punto (ver `comparacion_se_within_vs_s_between.csv` del script). Costo:
+sube de `n_combos*n_seeds` corridas a `n_combos*n_seeds*4` corridas (una
+por cada M, ya no compartidas dentro de una sola corrida larga).
 
-\[
-3(2500+5000+10000+20000)=112500
-\]
+### Bug de normalización de `SE_run_J` corregido (2026-09-21)
 
-si se ejecutaran por separado.
+`SE_run_J`, tal como lo escribe el scorer C++ (`ICRP110UserScoreWriter.cc`),
+es `sqrt(variance/N)` con `N` = número de **pares (vóxel, evento)** — el
+error estándar de la **media** de un par, no del total del órgano. Pero
+`s1_j`/`edep_J` (con los que se compara contra `s_between` entre seeds) es
+la suma **total** del órgano. Comparar "SE de la media" contra "dispersión
+del total" mezclaba dos escalas — un piloto parcial (9/36 corridas,
+`GCR_He/min` bin 6, M=2500/5000/10000) dio un ratio `SE_within/s_between`
+mediano de ~0.0001-0.0003 con esta comparación inválida, que subió a
+~0.4-0.5 (mediana; percentil 10-90 ≈ 0.2-1.1) al usar la magnitud correcta
+del total (`SE_total = SE_media * N`, bajo el supuesto de pares iid del
+"Camino B" ya documentado arriba). **Se corrigió en Python, no en C++**
+(evita forzar una recompilación del binario en todas las máquinas a mitad
+de un piloto en curso): `parse_icrp110_out()` en `run_organ_sweep.py`
+agrega el campo derivado `se_run_total_j = se_run_j * n`; los consumidores
+(`run_intrarun_pilot.py`, `run_fase9_calibracion_mb.py`,
+`run_fase10_endpoint.py`) migraron de `se_run_j` a `se_run_total_j`. El
+`.out` crudo y `se_run_j` no cambiaron — el fix es aditivo. Con la
+corrección, `SE_within` sigue por debajo de `s_between` (~0.4-0.5 en
+mediana), coherente con la subestimación esperada si hay covarianza
+positiva entre vóxeles del mismo evento (la limitación de "Camino B" ya
+documentada), pero ya no por 4 órdenes de magnitud — no hay evidencia
+todavía de que la causa sea otra cosa, pero tampoco está demostrado que
+esa covarianza sea la única causa (una sola combinación, sin M=20000,
+`s_between` de solo 3 seeds). **Reanálisis confirmado con datos reales**
+(sesión `iac-project-1d`, mismas 9 corridas parciales): ratio mediano
+0.42/0.38/0.51 para M=2500/5000/10000, coherente con el estimado a mano.
 
-Ahorro aproximado: 46.7%.
+**Dos bugs adicionales encontrados de paso al reanalizar (2026-09-21),
+ambos corregidos:**
+
+1. `convergencia_1_sobre_sqrtM.csv` multiplicaba `SE_within` por `sqrt(M)`
+   — correcto cuando `SE_within` era el SE de una *media* (decrece con M),
+   pero inválido ahora que es `se_run_total_j` (el SE del *total*, que
+   *crece* con M). Se corrigió a dividir en vez de multiplicar
+   (`SE_total(M) / sqrt(M)`, la cantidad que sí debería quedar
+   aproximadamente constante), y la columna se renombró de `SE_sqrtM_M*`
+   a `SE_total_sobre_sqrtM_M*` para que el nombre no siga sugiriendo la
+   fórmula vieja.
+2. `write_fase7_state()` escribía siempre `"Piloto A completo"` con
+   veredicto REVISAR en cuanto había ≥1 fila comparable, sin verificar
+   cobertura real — con el piloto parcial (9/36) el estado igual decía
+   "completo". Se agregó conteo `n_esperado`/`n_encontrado` (combo × M ×
+   seed) dentro de `analyze()`, propagado a `write_fase7_state()`: si hay
+   cobertura incompleta, el resumen/instrucciones lo dicen explícitamente
+   en vez de "completo".
+
+**Nuevo (2026-09-21): `--skip-m`/`--only-m`** en `run_intrarun_pilot.py`
+para repartir el piloto por valor de `M` además de por `--combos` — por
+ejemplo, correr `SEP_p/max` y `GCR_H/min` completos salvo `M=20000` en una
+máquina, mientras `GCR_He/min/6 M=20000` se retoma aparte en otra. El
+índice de semilla (`m_idx`) sigue viniendo de `CHECKPOINTS_M.index(m)` (la
+lista global completa, no la filtrada) — verificado numéricamente que las
+semillas de los `M` que sí se corren no cambian según qué otros `M` se
+excluyan, mismo criterio que ya se aplicó a `combo_idx` (ver arriba).
 
 ## Checklist
 
-- [ ] Implementar checkpoints acumulados.
-- [ ] Mantener la misma secuencia RNG dentro de cada stream.
-- [ ] Usar tres seeds independientes entre streams.
-- [ ] Calcular `SE(M)`.
-- [ ] Evaluar:
+- [x] `S1`, `S2` y `N` superan tests sintéticos y de regresión (comparado contra `statistics.stdev()` con 4 casos sintéticos + caso límite N=1, ver commit del scorer).
+- [x] El nuevo scorer reproduce el mismo punto estimado que el scorer anterior (verificado bit a bit antes del fix del bug de relectura de `PhantomMesh_Edep.txt` encontrado de paso el mismo día, ver `docs/bitacora/activeshield_sim_historia.md` o el propio historial de commits — ese bug era preexistente, no introducido por este cambio, y se corrigió en el mismo commit).
+- [x] Script del piloto (`geant4/ActiveShield_Sim/scripts/pilots/run_intrarun_pilot.py`) implementado, probado de punta a punta localmente (combinación barata, 2 seeds) — streaming de progreso en vivo, checkpoint de que el binario tiene las columnas intra-run antes de correr el piloto completo.
+- [x] `SE_within(M)` es compatible con `s_between` — **CERRADO 2026-09-21, veredicto REVISAR (no compatible, causa identificada).** Corrida real: 33/36 (faltan las 3 de `GCR_He/min/6` M=20000, ~4.5h c/u — no se esperan, ver razón abajo). Ratio `SE_within/s_between` (con `se_run_total_j`, ver bug de normalización arriba) sistemáticamente **< 1** en las dos combinaciones con señal real: `GCR_He/min/6` mediana 0.42/0.38/0.51 (M=2500/5000/10000), `GCR_H/min/2` mediana 0.14/0.23/0.31/0.31 (M=2500/5000/10000/20000) — nunca cerca de 1, consistente en los 4 M ya medidos. `SEP_p/max/0` no aportó filas comparables: `edep_J=0` en las 12 corridas del piloto **y también en las filas de producción real** (`resultados/resultados_organo_sweep_bryam.csv`, confirmado) — el bin 0 (E≈0.019 MeV) no atraviesa el casco de 1.5cm de Al, no es un artefacto del piloto. Con este patrón ya estable en 33 filas y 2 combinaciones independientes, las 3 corridas de `GCR_He` M=20000 restantes no cambiarían la conclusión cualitativa — se decidió cerrar sin esperarlas (decisión del equipo, 2026-09-21).
+- [x] No existe discrepancia sistemática entre ambos estimadores — SÍ existe: `SE_within` subestima sistemáticamente, no es ruido aleatorio sin patrón (ver ítem anterior).
+- [x] `SE(M) * sqrt(M)` permanece aproximadamente constante — verificado con el fix correcto (`SE_total(M) / sqrt(M)`, ver bug de `convergencia_1_sobre_sqrtM.csv` arriba); no se reporta inestable en el rango de M medido.
+- [ ] El punto estimado se estabiliza al aumentar `M` — no evaluado explícitamente, fuera del alcance del cierre de este ítem.
+- [ ] `n_nonzero` es suficiente en los tallies relevantes — no evaluado explícitamente.
+- [ ] `max_event_contribution` no revela que una única historia domine el estimador (no implementado en el script actual — el reporte da `n` por órgano, que sirve de proxy parcial, pero no la contribución máxima de una sola historia).
 
-\[
-SE(M)\sqrt M \approx \text{constante}
-\]
+## Qué información produce
 
-- [ ] Examinar estabilidad del punto estimado.
-- [ ] Identificar casos con convergencia anómala.
+1. evidencia de que `R=1 + incertidumbre intra-run` es estadísticamente utilizable;
+2. una estimación preliminar de cómo escala la incertidumbre con `M`;
+3. diagnóstico de colas/eventos raros;
+4. una primera estimación de costos por evento.
 
-## Limitación importante
+## Qué no decide todavía
 
-Los checkpoints dentro de una misma run están correlacionados.
+- no decide si 8 bins son suficientes;
+- no fija el `M_b` final;
+- no decide si `H_eta <= delta_eta/2`;
+- no reemplaza la validación de discretización energética.
 
-No deben analizarse como cuatro observaciones independientes.
+## Si falla — CERRADO, este es el caso (2026-09-21)
 
-## Alternativa más robusta
+`SE_within` y `s_between` son incompatibles de forma sistemática (`SE_within` subestima, ratio mediana 0.14-0.51 según combinación/M) — **no se pasa a producción con `R=1 + SE_within` crudo.** Causa más probable identificada: el diseño "Camino B" del scorer (S1/S2 acumulados por vóxel, no por evento — ver docstring de `ICRP110UserScoreWriter.cc`) ignora la covarianza positiva entre vóxeles que un mismo primario toca, subestimando la varianza real del total del órgano. No se descarta que haya otras causas contribuyendo (una sola combinación con `s_between` de 3 seeds es poco para aislarlo del todo).
 
-Correr cada tamaño `M` con seeds completamente nuevas.
+**Decisión de cómo seguir (2026-09-21):** no implementar Camino A (instrumentar `EndOfEventAction`, varianza exacta por evento-órgano — más caro, resolvería la causa de raíz) por ahora. En su lugar, Fase 8 usa un **factor de corrección conservador derivado de este resultado** (el peor caso observado, ratio ≈0.08, no la mediana) para inflar `SE_within` y dar una barra de ruido MC de referencia sin repetir corridas — ver `FASE7_SE_CORRECTION_FACTOR` en `run_fase8_binning.py` y la sección correspondiente más abajo. Es una extrapolación explícita, no una segunda medición — documentada como tal en el código y en los reportes.
 
-Ventaja:
-- independencia total entre puntos.
+Posibles causas (registro original, antes de identificar la más probable):
 
-Limitación:
-- ~1.9x más eventos respecto del esquema con checkpoints.
+- error en acumuladores;
+- correlación entre eventos;
+- scoring incorrecto;
+- colas extremas;
+- diferencias de configuración entre runs históricas y nuevas.
 
----
+# Fase 8 — Convergencia del binning energético
 
-# Fase 8 — Seleccionar inteligentemente los casos piloto
+**Implementado (2026-09-19):** `geant4/ActiveShield_Sim/scripts/pilots/run_fase8_binning.py`
+— corre las grillas de 8 y 16 bins, calcula `epsilon_binning` (alcance
+reducido: dosis absoluta, no el endpoint `eta` completo — ver docstring
+del script) y escribe un veredicto automatizable (`auto_continue` /
+`limitrofe` / `revisar`) contra el presupuesto `B_8→16 ≤ 2.5 pp` de más
+abajo, vía `pilot_state.py`. Encadenable con la Fase 7 y las siguientes
+mediante `run_pilot_workflow.py`. Ver `pilots/README.md`.
 
-## No hacer el piloto en todas las combinaciones por defecto
+**Resume agregado (2026-09-20):** los 4 scripts `run_faseN.py`
+(`pilot_common.resolve_out_dir()`/`add_resume_arg()`) ahora reanudan una
+corrida cortada reinvocando el mismo comando con el mismo `--out-dir`,
+saltando toda combinación ya exitosa (`exit_code==0` en el manifiesto) —
+mismo patrón que `run_organ_sweep.py`. Motivado por un caso real: una
+corrida de humo de esta fase (1 combinación, 200 eventos/bin) se cortó
+por fin de sesión con 22/24 corridas hechas; sin este mecanismo se habría
+perdido ese trabajo. Verificado de punta a punta retomando esa misma
+corrida cortada: las 2 corridas faltantes (bin14/15 de la grilla de 16,
+las más caras) se completaron y el análisis final se recalculó
+correctamente sobre las 24 corridas — **primer resultado real de esta
+fase**: `epsilon_binning` máximo = 2.78% (peor caso `GCR_H/min`),
+veredicto `limitrofe` (dentro de ±0.5pp del presupuesto de 2.5pp — el
+plan pide comprobar 16→32 antes de decidir, no implementado todavía). Se
+corrigió también un bug encontrado durante esta prueba: un `--out-dir`
+relativo rompía la ruta de las macros al correr Geant4 desde otro
+directorio de trabajo (crash `-11` sin mensaje claro) — ya resuelto
+resolviendo `--out-dir` a ruta absoluta. Detalle completo en
+`pilots/README.md`, sección "Reanudar tras un corte (resume)".
 
-Seleccionar, como mínimo:
+**Barra de ruido MC de referencia (2026-09-21):** `run_fase8_binning.py`
+confirmó (grep) que nunca leía `s1_j`/`s2_j2`/`se_run_j` del `.out`, aunque
+el scorer ya los calcula — `epsilon_binning_pct` era un punto puntual sin
+error, con el riesgo que el propio plan ya advertía ("no declarar
+insuficiente el binning por una diferencia compatible con puro ruido
+Monte Carlo"). Con Fase 7 cerrada en REVISAR (arriba), se decidió **no**
+bloquear Fase 8 ni pagar repeticiones extra (R=2/3 por bin, que hubiera
+multiplicado el costo por R — 168→336/504 corridas) sino usar
+`se_run_total_j` (ya calculado, cero costo extra) **corregido por el
+peor caso observado en Fase 7** (ratio ≈0.08, no la mediana — deliberado:
+sobreestima el error en vez de subestimarlo, lado seguro para decidir si
+un binning más fino hace falta). Implementado como
+`FASE7_SE_CORRECTION_FACTOR = 0.08` en `run_fase8_binning.py`:
+`total_dose_for_grid()` propaga `se_run_total_j` de cada bin (bins
+independientes → varianzas se suman) y lo divide por ese factor;
+`analyze()` agrega `epsilon_ruido_mc_pct` y `compatible_con_ruido_mc` a
+`epsilon_binning_por_combo.csv`, comparando si `epsilon_binning_pct`
+observado se distingue de esa barra de ruido; `write_fase8_state()`
+agrega una advertencia explícita al resumen/instrucciones cuando el par
+final no se distingue de ruido MC, incluso si formalmente cae dentro del
+presupuesto de 2.5pp (para no confundir "converge" con "no se pudo medir
+lo contrario"). **Es una extrapolación explícita, no una medición de esta
+fase** — Fase 7 solo cubrió 2 de las 3 combinaciones de producción y
+nunca los bins específicos que usa Fase 8; se documenta como tal en el
+código, no se oculta detrás del número corregido.
 
-- [ ] un caso típico;
-- [ ] un bin de alto costo;
-- [ ] un órgano con baja deposición;
-- [ ] un caso de alta energía;
-- [ ] un caso SEP-min una vez habilitado;
-- [ ] un punto donde el peso espectral del bin sea importante.
+**Análisis de sensibilidad al factor (2026-09-21):** el veredicto/gate
+automatizado siempre usa el factor conservador (`FASE7_SE_CORRECTION_FACTOR`,
+el peor caso, no la mediana) — pero `total_dose_for_grid()` no vuelve a
+correr Geant4, solo relee los `.out` ya generados, así que reanalizar la
+misma corrida con otros factores es barato (reescala el SE ya calculado,
+sin volver a leer los `.out`). `--se-correction-factors '0.2,0.3'` agrega
+`epsilon_binning_sensibilidad.csv` (una fila por combo/par/factor) sin
+tocar el CSV/veredicto principal — útil para ver cuánto cambiaría
+`compatible_con_ruido_mc` con un factor menos conservador (ej. la mediana
+observada en Fase 7, ~0.3) en vez del peor caso (0.08).
 
-## Alternativa robusta
-
-Piloto separado para todos los seis casos `(species, phase)`.
-
-Ventaja:
-- máxima cobertura.
-
-Limitación:
-- mayor costo y probablemente redundancia parcial.
-
----
-
-# Fase 9 — Elegir M_b por bin
+**Reparto de la tanda 1 vía `jobs_v2` (2026-09-24):** la tanda 1 de
+producción (`SEP_p/max` + `GCR_H/min`, n_bins∈{8,16,32}, offset=0,
+n_events=10000, 112 combinaciones) venía corriendo standalone en la
+máquina de Bryam (`run_fase8_binning.py` directo, sin pasar por el
+coordinator) — al llegar a 64/112 (SEP_p/max completo, GCR_H/min solo en
+8 bins) se decidió repartir lo restante (48 combinaciones: toda la
+grilla 16/32 de GCR_H/min) entre los workers voluntarios vía `jobs_v2`
+(`db_v2.py`/`/api/v1/jobs/v2/...`, código ya en `main` desde antes pero
+sin desplegar en la VM). `seed_full_sweep_v2.py` no sirve para esto tal
+cual: siembra los 3 combos fijos de producción (incluye `GCR_He/min`,
+bloqueado hasta confirmación explícita) × las 5 posiciones del eje
+(`OFFSET_X_VALUES_M`), mientras que Fase 8 fija offset en 0.0 y no debe
+tocar `GCR_He/min` — usarlo habría sembrado 5x el trabajo real y
+adelantado un combo no autorizado. Se agregó
+`infra/coordinator/seed_fase8_tanda1_v2.py` (scope acotado a esta
+tanda), que siembra las 112 combinaciones y marca como `done` las 64 ya
+corridas por Bryam, asociadas a un worker `bryam-local` registrado
+explícitamente (con `results_csv_path`/`manifest_csv_path` apuntando a
+la referencia git real en `results/fase8-prod`, no a un CSV filtrado —
+ese trabajo no pasó por el protocolo HTTP del worker) — trazabilidad
+honesta de un retro-registro, no un resultado inventado. Verificado
+localmente contra una DB de prueba aislada antes de tocar producción:
+112/112 sembradas, 64 `done`/48 `pending` coincide con el manifest real,
+`pytest infra/coordinator/test_db_v2.py` en verde. Bryam detiene su
+corrida local de las 48 restantes una vez el coordinator las reparte,
+para no duplicar cómputo. `dashboard.html` se actualizó en el mismo
+cambio con un panel de solo lectura para `jobs_v2` (ver
+`infra/coordinator/dashboard.html`, función genérica
+`renderSimpleJobsTable()` — reutilizable para una futura `jobs_v3` sin
+copiar/pegar render logic, declarando solo un objeto de columnas).
 
 ## Objetivo
 
-No asignar automáticamente 10 000 eventos a todos los bins si no es necesario.
+Determinar si la discretización actual de 8 bins es suficientemente precisa **antes** de optimizar `M_b` o comprobar la precisión de la comparación shield/control.
+
+El problema es distinto del ruido Monte Carlo:
+
+\[
+D_8-D_{\rm continuo}
+\]
+
+es un error de discretización. Aumentar `M` no lo elimina.
+
+## Diseño mínimo recomendado
+
+Comparar, en casos preseleccionados y físicamente exigentes:
+
+\[
+8\text{ bins}
+\quad\text{vs}\quad
+16\text{ bins}.
+\]
+
+Si el resultado es limítrofe:
+
+\[
+16\rightarrow32.
+\]
+
+## Casos que conviene incluir
+
+- [ ] al menos un caso GCR;
+- [ ] al menos un caso SEP;
+- [ ] `SEP_p/min` por su espectro duro;
+- [ ] una especie alfa;
+- [ ] un offset relevante;
+- [ ] un endpoint/órgano sensible;
+- [ ] cuando sea viable, shield y control para estudiar directamente el cambio en `eta`.
+
+## Métricas
+
+Para dosis:
+
+\[
+\epsilon_{\rm binning}
+=
+\frac{|D_{16}-D_8|}{|D_{16}|}.
+\]
+
+Para el endpoint principal shield/control:
+
+\[
+\eta_k
+=
+1-\frac{D_{{\rm shield},k}}
+{D_{{\rm control},k}},
+\]
+
+con `k=8,16`, y:
+
+\[
+B_{8\rightarrow16}
+=
+|\eta_{16}-\eta_8|.
+\]
+
+## Tolerancia de diseño propuesta
+
+Dado que el criterio primario propuesto es:
+
+\[
+\delta_\eta=10\text{ pp}
+\]
+
+y:
+
+\[
+H_{\eta,95}\le5\text{ pp},
+\]
+
+usar provisionalmente como presupuesto de error de discretización:
+
+\[
+\boxed{
+B_{8\rightarrow16}\le2.5\text{ pp}
+}
+\]
+
+para considerar 8 bins suficientemente estables respecto del endpoint principal.
+
+Este valor es un **presupuesto numérico del estudio**, no un estándar universal.
+
+## Considerar también el ruido Monte Carlo
+
+No basta comparar dos puntos estimados. Si ambos tienen incertidumbre apreciable, evaluar:
+
+\[
+\Delta_{\rm bin}
+=
+\eta_{16}-\eta_8
+\]
+
+junto con su error estándar.
+
+No declarar insuficiente el binning por una diferencia que sea compatible con puro ruido Monte Carlo.
+
+## Reutilización de resultados existentes
+
+- [x] Los resultados históricos de 8 bins pueden servir como lado `D_8` cuando la configuración coincide exactamente.
+- [ ] Correr únicamente la malla refinada necesaria para esos casos.
+- [ ] No mezclar resultados si cambió alguna otra condición física.
+
+## Decisión
+
+### Si 8 bins cumplen
+Conservar 8 bins y continuar a calibración final de `M_b`.
+
+### Si 8 bins no cumplen
+Adoptar 16 bins como candidato.
+
+### Si 8→16 es limítrofe o 16 no parece estable
+Comprobar:
+
+\[
+16\rightarrow32.
+\]
+
+Si 16 y 32 concuerdan dentro del presupuesto, usar 16.
+
+## Si 8 bins falla, ¿qué se conserva?
+
+Sigue siendo válido:
+
+- la validación de `SE_within`;
+- el comportamiento `1/sqrt(M)`;
+- los tests del scorer;
+- tiempos por evento en energías ya estudiadas;
+- la reproducibilidad de seeds.
+
+Debe recalibrarse:
+
+- `M_b`;
+- cualquier endpoint integrado calculado sobre el binning descartado;
+- la comparación final shield/control.
+
+# Fase 9 — Calibración del número de eventos por bin
+
+**Implementado (2026-09-19):** `geant4/ActiveShield_Sim/scripts/pilots/run_fase9_calibracion_mb.py`
+— corre una corrida de sondeo por bin de la malla definitiva, mide
+`sigma_b` (vía `SE_within`), `W_b` y `c_b` (costo real medido en la
+máquina), y calcula `M_b` propuesto con la fórmula de abajo. Siempre
+termina en veredicto `revisar` (el plan exige documentar `M_b` como
+decisión de equipo, no automatizable). Ver `pilots/README.md`.
+
+## Objetivo
+
+Una vez congelado el binning energético, determinar cuánto `M_b` necesita cada bin para que su contribución a la incertidumbre del endpoint final sea suficientemente pequeña.
+
+## Base estadística
 
 Con:
 
 \[
-V(D)=\sum_bW_b^2\frac{\sigma_b^2}{M_b}
+V(D)=\sum_bW_b^2\frac{\sigma_b^2}{M_b},
 \]
 
 y costo por evento `c_b`, una asignación eficiente satisface aproximadamente:
 
 \[
-M_b\propto\frac{|W_b|\sigma_b}{\sqrt{c_b}}
+M_b\propto\frac{|W_b|\sigma_b}{\sqrt{c_b}}.
 \]
+
+## Diseño recomendado
+
+Usar la información obtenida en la validación del estimador y, si hace falta, ejecutar checkpoints adicionales **sobre las energías representativas del binning definitivo**:
+
+\[
+M=2500,\ 5000,\ 10000,\ 20000.
+\]
+
+Los cuatro tamaños pueden obtenerse como prefijos/checkpoints de runs largas, sin ejecutar cuatro jobs independientes por seed.
 
 ## Checklist
 
-- [ ] Medir tiempo/evento por bin.
+- [ ] Medir `SE_b(M)` para bins representativos.
+- [ ] Verificar `SE(M) * sqrt(M)` en la malla definitiva.
+- [ ] Medir costo por evento `c_b`.
+- [ ] Calcular `W_b`.
 - [ ] Estimar `sigma_b`.
-- [ ] Calcular peso `W_b`.
-- [ ] Estimar contribución de cada bin a la varianza final.
-- [ ] Fijar `M_b` antes de producción.
+- [ ] Calcular contribución `W_b^2 V_b`.
+- [ ] Identificar bins que dominan la incertidumbre.
+- [ ] Fijar `M_b` antes de la validación shield/control.
 - [ ] Documentar los `M_b` definitivos.
+- [ ] Mantener un mínimo de historias que evite tallies patológicamente escasos.
 
-## Alternativa simple
+## Alternativa simple y robusta
 
 Mantener:
 
 \[
-M_b=10000\quad\forall b
+M_b=10000\quad\forall b.
 \]
 
-Ventaja:
+Ventajas:
+
 - simplicidad;
 - comparabilidad;
-- menor riesgo de bugs.
+- menor riesgo de errores.
 
 Limitación:
-- puede desperdiciar grandes cantidades de cómputo.
+
+- puede desperdiciar mucho cómputo, especialmente en bins de alta energía costosos que contribuyen poco a la varianza final.
+
+## Alternativa más eficiente
+
+Asignar `M_b` utilizando `W_b`, `sigma_b` y `c_b`.
+
+Ventaja:
+
+- minimiza la varianza para un presupuesto computacional dado.
+
+Limitaciones:
+
+- pipeline más complejo;
+- requiere estimaciones preliminares de `sigma_b`;
+- los valores deben congelarse antes de producción para evitar decisiones post hoc.
+
+# Fase 10 — Comprobación de precisión del endpoint shield vs. control
+
+**Implementado (2026-09-19):** `geant4/ActiveShield_Sim/scripts/pilots/run_fase10_endpoint.py`
+— corre control (`field_scale=0`) y shield (`field_scale=1`) por bin con
+los `M_b` de la Fase 9, calcula `eta`, propaga `V(eta)` (sin CRN
+todavía — bins/configuraciones con semillas independientes) y compara
+`H_eta,95` contra `delta_eta/2=5pp`. Gate automatizable, mismo criterio
+que Fase 8. Ver `pilots/README.md`.
+
+## Objetivo
+
+Comprobar que los `M_b` seleccionados en el Piloto A son suficientes **para la cantidad científica que se publicará**, no solo para estimar bien cada bin individual.
+
+Definir:
+
+\[
+D_0=D_{\rm control},
+\qquad
+D_1=D_{\rm shield}
+\]
+
+y la reducción relativa:
+
+\[
+\eta=1-\frac{D_1}{D_0}.
+\]
+
+El criterio primario propuesto es:
+
+\[
+\boxed{H_{\eta,95}\le\frac{\delta_\eta}{2}}
+\]
+
+con:
+
+\[
+\boxed{\delta_\eta=10\text{ pp}}
+\]
+
+como propuesta inicial para la comparación principal shield/no-shield.
+
+## Diseño mínimo recomendado
+
+Para cada caso seleccionado:
+
+1. ejecutar/obtener los 8 bins del control;
+2. ejecutar/obtener los 8 bins con shield;
+3. utilizar los `M_b` fijados por Piloto A;
+4. calcular dosis total e incertidumbre propagada;
+5. calcular `eta` e IC95%.
+
+Para bins independientes:
+
+\[
+V(D_0)=\sum_bW_b^2V_{0,b}
+\]
+
+\[
+V(D_1)=\sum_bW_b^2V_{1,b}.
+\]
+
+Si shield y control son independientes:
+
+\[
+V(\eta)\approx
+\frac{V(D_1)}{D_0^2}
++
+\frac{D_1^2V(D_0)}{D_0^4}.
+\]
+
+Entonces:
+
+\[
+H_{\eta,95}\approx1.96\sqrt{V(\eta)}
+\]
+
+cuando la aproximación normal está validada.
+
+## Common random numbers (CRN)
+
+Cuando sea técnicamente compatible, correr control y shield con la misma seed/estado inicial permite estimar su covarianza:
+
+\[
+V(D_0-D_1)=V(D_0)+V(D_1)-2\operatorname{Cov}(D_0,D_1).
+\]
+
+Si la covarianza es positiva, el pareamiento puede reducir sustancialmente la varianza de la diferencia.
+
+El Piloto B debe determinar si esta estrategia realmente ayuda en presencia del campo magnético; no se asume a priori.
+
+## Checklist
+
+- [ ] Congelar `delta_eta` antes de inspeccionar el resultado confirmatorio del Piloto B.
+- [ ] Seleccionar previamente los casos/offsets del piloto.
+- [ ] Incluir al menos un caso físicamente exigente.
+- [ ] Calcular `D_control`, `D_shield`, `eta` y `H_eta`.
+- [ ] Comprobar `H_eta <= delta_eta/2`.
+- [ ] Calcular la contribución de cada bin a la varianza de las dosis y de `eta`.
+- [ ] Si el criterio falla, aumentar `M` prioritariamente en los bins que dominan la varianza.
+- [ ] Probar CRN con las mismas seeds y cuantificar la correlación shield/control.
+- [ ] Conservar como producción las runs del Piloto B solo si fueron generadas bajo la configuración/protocolo ya congelados.
+
+## Si falla el criterio
+
+No se redefine `delta_eta`.
+
+Se identifica qué términos `W_b^2 V_b` dominan la incertidumbre y se aumenta `M_b` de forma selectiva. Bajo el régimen Monte Carlo:
+
+\[
+M_{\rm nuevo}\approx M_{\rm actual}
+\left(\frac{H_{\rm actual}}{H_{\rm objetivo}}\right)^2.
+\]
+
+## Alternativa más robusta
+
+Realizar el Piloto B con varias seeds completas por shield/control.
+
+Ventaja:
+- permite evaluar directamente variabilidad entre pares de runs.
+
+Limitación:
+- multiplica el costo; no es necesario si Piloto A ya validó la incertidumbre intra-run y el objetivo aquí es confirmar la precisión del endpoint.
 
 ---
 
-# Fase 10 — Elegir estrategia de producción para los tres casos nuevos
+# Fase 11 — Elegir estrategia de producción para los tres casos nuevos
 
 Hay 3 casos nuevos × 8 bins × 5 offsets = **120 combinaciones físicas por repetición**.
 
@@ -631,7 +1242,7 @@ Limitación grave:
 
 ---
 
-# Fase 11 — Validar empíricamente el método R=1
+# Fase 12 — Validar empíricamente el método R=1
 
 ## Objetivo
 
@@ -673,7 +1284,7 @@ Limitación:
 
 ---
 
-# Fase 12 — Análisis final por bin
+# Fase 13 — Análisis final por bin
 
 Para cada `(species, phase, bin, offset, organ)`:
 
@@ -710,7 +1321,7 @@ si los bins son independientes.
 
 ---
 
-# Fase 13 — Construcción del IC95% final
+# Fase 14 — Construcción del IC95% final
 
 ## Caso 1 — Varianza estimada mediante repeticiones
 
@@ -752,7 +1363,7 @@ Limitación:
 
 ---
 
-# Fase 14 — Comparación min vs max
+# Fase 15 — Comparación min vs max
 
 Con la grilla actual, min/max se simulan en energías distintas.
 
@@ -766,7 +1377,7 @@ Por tanto, **no asumir covarianza por reutilización del mismo response kernel**
 
 ---
 
-# Fase 15 — Comparación blindaje vs control
+# Fase 16 — Comparación blindaje vs control
 
 Si la métrica científica principal es:
 
@@ -795,57 +1406,38 @@ Limitaciones:
 
 ---
 
-# Fase 16 — Validar el error de discretización energética
+# Fase 17 — Comprobación final de robustez del binning
 
-## Riesgo
+## Objetivo
 
-Los IC Monte Carlo pueden ser pequeños aunque el uso de 8 bins introduzca un error sistemático mayor.
+Confirmar que la decisión tomada en la Fase 8 sigue siendo adecuada en el conjunto final de resultados y que no aparece una sensibilidad inesperada del endpoint principal al refinamiento energético.
 
-## Estudio mínimo recomendado
-
-Comparar en casos representativos:
-
-\[
-8\text{ bins}\quad \text{vs}\quad16\text{ bins}
-\]
-
-y calcular:
-
-\[
-\epsilon_{\rm binning}=
-\frac{|D_{16}-D_8|}{|D_{16}|}
-\]
+Esta fase **no sustituye** la validación temprana del binning. Es una comprobación adicional de robustez antes del manuscrito.
 
 ## Checklist
 
-- [ ] Seleccionar casos representativos.
-- [ ] Incluir un espectro duro.
-- [ ] Incluir SEP-min.
-- [ ] Comparar dosis total.
-- [ ] Comparar órganos sensibles.
-- [ ] Comparar costo computacional.
+- [ ] Verificar que el binning usado en producción coincide con el validado.
+- [ ] Repetir 8→16 o 16→32 en uno o más casos adicionales si los resultados finales muestran regiones especialmente sensibles.
+- [ ] Reportar el cambio relativo en dosis.
+- [ ] Reportar el cambio en `eta`.
+- [ ] Confirmar que el error de discretización permanece por debajo del presupuesto definido.
+- [ ] Si aparece una discrepancia importante, ampliar el estudio de convergencia energética y no ocultar la sensibilidad.
 
-## Alternativa robusta
+## Alternativa más robusta
+
+Realizar sistemáticamente:
 
 \[
 8\rightarrow16\rightarrow32
 \]
 
-hasta convergencia.
+en varios casos representativos.
 
 Limitación:
-- costo elevado.
 
-## Alternativa eficiente
+- costo computacional elevado.
 
-Refinamiento adaptativo donde `mu(E)` cambia más rápidamente.
-
-Limitación:
-- mayor complejidad metodológica.
-
----
-
-# Fase 17 — Incertidumbres sistemáticas y análisis de sensibilidad
+# Fase 18 — Incertidumbres sistemáticas y análisis de sensibilidad
 
 ## Objetivo
 
@@ -872,7 +1464,7 @@ No tiene sentido gastar mucho cómputo para reducir MC de 2% a 0.2% si el modelo
 
 ---
 
-# Fase 18 — Multiplicidad y endpoints del paper
+# Fase 19 — Multiplicidad y endpoints del paper
 
 Habrá muchas combinaciones de:
 
@@ -891,7 +1483,7 @@ Habrá muchas combinaciones de:
 
 ---
 
-# Fase 19 — Reproducibilidad y semillas
+# Fase 20 — Reproducibilidad y semillas
 
 ## Estado actual
 
@@ -926,7 +1518,7 @@ Habrá muchas combinaciones de:
 
 ---
 
-# Fase 20 — Despliegue seguro de los cambios hechos hoy
+# Fase 21 — Despliegue seguro de los cambios hechos hoy
 
 Los cambios están actualmente solo en el working tree local.
 
@@ -957,57 +1549,67 @@ Los cambios están actualmente solo en el working tree local.
 
 ---
 
-# Fase 21 — Secuencia operativa recomendada desde hoy
+# Fase 22 — Secuencia operativa recomendada desde hoy
 
-## Etapa A — cerrar el análisis del barrido existente
+## Etapa A — Consolidar el barrido existente
 
-- [ ] Sincronizar todos los resultados `done` disponibles.
+- [ ] Sincronizar todos los resultados `done`.
 - [ ] Recalcular `R_b` real.
-- [ ] Calcular qué bins tienen `R_b=1,2,3,4,5`.
-- [ ] Calcular contribución de cada bin a dosis.
-- [ ] Calcular contribución de cada bin a varianza.
-- [ ] Fijar `X` / `delta`.
-- [ ] Decidir qué jobs de los 67 pending y 4 failed son realmente necesarios.
-- [ ] Reencolar solo los necesarios o, alternativamente, completar los 600.
+- [ ] Identificar bins con `R_b=1,2,3,4,5`.
+- [ ] Calcular contribución de cada bin a dosis y varianza.
+- [ ] Fijar formalmente `delta_eta` y el endpoint primario.
+- [ ] Mantener documentados los 67 pending y 4 failed.
 
-## Etapa B — preparar el método futuro
+## Etapa B — Validar la incertidumbre intra-run
 
-- [ ] Implementar incertidumbre intra-run.
-- [ ] Validarla con tests.
-- [ ] Implementar checkpoints.
-- [ ] Ejecutar piloto de convergencia.
-- [ ] Seleccionar `M_b`.
+- [ ] Completar `S1`, `S2`, `N`.
+- [ ] Validar con datos sintéticos.
+- [ ] Ejecutar unas pocas runs instrumentadas.
+- [ ] Comparar `SE_within` con `s_between` histórico.
+- [ ] Verificar `1/sqrt(M)`.
 
-## Etapa C — expansión a tres casos nuevos
+## Etapa C — Validar el binning antes de optimizar M
+
+- [ ] Seleccionar casos representativos/difíciles.
+- [ ] Comparar 8 vs 16 bins.
+- [ ] Si es necesario, comparar 16 vs 32.
+- [ ] Congelar el binning definitivo.
+
+## Etapa D — Calibrar `M_b` sobre el binning definitivo
+
+- [ ] Obtener `SE_b(M)` en las energías definitivas.
+- [ ] Medir `c_b`.
+- [ ] Calcular `W_b^2 V_b`.
+- [ ] Fijar `M_b`.
+- [ ] Documentar los valores antes de continuar.
+
+## Etapa E — Comprobar la precisión shield/control
+
+- [ ] Ejecutar el conjunto mínimo shield/control con los `M_b` definitivos.
+- [ ] Calcular `eta`.
+- [ ] Calcular `H_eta`.
+- [ ] Verificar:
+
+\[
+H_{\eta,95}\le\frac{\delta_\eta}{2}.
+\]
+
+- [ ] Probar CRN si es compatible.
+- [ ] Si falla, aumentar `M_b` solo donde la contribución a la varianza lo justifique.
+
+## Etapa F — Desplegar expansión y ejecutar producción
 
 - [ ] Desplegar soporte `phase`.
-- [ ] Añadir:
-  - `GCR_H/max`;
-  - `GCR_He/max`;
-  - `SEP_p/min`.
-- [ ] Ejecutar `R=1` completo si la incertidumbre intra-run está validada.
-- [ ] Ejecutar `R=3` en subconjunto de validación.
-- [ ] Extender a `R=5` solo si el criterio predefinido falla.
+- [ ] Añadir `GCR_H/max`, `GCR_He/max`, `SEP_p/min`.
+- [ ] Ejecutar la estrategia seleccionada (`R=1` + intra-run, o una alternativa más conservadora).
+- [ ] Usar `R=3–5` solo en subconjuntos de validación o cuando el criterio lo requiera.
 
-## Etapa D — validaciones numéricas/físicas
+## Etapa G — Validaciones finales del paper
 
-- [ ] 8 vs 16 bins.
-- [ ] Sensibilidad a parámetros principales.
-- [ ] Validación contra literatura/caso de referencia.
-- [ ] Comparación blindaje/control.
-
-## Etapa E — análisis final y paper
-
-- [ ] Generar tabla final por caso/offset/órgano.
-- [ ] Reportar estimación puntual.
-- [ ] Reportar IC95%.
-- [ ] Reportar `H_%`.
-- [ ] Reportar método usado para varianza.
-- [ ] Reportar `R_b` / `M_b`.
-- [ ] Marcar cualquier resultado sin varianza suficiente.
-- [ ] Reportar estudio de convergencia.
-- [ ] Reportar estudio de discretización energética.
-- [ ] Separar explícitamente error MC de incertidumbre sistemática.
+- [ ] sensibilidad a parámetros físicos;
+- [ ] validación contra literatura/caso de referencia;
+- [ ] comprobación adicional del binning si aparece sensibilidad;
+- [ ] separación explícita de incertidumbre MC, discretización e incertidumbre sistemática.
 
 ---
 
@@ -1116,17 +1718,24 @@ Debe declararse explícitamente.
 
 # Decisión recomendada hoy
 
-1. **No lanzar todavía los tres casos nuevos.**
-2. Desplegar primero el soporte `phase` de forma backward-compatible.
-3. Sincronizar y explotar correctamente los resultados actuales mediante la vista por-bin.
-4. Fijar el criterio de precisión.
-5. Determinar cuántos de los 71 jobs restantes son realmente necesarios.
-6. Implementar incertidumbre intra-run.
-7. Hacer un piloto pequeño de convergencia con checkpoints.
-8. Fijar `M_b`.
-9. Ejecutar los nuevos casos inicialmente con `R=1` si la incertidumbre intra-run ha sido validada.
-10. Usar `R=3–5` únicamente en un subconjunto de validación o cuando el criterio de precisión lo requiera.
-11. Antes del paper, realizar al menos un estudio de convergencia del binning energético y separar claramente incertidumbre MC de incertidumbre sistemática.
+1. **No lanzar todavía el barrido completo de los tres casos nuevos.**
+2. Consolidar los resultados históricos y fijar `delta_eta`/endpoint primario.
+3. Validar primero el estimador de incertidumbre intra-run.
+4. **Adelantar la validación del binning energético.**
+5. Congelar 8, 16 o 32 bins según el resultado.
+6. Recién entonces calibrar `M_b`.
+7. Comprobar que la comparación shield/control cumple:
+
+\[
+H_{\eta,95}\le\frac{\delta_\eta}{2}.
+\]
+
+8. Solo después iniciar producción definitiva.
+9. Utilizar las repeticiones históricas para validar `SE_within`, no como obligación de mantener `R=5` en toda la expansión.
+10. Antes del paper, separar claramente:
+    - incertidumbre Monte Carlo;
+    - error de discretización;
+    - incertidumbre del modelo físico.
 
 ---
 
@@ -1147,3 +1756,18 @@ Un resultado se considera metodológicamente listo para el manuscrito cuando:
 - [ ] resultados históricos y nuevos son reproducibles;
 - [ ] cualquier análisis adaptativo tiene reglas documentadas;
 - [ ] el método estadístico está descrito de forma suficiente para reproducirlo.
+
+
+---
+
+# Referencias metodológicas para fijar la escala de `delta_eta`
+
+Estas referencias **informan la escala** de efectos esperables, pero no establecen un `delta_eta` universal:
+
+1. **Battiston et al. / SR2S (2016), _Evaluation of Superconducting Magnet Shield Configurations for Long Duration Manned Space Missions_.** En simulaciones Geant4, la contribución del campo fue ~10% para una configuración de ~6.3 Tm, ~20–25% para una configuración toroidal de 8 Tm y alcanzó ~45% alrededor de 23 Tm; el artículo discute contribuciones del campo del orden de 10–50% dependiendo de la configuración. DOI: `10.3389/fonc.2016.00097`.
+
+2. **NASA NESC Technical Memorandum (2022), comparación de conceptos de blindaje magnético.** Resume resultados de configuraciones SR2S con reducciones field-on/field-off del orden de ~20% a 8 Tm y ~45% a 23 Tm, enfatizando que la reducción es específica de la configuración.
+
+3. **Huo (2026), _Fluence to dose equivalent conversion coefficients for ICRP110 voxel phantoms with aluminum and polyethylene shielding using GEANT4_.** Para blindaje pasivo, las reducciones de dosis equivalente efectiva varían ampliamente según material, espesor, quality factor y modulación solar, aproximadamente desde un dígito porcentual hasta >40%. DOI: `10.1038/s41598-026-54174-z`.
+
+**Interpretación para este proyecto:** `delta_eta = 10 pp` es un umbral de resolución ingenieril razonable para la comparación primaria shield/no-shield porque está cerca del extremo inferior de efectos magnéticos publicados. No debe describirse como un umbral clínico/biológico universal.

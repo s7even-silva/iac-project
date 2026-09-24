@@ -142,11 +142,43 @@ Docker Desktop para nada después de la primera vez.
 docker run -d --name geant4-worker --restart unless-stopped \
   -e COORDINATOR_URL=https://coordinator.vlaboratory.org \
   -e WORKER_LABEL=<tu-nombre> \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   ghcr.io/s7even-silva/iac-project/geant4-worker:latest
 ```
 
 Cambia `<tu-nombre>` por algo que te identifique (ej. `laptop-juan`) — así
 sabemos de quién es cada run si algo falla.
+
+El `-v /var/run/docker.sock:...` (montar el socket de Docker dentro del
+contenedor) es lo que le permite al worker actualizarse solo cuando
+publicamos una imagen nueva, sin que tengas que repetir este comando a
+mano — el instalador de Windows ya lo hace automático (ver más arriba),
+esto es el equivalente para Linux/Mac. **Tradeoff de seguridad aceptado
+a propósito:** con esto, el contenedor puede crear/eliminar otros
+contenedores en tu PC (no solo administrar el suyo propio) — razonable
+si confías en el equipo que publica las imágenes, no algo para instalar
+en una máquina compartida con terceros desconocidos. Si prefieres no
+darle ese acceso, omite esa línea: el worker sigue funcionando igual,
+solo no podrá auto-actualizarse (tendrás que volver a correr este mismo
+comando con `:latest` cuando te avisemos de una imagen nueva).
+
+**Si usas Podman en vez de Docker** (mismo comando, cambiando `docker`
+por `podman`): la ruta del socket es distinta. Habilita el socket una
+vez (rootless, persiste entre reinicios):
+```bash
+systemctl --user enable --now podman.socket
+```
+y monta esa ruta en vez de la de Docker:
+```bash
+-v $XDG_RUNTIME_DIR/podman/podman.sock:/var/run/docker.sock
+```
+(sí, el destino dentro del contenedor sigue siendo `/var/run/docker.sock`
+— el worker habla la API de Docker Engine, que Podman expone igual en
+modo compatibilidad; solo cambia de dónde viene el socket en tu PC).
+Confirmado con un caso real (2026-09-16, ver `infra/OPERATIONS_LOG.md`):
+sin este mount, el worker sigue tomando jobs con normalidad, pero
+`image_digest` queda vacío en el dashboard y la auto-actualización nunca
+se activa — sin ningún error visible en los logs.
 
 **La primera vez tarda unos minutos** en descargar la imagen (~5GB,
 incluye Geant4 ya compilado). Después de eso, arranca en segundos.
@@ -241,10 +273,13 @@ Sí, dos formas:
     -e COORDINATOR_URL=https://coordinator.vlaboratory.org \
     -e WORKER_LABEL=<tu-nombre> \
     -e WORKER_THREADS=2 \
+    -v /var/run/docker.sock:/var/run/docker.sock \
     ghcr.io/s7even-silva/iac-project/geant4-worker:latest
   ```
   (`WORKER_THREADS=2` usa solo 2 núcleos en vez de todos los disponibles
-  — la run tarda más pero deja el resto de tu PC libre).
+  — la run tarda más pero deja el resto de tu PC libre. El `-v .../docker.sock`
+  es el mismo mount de la sección 2, para auto-actualización — ver ahí el
+  tradeoff de seguridad y la variante para Podman).
 
 - **Limitar el contenedor directamente** (más estricto, límite duro de
   Docker):
@@ -253,6 +288,7 @@ Sí, dos formas:
     -e COORDINATOR_URL=https://coordinator.vlaboratory.org \
     -e WORKER_LABEL=<tu-nombre> \
     --cpus=2 --memory=4g \
+    -v /var/run/docker.sock:/var/run/docker.sock \
     ghcr.io/s7even-silva/iac-project/geant4-worker:latest
   ```
   (`--cpus=2` tope de 2 núcleos, `--memory=4g` tope de 4GB de RAM —

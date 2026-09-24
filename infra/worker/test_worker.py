@@ -30,6 +30,145 @@ def test_header_only_is_not_result(tmp_path):
     assert worker.filter_results_csv(job, tmp_path) == ''
 
 
+def test_build_command_includes_n_bins_when_present():
+    # jobs_v2 (2026-09-20): un job que trae n_bins debe pasarlo como
+    # --n-bins a run_organ_sweep.py -- ver db_v2.py.
+    job = dict(species='GCR_H', phase='min', bin_index=3, n_bins=16, offset_x_m=0., repeticion=0, n_events=200)
+    cmd = worker.build_command(job)
+    assert cmd[cmd.index('--n-bins')+1] == '16'
+
+
+def test_build_command_omits_n_bins_when_absent():
+    # Un job v1 (sin la key 'n_bins') NUNCA debe agregar --n-bins -- el
+    # comando construido para v1 no cambia en absoluto (protege
+    # test_exact_repetition, que no espera --n-bins en el comando).
+    job = dict(species='GCR_H', phase='min', bin_index=3, offset_x_m=0., repeticion=0, n_events=200)
+    cmd = worker.build_command(job)
+    assert '--n-bins' not in cmd
+
+
+def test_results_fieldnames_v2_includes_stat_columns():
+    for col in ('n_bins', 's1_j', 's2_j2', 'n', 'se_run_j', 'se_run_total_j'):
+        assert col in worker.RESULTS_FIELDNAMES_V2
+
+
+def test_filter_results_csv_v2_filters_by_n_bins(tmp_path):
+    # bin_index=3 de una grilla de 8 y bin_index=3 de una grilla de 16 NO
+    # son el mismo job -- filter_results_csv debe distinguirlos cuando el
+    # job trae n_bins (ver db_v2.py, UNIQUE incluye n_bins).
+    header = ','.join(worker.RESULTS_FIELDNAMES_V2)
+    rows = [
+        'GCR_H,min,3,8,100.0,0.0,0,1,1e-10,1e-12,200,1e-10,1e-20,100,1e-19,1e-17',
+        'GCR_H,min,3,16,100.0,0.0,0,1,2e-10,2e-12,200,2e-10,2e-20,200,2e-19,4e-17',
+    ]
+    (tmp_path/'resultados_organo_sweep.csv').write_text(header + '\n' + '\n'.join(rows) + '\n')
+
+    job = dict(species='GCR_H', phase='min', bin_index=3, n_bins=16, offset_x_m=0., repeticion=0)
+    result = worker.filter_results_csv(job, tmp_path, worker.RESULTS_FIELDNAMES_V2)
+    lines = [l for l in result.splitlines() if l]
+    assert len(lines) == 2  # header + 1 fila (solo la de n_bins=16)
+    assert ',16,' in lines[1]
+
+
+def test_filter_results_csv_tolerates_extra_columns_for_v1(tmp_path):
+    # Bug real encontrado 2026-09-20: resultados_organo_sweep.csv ahora
+    # SIEMPRE trae n_bins/s1_j/s2_j2/n/se_run_j (ver run_organ_sweep.py) --
+    # un job v1 (fieldnames=RESULTS_FIELDNAMES, sin esas columnas) no debe
+    # fallar por eso (extrasaction='ignore').
+    header = ','.join(worker.RESULTS_FIELDNAMES_V2)
+    row = 'GCR_H,min,0,8,10.0,0.0,0,1,1e-10,1e-12,200,1e-10,1e-20,100,1e-19,1e-17'
+    (tmp_path/'resultados_organo_sweep.csv').write_text(header + '\n' + row + '\n')
+
+    job = dict(species='GCR_H', phase='min', bin_index=0, offset_x_m=0., repeticion=0)  # sin n_bins -- job v1
+    result = worker.filter_results_csv(job, tmp_path)  # fieldnames default = RESULTS_FIELDNAMES (v1)
+    lines = [l for l in result.splitlines() if l]
+    assert len(lines) == 2
+    assert 's1_j' not in lines[0]  # header v1, sin las columnas nuevas
+
+
+def test_cleanup_preserves_other_workers_job_dir_processes(tmp_path, monkeypatch):
+    # Bug real de produccion (2026-09-20, ver infra/OPERATIONS_LOG.md):
+    # procesos ICRP110phantoms huerfanos en tania, hasta 24h vivos.
+    # Verifica las DOS correcciones de diseño discutidas con el equipo:
+    # (a) el filtro es por cwd dentro de geant4-job-*, NO por nombre de
+    # binario solo -- un proceso con el mismo nombre en cualquier OTRO
+    # directorio (ej. una corrida manual del usuario en bryam-local)
+    # nunca se toca.
+    import subprocess
+    monkeypatch.setattr(worker, '_ORPHAN_BINARY_NAME', 'sleep')  # sustituto de ICRP110phantoms para el test
+
+    job_dir = tmp_path / 'geant4-job-abc123'
+    job_dir.mkdir()
+    orphan = subprocess.Popen(['sleep', '30'], cwd=job_dir, start_new_session=True)
+
+    normal_dir = tmp_path / 'manual-run'
+    normal_dir.mkdir()
+    manual = subprocess.Popen(['sleep', '30'], cwd=normal_dir, start_new_session=True)
+
+    try:
+        time.sleep(0.3)
+        killed = worker.cleanup_orphaned_simulations()
+        time.sleep(0.3)
+
+        assert orphan.pid not in killed
+        assert manual.pid not in killed
+        assert orphan.poll() is None, 'el prefijo no prueba que sea huerfano'
+        assert manual.poll() is None, 'una corrida en un directorio normal NUNCA debe tocarse'
+    finally:
+        for p in (orphan, manual):
+            if p.poll() is None:
+                p.terminate()
+                p.wait(timeout=5)
+
+
+def test_cleanup_does_not_claim_unverified_kills(tmp_path, monkeypatch, capsys):
+    # Pedido explicito del equipo tras el incidente de tania (2026-09-20):
+    # si el problema reaparece, el dato que faltó esa vez (pid/ppid/pgid/
+    # sid/cwd reales del huerfano) debe quedar registrado sin que nadie
+    # tenga que entrar a la maquina a sacarlo a mano -- y el conteo
+    # acumulado debe quedar visible sin acceso directo (ver heartbeat()).
+    import subprocess
+    monkeypatch.setattr(worker, '_ORPHAN_BINARY_NAME', 'sleep')
+    monkeypatch.setattr(worker, '_orphans_killed_total', 0)
+
+    job_dir = tmp_path / 'geant4-job-diag'
+    job_dir.mkdir()
+    orphan = subprocess.Popen(['sleep', '30'], cwd=job_dir, start_new_session=True)
+    try:
+        time.sleep(0.3)
+        killed = worker.cleanup_orphaned_simulations()
+        assert orphan.pid not in killed
+        assert worker._orphans_killed_total == 0
+        assert orphan.poll() is None
+    finally:
+        if orphan.poll() is None:
+            orphan.terminate()
+            orphan.wait(timeout=5)
+
+
+def test_heartbeat_reports_orphans_killed_total(monkeypatch):
+    # El contador debe viajar en el payload del heartbeat -- ver
+    # db.touch_heartbeat()/GET /api/v1/workers del lado del coordinator.
+    monkeypatch.setattr(worker, '_orphans_killed_total', 3)
+    monkeypatch.setattr(worker, 'ram_free_gb', lambda: None)
+    monkeypatch.setattr(worker, 'cpu_load_pct', lambda: None)
+    monkeypatch.setattr(worker, 'self_image_digest', lambda: None)
+
+    captured = {}
+
+    def fake_post(url, json=None, timeout=None):
+        captured['json'] = json
+        resp = MagicMock()
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = {}
+        return resp
+
+    with patch.object(worker.SESSION, 'post', side_effect=fake_post):
+        worker.heartbeat('w1')
+
+    assert captured['json']['orphans_killed_total'] == 3
+
+
 @pytest.mark.parametrize("ignore_term", [False, True])
 def test_run_job_kills_subprocess_when_cancel_event_set(tmp_path, monkeypatch, ignore_term):
     # Reproduce el mecanismo de remote-kill de punta a punta: un
@@ -47,7 +186,7 @@ def test_run_job_kills_subprocess_when_cancel_event_set(tmp_path, monkeypatch, i
     with patch.object(worker.SESSION, 'post', return_value=start_response):
         failure = {}
 
-        def fake_report_failure(worker_id, job_id, error, duration_s):
+        def fake_report_failure(worker_id, job_id, error, duration_s, api_version='v1'):
             failure.update(worker_id=worker_id, job_id=job_id, error=error, duration_s=duration_s)
 
         monkeypatch.setattr(worker, 'report_failure', fake_report_failure)
@@ -190,7 +329,7 @@ def test_run_job_kills_stalled_subprocess_via_watchdog(tmp_path, monkeypatch):
     with patch.object(worker.SESSION, 'post', return_value=start_response):
         failure = {}
         monkeypatch.setattr(worker, 'report_failure',
-                             lambda worker_id, job_id, error, duration_s: failure.update(error=error))
+                             lambda worker_id, job_id, error, duration_s, api_version='v1': failure.update(error=error))
         monkeypatch.setattr(worker, 'report_result', lambda *a, **k: pytest.fail('no debe reportarse como exitoso'))
 
         started = time.monotonic()
@@ -803,3 +942,37 @@ def test_run_worker_loop_resets_streak_after_success(monkeypatch, tmp_path):
     with pytest.raises(_JobsExhausted):
         worker.run_worker_loop()  # nunca debe salir por SystemExit de la racha
     assert next(jobs, None) is None  # confirma que efectivamente se consumieron los 5
+
+
+def test_orphan_cleanup_never_kills_unproven_owner(monkeypatch):
+    kill = MagicMock()
+    monkeypatch.setattr(worker.os, 'killpg', kill)
+    assert worker.cleanup_orphaned_simulations() == []
+    kill.assert_not_called()
+
+
+def test_v2_outbox_does_not_replace_v1(monkeypatch, tmp_path):
+    monkeypatch.setattr(worker, 'PENDING_RESULTS_DIR', tmp_path)
+    one = worker._save_pending_result(1, {'api_version':'v1'}, 'v1', '')
+    two = worker._save_pending_result(1, {'api_version':'v2'}, 'v2', '')
+    assert one != two
+    assert (one/'results.csv').read_text() == 'v1'
+
+
+def test_v2_heartbeat_ignores_v1_cancellation(monkeypatch):
+    monkeypatch.setattr(worker, '_active_cancel', (1, worker.threading.Event(), 1, 'v2'))
+    with patch.object(worker.SESSION, 'post') as post:
+        post.return_value.json.return_value = {'cancel_job_id':1}
+        assert worker.heartbeat('w') is None
+        assert post.call_args.kwargs['json']['active_job_id'] is None
+
+
+def test_v2_start_uses_v2_endpoint(monkeypatch, tmp_path):
+    monkeypatch.setattr(worker, 'BUILD_DIR', tmp_path)
+    monkeypatch.setattr(worker, 'REPO_ROOT', tmp_path)
+    monkeypatch.setattr(worker, 'build_command', lambda *a: ['true'])
+    monkeypatch.setattr(worker, 'filter_results_csv', lambda *a, **k: 'results')
+    monkeypatch.setattr(worker, 'read_manifest_csv', lambda *a: 'manifest')
+    with patch.object(worker.SESSION, 'post') as post, patch.object(worker, 'report_result'):
+        worker.run_job('w', dict(job_id=1, species='SEP_p', bin_index=0, offset_x_m=0, _api_version='v2'))
+    assert post.call_args_list[0].args[0].endswith('/jobs/v2/1/start')

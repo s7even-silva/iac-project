@@ -24,7 +24,7 @@ def test_cancel_over_real_heartbeat_and_requeue(tmp_path, monkeypatch):
     monkeypatch.setattr(app, 'WORKER_TOKEN', '')
     db.init_db()
     db.upsert_worker('w', 'fixture', 4, 8, '')
-    job_id = db.insert_job('SEP_p', 0, 0, 0, 10)
+    job_id = db.insert_job('SEP_p', 'min', 0, 0, 0, 10)
     job = dict(db.claim_next_job('w'))
     monkeypatch.setattr(worker, 'WORKER_ID_FILE', tmp_path / 'worker_id')
     monkeypatch.setattr(worker, 'BUILD_DIR', tmp_path)

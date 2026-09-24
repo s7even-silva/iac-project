@@ -21,10 +21,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import Response
 from fastapi.responses import FileResponse, JSONResponse
 
 import db
-from models import FailIn, HeartbeatIn, JobLogIn, JobOut, WorkerRegister, WorkerRef
+import db_v2
+from models import FailIn, HeartbeatIn, JobLogIn, JobOut, JobOutV2, WorkerRegister, WorkerRef
 
 RESULTS_DIR = db.DB_PATH.parent / "results"
 DASHBOARD_PATH = Path(__file__).parent / "dashboard.html"
@@ -54,11 +56,18 @@ async def _requeue_sweep_loop():
                 print(f"[requeue] jobs reencolados por heartbeat vencido: {requeued}")
         except Exception as exc:  # nunca tumbar el loop de fondo por un error transitorio
             print(f"[requeue] error en barrido: {exc}")
+        try:
+            requeued_v2 = db_v2.requeue_stale_jobs_v2()
+            if requeued_v2:
+                print(f"[requeue] jobs_v2 reencolados por timeout: {requeued_v2}")
+        except Exception as exc:
+            print(f"[requeue] error en barrido v2: {exc}")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init_db()
+    db_v2.init_db_v2()  # jobs_v2/results_v2, misma DB_PATH -- ver db_v2.py
     task = asyncio.create_task(_requeue_sweep_loop())
     yield
     task.cancel()
@@ -100,7 +109,8 @@ def register_worker(body: WorkerRegister):
 
 @app.post("/api/v1/workers/{worker_id}/heartbeat")
 def heartbeat(worker_id: str, body: HeartbeatIn = HeartbeatIn()):
-    result = db.touch_heartbeat(worker_id, body.ram_free_gb, body.cpu_load_pct, body.image_digest, body.active_job_id)
+    result = db.touch_heartbeat(worker_id, body.ram_free_gb, body.cpu_load_pct, body.image_digest,
+                                 body.active_job_id, body.orphans_killed_total)
     if result is None:
         raise HTTPException(404, f"worker {worker_id} no registrado")
     # cancel_job_id/request_log viajan aqui (no en un endpoint de polling
@@ -121,7 +131,20 @@ def next_job(body: dict):
         raise HTTPException(422, "worker_id requerido")
     row = db.claim_next_job(worker_id)
     if row is None:
-        return JSONResponse(status_code=204, content=None)
+        # 204 No Content NO debe llevar body -- JSONResponse(content=None)
+        # serializa el literal "null" (4 bytes) como cuerpo, lo que viola
+        # el propio Content-Length que Starlette calcula para un 204 (debe
+        # ser 0). Bug real de produccion (2026-09-24, ver
+        # infra/OPERATIONS_LOG.md): el middleware de token
+        # (@app.middleware("http"), BaseHTTPMiddleware por dentro) reenvia
+        # esa respuesta y el conflicto se manifiesta como
+        # h11._util.LocalProtocolError: "Too much data for declared
+        # Content-Length" -- el worker nunca ve un 204 limpio, entra en un
+        # loop de reintentos por ConnectionResetError y no puede tomar
+        # ningun job mientras la cola este vacia en el momento exacto de
+        # su poll. Response(status_code=204) sin content evita el body por
+        # completo, que es lo correcto para este status.
+        return Response(status_code=204)
     return JobOut(**row_to_dict(row))
 
 
@@ -243,6 +266,110 @@ def fail_job(job_id: int, body: FailIn):
     except PermissionError as exc:
         raise HTTPException(409, str(exc))
     return {"job_id": job_id, "status": status}
+
+
+# --- jobs_v2: paths propios /api/v1/jobs/v2/... (2026-09-20, ver db_v2.py) ---
+#
+# Paths nuevos, no una rama de comportamiento dentro de los handlers v1
+# de arriba -- los contratos Pydantic de v1 (JobOut, sin n_bins) ya los
+# consumen 65+ tests de worker.py y el worker real en produccion; una
+# rama "si el job trae n_bins, hacer otra cosa" dentro del mismo handler
+# arriesgaria ese camino sin necesidad. request-log/cancel/log quedan
+# fuera de alcance aqui (ver docstring de db_v2.py).
+
+@app.post("/api/v1/jobs/v2/next", response_model=JobOutV2 | None)
+def next_job_v2(body: dict):
+    worker_id = body.get("worker_id")
+    if not worker_id:
+        raise HTTPException(422, "worker_id requerido")
+    row = db_v2.claim_next_job_v2(worker_id)
+    if row is None:
+        return Response(status_code=204)  # ver next_job() para el porque
+    return JobOutV2(**row_to_dict(row))
+
+
+@app.post("/api/v1/jobs/v2/{job_id}/start")
+def start_job_v2(job_id: int, body: WorkerRef):
+    ok = db_v2.mark_running_v2(job_id, body.worker_id)
+    if not ok:
+        raise HTTPException(409, f"job_v2 {job_id} no esta en estado 'claimed'")
+    return {"job_id": job_id, "status": "running"}
+
+
+@app.post("/api/v1/jobs/v2/{job_id}/result")
+async def submit_result_v2(
+    job_id: int,
+    worker_id: str = Form(...),
+    exit_code: int = Form(...),
+    duration_s: float = Form(...),
+    results_csv: UploadFile = File(...),
+    manifest_csv: UploadFile = File(...),
+):
+    job = db_v2.get_job_v2(job_id)
+    if job is None:
+        raise HTTPException(404, "Unknown job_v2")
+    results_bytes = await results_csv.read()
+    manifest_bytes = await manifest_csv.read()
+    try:
+        rows = list(csv.DictReader(io.StringIO(results_bytes.decode("utf-8"))))
+        manifest = list(csv.DictReader(io.StringIO(manifest_bytes.decode("utf-8"))))
+        if not rows or len(manifest) != 1:
+            raise ValueError("Require organ rows and exactly one manifest row")
+        # Misma verificacion fila-por-fila que submit_result() v1, mas
+        # n_bins (ausente en v1: alli bin_index siempre es de la grilla
+        # fija de 8, no hace falta distinguir -- aqui bin_index=3 de una
+        # grilla de 8 y bin_index=3 de una grilla de 16 NO son el mismo
+        # job, ver UNIQUE de jobs_v2 en db_v2.py).
+        for row in rows + manifest:
+            if (row["especie"] != job["species"] or row.get("fase") != job["phase"] or int(row["bin_index"]) != job["bin_index"]
+                    or int(row.get("n_bins", -1)) != job["n_bins"]
+                    or int(row["repeticion"]) != job["repeticion"]
+                    or not math.isclose(float(row["offset_x_m"]), job["offset_x_m"], abs_tol=1e-6)
+                    or int(row.get("n_eventos", row.get("n_events", ""))) != job["n_events"]):
+                raise ValueError("Result does not match assigned job_v2")
+        if int(manifest[0]["exit_code"]) != exit_code:
+            raise ValueError("Exit code disagrees with manifest")
+    except (UnicodeError, KeyError, ValueError) as exc:
+        raise HTTPException(422, str(exc))
+
+    job_dir = RESULTS_DIR / f"job_v2_{job_id}" / uuid.uuid4().hex
+    job_dir.mkdir(parents=True, exist_ok=True)
+    results_path = job_dir / "results.csv"
+    manifest_path = job_dir / "manifest.csv"
+    results_path.write_bytes(results_bytes)
+    manifest_path.write_bytes(manifest_bytes)
+
+    n_rows = max(0, sum(1 for _ in csv.reader(io.StringIO(results_bytes.decode("utf-8")))) - 1)
+
+    try:
+        status = db_v2.record_result_v2(
+            job_id, worker_id, duration_s, exit_code, n_rows,
+            str(results_path), str(manifest_path),
+        )
+    except KeyError:
+        shutil.rmtree(job_dir)
+        raise HTTPException(404, f"job_v2 {job_id} no existe")
+    except PermissionError as exc:
+        shutil.rmtree(job_dir)
+        raise HTTPException(409, str(exc))
+
+    return {"job_id": job_id, "status": status, "n_rows": n_rows}
+
+
+@app.post("/api/v1/jobs/v2/{job_id}/fail")
+def fail_job_v2(job_id: int, body: FailIn):
+    try:
+        status = db_v2.record_failure_v2(job_id, body.worker_id, body.error)
+    except KeyError:
+        raise HTTPException(404, f"job_v2 {job_id} no existe")
+    except PermissionError as exc:
+        raise HTTPException(409, str(exc))
+    return {"job_id": job_id, "status": status}
+
+
+@app.get("/api/v1/jobs/v2")
+def get_jobs_v2(status: str | None = None):
+    return [row_to_dict(r) for r in db_v2.list_jobs_v2(status)]
 
 
 @app.get("/api/v1/jobs")

@@ -31,6 +31,7 @@
 //
 #include <vector>
 #include <map>
+#include <cmath>
 #include "ICRP110UserScoreWriter.hh"
 #include "ICRP110ScoreWriterMessenger.hh"
 #include "G4SystemOfUnits.hh"
@@ -96,22 +97,46 @@ if(msMapItr == fSMap.end())
   }
 
 std::map<G4int, G4StatDouble*> * score = msMapItr -> second-> GetMap();
-  
+
 ofile << "# primitive scorer name: " << msMapItr -> first << G4endl;
 
   // declare dose array and initialize to zero.
   std::vector<double> ScoringMeshEdep;
   for(G4int y = 0; y < fNMeshSegments[0]*fNMeshSegments[1]*fNMeshSegments[2]; y++) ScoringMeshEdep.push_back(0.);
 
+// Fase 7 del plan estadistico (docs/bitacora/plan_estadistico.md, Piloto A
+// -- validacion del estimador de incertidumbre intra-run): ademas de
+// sum_wx() (edep total, ya usado abajo), G4StatDouble por voxel ya trae
+// sum_wx2() y n() sin costo de computo adicional -- Geant4 los acumula
+// por evento via fill() dentro del propio nucleo (G4StatDouble::fill()),
+// el proyecto simplemente no los leia. Se guardan aqui, por voxel, para
+// agregarlos por organo mas abajo (S1_organo = suma de S1 de sus voxels,
+// igual que ya se hace con Edep; ver limitacion de covarianza entre
+// voxels documentada en el bloque de agregacion, mas abajo).
+// UNIDADES: sum_wx() esta en MeV internamente, se divide por "joule" (J)
+// para convertir -- sum_wx2() = sum(valor^2) esta en MeV^2 internamente,
+// hay que dividir por (joule*joule), NO por joule, para J^2. Error de
+// escala facil de cometer, dejado explicito.
+  std::vector<double> ScoringMeshEdep2; // sum_wx2 por voxel, en J^2
+  std::vector<int> ScoringMeshN;        // n (eventos que depositaron algo) por voxel
+  for(G4int y = 0; y < fNMeshSegments[0]*fNMeshSegments[1]*fNMeshSegments[2]; y++) {
+    ScoringMeshEdep2.push_back(0.);
+    ScoringMeshN.push_back(0);
+  }
+
 ofile << std::setprecision(16); // for double value with 8 bytes
-  
+
 for(G4int x = 0; x < fNMeshSegments[0]; x++) {
    for(G4int y = 0; y < fNMeshSegments[1]; y++) {
      for(G4int z = 0; z < fNMeshSegments[2]; z++){
         // Retrieve dose in each scoring mesh bin/voxel
         G4int idx = GetIndex(x, y, z);
         std::map<G4int, G4StatDouble*>::iterator value = score -> find(idx);
-        if (value != score -> end()) ScoringMeshEdep[idx] += (value->second->sum_wx())/(joule);
+        if (value != score -> end()) {
+          ScoringMeshEdep[idx] += (value->second->sum_wx())/(joule);
+          ScoringMeshEdep2[idx] += (value->second->sum_wx2())/(joule*joule);
+          ScoringMeshN[idx] += value->second->n();
+        }
        }
       }
      }
@@ -119,18 +144,24 @@ for(G4int x = 0; x < fNMeshSegments[0]; x++) {
 ofile << std::setprecision(6);
 
 ofile << std::setprecision(16); // for double value with 8 bytes
-  
+
 for(G4int x = 0; x < fNMeshSegments[0]; x++) {
    for(G4int y = 0; y < fNMeshSegments[1]; y++) {
      for(G4int z = 0; z < fNMeshSegments[2]; z++){
-         
+
          G4int idx = GetIndex(x, y, z);
-         
+
          if (ScoringMeshEdep[idx] != 0){
-         ofile << x << '\t' << y << '\t' << z << '\t' << ScoringMeshEdep[idx] << G4endl;
+         // Columnas 5 y 6 (sum_wx2 en J^2, n) agregadas al final de la
+         // linea -- ver el bloque de relectura mas abajo, que ahora
+         // consume 6 columnas por linea en vez de 4 (mismo cambio, para
+         // no desalinear la lectura -- ver tambien el fix del bug de
+         // relectura, bloque siguiente).
+         ofile << x << '\t' << y << '\t' << z << '\t' << ScoringMeshEdep[idx]
+               << '\t' << ScoringMeshEdep2[idx] << '\t' << ScoringMeshN[idx] << G4endl;
          }
-         //Store x,y,z and dose for each voxel in output text file. 
-     
+         //Store x,y,z and dose for each voxel in output text file.
+
        }
       }
      }
@@ -318,8 +349,34 @@ std::ifstream MeshFile(fileName);
 
 //-----Reads Phantom Mesh Text File and Stores Data in 6 different Vectors-------//
 
-G4int col = 4;
-G4int lines = VoxelsPerSlice*NSlices;
+// Fix de un bug real preexistente (encontrado 2026-09-18/19, ver
+// docs/bitacora/plan_estadistico.md): el codigo anterior iteraba un
+// numero FIJO de veces (lines = VoxelsPerSlice*NSlices, el total de
+// voxels POSIBLES del fantoma completo), pero PhantomMesh_Edep.txt solo
+// tiene una linea por voxel con edep != 0 (la inmensa mayoria de los
+// voxels de un fantoma nunca reciben energia en una corrida cualquiera
+// -- verificado con datos reales: 200.655 lineas reales contra
+// 7.161.276 posibles, ~97% del bucle de sobra). Cuando el stream de C++
+// (operator>>) se agota, las variables NO se resetean a 0 -- conservan
+// su ultimo valor leido silenciosamente (verificado empiricamente con
+// un programa C++ aislado que reproduce el patron exacto). Esto hacia
+// que el bucle de agregacion de mas abajo (OrganDep[OrganIndex] +=
+// Edep[i]) sumara el edep del ULTIMO voxel real, repetidamente, para
+// TODO el resto del bucle -- en la practica el impacto parecia acotado
+// al organo "Air" (organo_id=0, porque el ultimo voxel escrito, dado el
+// orden de los bucles x->y->z al generar el archivo, suele caer en el
+// borde extremo del volumen mallado), pero no hay garantia de que esto
+// se cumpla siempre para toda combinacion/geometria -- no verificado en
+// general, solo en la corrida de prueba usada para encontrar el bug.
+//
+// Corregido: se lee mientras el stream siga bien (while(MeshFile >> ...)),
+// sin asumir de antemano cuantas lineas tiene el archivo -- patron
+// idiomatico de C++ para esto, en vez de un limite fijo que dependia de
+// que el archivo tuviera EXACTAMENTE esa cantidad de lineas (nunca fue
+// el caso).
+//
+// Se agregan ademas 2 columnas nuevas (S1/S2/N intra-run, ver arriba):
+// sum_wx2 (J^2) y n, en las columnas 5 y 6 de cada linea.
 
 //Ignore first 2 lines of PhantomMesh.txt as they are text headers
 MeshFile.ignore(256, '\n');
@@ -329,33 +386,26 @@ std::vector<G4int> X_MeshID; //Stores X-position of all scoring mesh voxels
 std::vector<G4int> Y_MeshID; //Stores Y-position
 std::vector<G4int> Z_MeshID; //Stores Z-position
 std::vector<G4double> Edep; //Stores edep in voxels
+std::vector<G4double> Edep2; //Stores sum_wx2 (J^2) in voxels -- Fase 7, intra-run
+std::vector<G4int> NEvts;    //Stores n (event count) in voxels -- Fase 7, intra-run
 
 G4int nX = 0; //Number along X of scoring mesh voxel
 G4int nY = 0; //Number along Y
 G4int nZ = 0; //Number along Z
 G4double EDep = 0.0; //edep deposited in individual voxels
+G4double EDep2 = 0.0; //sum_wx2 deposited in individual voxels (J^2)
+G4int NEvt = 0; //n (event count) in individual voxels
 
-for (G4int i=0; i< lines; i++){
-	for (G4int j=0; j < col;){
- 
-		MeshFile >> nX; //Reads number along X of current scoring mesh voxel
-		X_MeshID.push_back(nX); //Stores it sequentially in vector X_MeshID
-      j++;
-     
-		MeshFile >> nY; // Reads number along Y
-		Y_MeshID.push_back(nY); // Stores in vector
-      j++;
-  
-	  MeshFile >> nZ; // Reads number along Z
-		Z_MeshID.push_back(nZ); // Stores in vector
-      j++;
-      
-		MeshFile >> EDep; // Reads edep in each voxel
-		Edep.push_back(EDep); // Stores in vector
-      j++;
- 
- }
+while (MeshFile >> nX >> nY >> nZ >> EDep >> EDep2 >> NEvt) {
+	X_MeshID.push_back(nX);
+	Y_MeshID.push_back(nY);
+	Z_MeshID.push_back(nZ);
+	Edep.push_back(EDep);
+	Edep2.push_back(EDep2);
+	NEvts.push_back(NEvt);
 }
+
+G4int ARRAY_SIZE_MeshLines = static_cast<G4int>(X_MeshID.size()); // lineas REALES leidas, ver mas abajo
 
 MeshFile.close();
 
@@ -482,11 +532,38 @@ for (G4int i = 0; i < NOrganIDs; i++)
   OrganDose.push_back(b);
 }
 
+// Fase 7 (Piloto A, intra-run): S1_organo/S2_organo/N_organo, agregados
+// por organo igual que OrganDep -- misma logica de suma que Edep, ver
+// docstring del bloque de arriba para la limitacion importante:
+//
+//   S2_organo = suma_voxel(sum_wx2_voxel) NO es la varianza correcta de
+//   "edep del organo por evento" si hay correlacion entre voxels del
+//   mismo evento (un primario que cruza el organo deposita en varios
+//   voxels simultaneamente -> covarianza != 0 entre ellos). Esto es el
+//   "Camino B" documentado en la discusion de diseno de esta fase: mas
+//   simple de implementar que instrumentar EndOfEventAction (que daria
+//   la varianza exacta por evento-organo), a cambio de una posible
+//   SUBESTIMACION de SE_within si esa covarianza es positiva (el caso
+//   tipico). La Fase 7 existe precisamente para medir empiricamente
+//   cuanto importa esto, comparando SE_within (de este calculo) contra
+//   s_between (de repeticiones independientes historicas) -- si
+//   coinciden razonablemente, Camino B queda validado; si no, hace
+//   falta el camino mas costoso.
+G4double c = 0.0;
+std::vector<G4double> OrganDep2; // S2 por organo, J^2 -- Camino B
+std::vector<G4int> OrganN;       // N por organo (suma de eventos-voxel, NO eventos-organo unicos)
+for (G4int i = 0; i < NOrganIDs; i++)
+{
+  OrganDep2.push_back(c);
+  OrganN.push_back(0);
+}
 
-for (G4int i = 0; i < ARRAY_SIZE; i++){
-	VoxelNumber = X_MeshID[i] + NXVoxels * Y_MeshID[i] + VoxelsPerSlice * Z_MeshID[i]; 
+for (G4int i = 0; i < ARRAY_SIZE_MeshLines; i++){
+	VoxelNumber = X_MeshID[i] + NXVoxels * Y_MeshID[i] + VoxelsPerSlice * Z_MeshID[i];
   OrganIndex = OrganIDs[VoxelNumber];
   OrganDep[OrganIndex] += Edep[i];
+  OrganDep2[OrganIndex] += Edep2[i];
+  OrganN[OrganIndex] += NEvts[i];
 }
 
 //Calculate dose in each organ by dividing edep in each organ by organ masses (in kg)
@@ -575,12 +652,44 @@ OutputFile2 << "----------------ORGAN ENERGY DEPOSITIONS AND ABSORBED DOSE------
 OutputFile2 << "-----------(for all organs [includes air - OrganIDs = 0, 140])--------------" << G4endl;
 OutputFile2 << "--------------([and top/bottom skin layer - OrganIDs = 141])----------------" << G4endl;
 OutputFile2 << "----------------------------------------------------------------------------" << G4endl;
-OutputFile2 << "OrganID" << '\t' << "Edep (J) " << '\t' << "Dose (Gy) " << G4endl;
+// Columnas 3-6 (S1_J, S2_J2, N, SE_run_J) agregadas al final de cada
+// linea -- Fase 7 (Piloto A, intra-run), ver docs/bitacora/plan_estadistico.md.
+// El parser Python (parse_icrp110_out en run_organ_sweep.py) solo lee
+// parts[0]/parts[1] (Edep/Dose) de cada linea con "|" -- columnas extra
+// al final no lo rompen (verificado antes de escribir esto), pero
+// aggregate_organ_doses.py necesita actualizarse aparte para USARLAS
+// (no hecho en este cambio, ver checklist de la Fase 7).
+//
+// S1_J = OrganDep[i] (ya escrito en la columna "Edep (J)", repetido aqui
+// explicitamente para que la fila sea autocontenida como (N,S1,S2)).
+// SE_run_J = sqrt(s^2/N), con s^2 = (S2 - S1^2/N)/(N-1) -- formula
+// exacta del plan (Fase 5/7). N<2 no tiene varianza muestral (ver la
+// misma regla ya aplicada en aggregate_organ_doses.py para R_b=1) -- se
+// escribe SE_run_J=0 explicitamente en ese caso, NUNCA como "precision
+// infinita": el organo simplemente no tiene suficiente informacion
+// intra-run para estimar su propia varianza (misma limitacion ya
+// documentada para bins_R1_sin_varianza).
+OutputFile2 << "OrganID" << '\t' << "Edep (J) " << '\t' << "Dose (Gy) "
+            << '\t' << "S1_J" << '\t' << "S2_J2" << '\t' << "N" << '\t' << "SE_run_J" << G4endl;
 OutputFile2 << "-------------------------------" << G4endl;
 
 for (G4int i = 0; i < NOrganIDs; i++)
 {
-    OutputFile2 << i << "  | " << '\t' << '\t' << OrganDep[i] << '\t' << OrganDose[i] << G4endl;
+    G4double s1 = OrganDep[i];
+    G4double s2 = OrganDep2[i];
+    G4int n = OrganN[i];
+    G4double seRun = 0.0;
+    if (n >= 2) {
+      G4double variance = (s2 - (s1 * s1) / n) / (n - 1);
+      // La resta S2 - S1^2/N puede dar un numero negativo diminuto por
+      // cancelacion de punto flotante cuando la varianza real es casi
+      // cero (todos los eventos depositaron casi lo mismo) -- se recorta
+      // a 0 en vez de propagar un NaN via sqrt() de un negativo.
+      if (variance < 0.0) variance = 0.0;
+      seRun = std::sqrt(variance / n);
+    }
+    OutputFile2 << i << "  | " << '\t' << '\t' << OrganDep[i] << '\t' << OrganDose[i]
+                << '\t' << s1 << '\t' << s2 << '\t' << n << '\t' << seRun << G4endl;
 }
 
 OutputFile2 << "Total energy depositied over all organs = " << TotalDep << " J" << G4endl;
