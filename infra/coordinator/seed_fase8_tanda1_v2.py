@@ -17,12 +17,19 @@ convergencia de binning con offset fijo en 0.0, sembrar con ese script
 habria creado 5x el trabajo real y adelantado GCR_He/min sin
 autorizacion.
 
-worker_id fijo 'bryam-local' (registrado aqui si no existe) para dejar
-trazabilidad honesta de que esas filas se retro-registran -- no pasaron
-por el ciclo normal claim/result de worker.py. results_csv_path/
-manifest_csv_path en results_v2 apuntan a la referencia git real
-(rama results/fase8-prod), no a un CSV filtrado local, porque ese
-archivo no existe (el trabajo no paso por el protocolo HTTP del worker).
+Usa el worker_id YA EXISTENTE de la maquina real de Bryam
+(ba49a04b-c669-4011-a5b5-a2803825f6af, label "bryam-local",
+bryam-VirtualBox, registrado desde 2026-09-13) para dejar trazabilidad
+honesta de que esas filas se retro-registran -- no pasaron por el ciclo
+normal claim/result de worker.py. NO crea un worker_id sintetico nuevo
+(version anterior de este script lo hizo por error -- worker_id literal
+"bryam-local", corregido 2026-09-24, ver infra/OPERATIONS_LOG.md: la
+maquina real ya tenia una identidad registrada, crear una segunda
+duplicaba al mismo worker con dos nombres distintos en el dashboard).
+results_csv_path/manifest_csv_path en results_v2 apuntan a la referencia
+git real (rama results/fase8-prod), no a un CSV filtrado local, porque
+ese archivo no existe (el trabajo no paso por el protocolo HTTP del
+worker).
 
 No pisa nada ya sembrado (ON CONFLICT DO NOTHING via insert_job_v2(), ni
 retoca el estado de un job_id que ya existiera de una corrida anterior
@@ -51,7 +58,7 @@ OFFSET_X_M = 0.0
 REPETICION = 0
 COMBOS = [("SEP_p", "max"), ("GCR_H", "min")]
 N_BINS_GRID = [8, 16, 32]
-WORKER_ID = "bryam-local"
+WORKER_ID = "ba49a04b-c669-4011-a5b5-a2803825f6af"  # worker real "bryam-local" (bryam-VirtualBox)
 RESULTS_BRANCH = "results/fase8-prod"
 MANIFEST_PATH_IN_BRANCH = "geant4/ActiveShield_Sim/scripts/pilots/results/fase8_binning_prod/manifest.csv"
 
@@ -91,10 +98,19 @@ def main():
     if not args.dry_run:
         db.init_db()
         db_v2.init_db_v2()
-        db.upsert_worker(
-            worker_id=WORKER_ID, hostname="bryam-local-standalone", cpu_count=0, ram_gb=0,
-            label="Corrida standalone de Bryam (Fase 8 tanda 1, fuera del sistema de jobs)",
-        )
+        with db.get_conn() as conn:
+            existing = conn.execute(
+                "SELECT 1 FROM workers WHERE worker_id=?", (WORKER_ID,)
+            ).fetchone()
+        if not existing:
+            print(f"ADVERTENCIA: worker {WORKER_ID} (bryam-local) no existe todavia en "
+                  f"esta DB -- registrandolo con datos minimos, pero lo esperado es que ya "
+                  f"exista en produccion real (se registro solo cuando su worker.py corrio "
+                  f"por primera vez, 2026-09-13).")
+            db.upsert_worker(
+                worker_id=WORKER_ID, hostname="bryam-VirtualBox", cpu_count=0, ram_gb=0,
+                label="bryam-local",
+            )
 
     total = 0
     ya_marcados_done = 0

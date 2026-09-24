@@ -186,6 +186,20 @@ section.panel{
   color:var(--text-faint);
   font-weight:400;
 }
+.panel-toggle{
+  background:none;
+  border:1px solid var(--border);
+  border-radius:6px;
+  color:var(--text-faint);
+  cursor:pointer;
+  font-size:.85rem;
+  line-height:1;
+  padding:4px 8px;
+  transition:transform .15s ease;
+}
+.panel-toggle:hover{color:var(--text)}
+.panel.collapsed .panel-toggle{transform:rotate(-90deg)}
+.panel.collapsed .panel-body{display:none}
 
 /* filters */
 .filters{
@@ -449,10 +463,12 @@ footer.note code{font-family:"IBM Plex Mono",monospace;background:var(--surface-
     <div class="stat workers"><span class="n tab-num" id="stat-workers">–</span><span class="l">Workers online</span></div>
   </div>
 
-  <section class="panel">
+  <section class="panel" id="panel-workers">
     <div class="panel-head">
+      <button class="panel-toggle" type="button" aria-expanded="true" aria-controls="panel-workers-body" title="Contraer/expandir">▾</button>
       <h2>Workers <span class="count" id="workers-count"></span></h2>
     </div>
+    <div class="panel-body" id="panel-workers-body">
     <div class="table-scroll">
       <table id="workers-table">
         <thead>
@@ -471,12 +487,37 @@ footer.note code{font-family:"IBM Plex Mono",monospace;background:var(--surface-
         <tbody id="workers-body"></tbody>
       </table>
     </div>
+    </div>
   </section>
 
-  <section class="panel">
+  <section class="panel" id="panel-jobs-v2">
     <div class="panel-head">
+      <button class="panel-toggle" type="button" aria-expanded="true" aria-controls="panel-jobs-v2-body" title="Contraer/expandir">▾</button>
+      <h2>Jobs v2 (piloto: n_bins parametrizable) <span class="count" id="jobs-v2-count"></span></h2>
+    </div>
+    <div class="panel-body" id="panel-jobs-v2-body">
+    <div class="stats" id="stats-v2">
+      <div class="stat pending"><span class="n tab-num" id="statv2-pending">–</span><span class="l">Pendientes</span></div>
+      <div class="stat running"><span class="n tab-num" id="statv2-running">–</span><span class="l">Corriendo</span></div>
+      <div class="stat done"><span class="n tab-num" id="statv2-done">–</span><span class="l">Listos</span></div>
+      <div class="stat failed"><span class="n tab-num" id="statv2-failed">–</span><span class="l">Fallidos</span></div>
+    </div>
+    <div class="table-scroll">
+      <table id="jobs-v2-table">
+        <thead><tr id="jobs-v2-head"></tr></thead>
+        <tbody id="jobs-v2-body"></tbody>
+      </table>
+      <div class="empty-state" id="jobs-v2-empty" hidden>Ningún job_v2 sembrado todavía.</div>
+    </div>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-jobs">
+    <div class="panel-head">
+      <button class="panel-toggle" type="button" aria-expanded="true" aria-controls="panel-jobs-body" title="Contraer/expandir">▾</button>
       <h2>Jobs <span class="count" id="jobs-count"></span></h2>
     </div>
+    <div class="panel-body" id="panel-jobs-body">
     <div class="filters">
       <div class="msel" id="msel-status" data-field="status"><button class="msel-btn" type="button" aria-haspopup="true"><span class="label">Estado</span><span class="caret">▾</span></button><div class="msel-panel"></div></div>
       <div class="msel" id="msel-species" data-field="species"><button class="msel-btn" type="button" aria-haspopup="true"><span class="label">Especie</span><span class="caret">▾</span></button><div class="msel-panel"></div></div>
@@ -517,24 +558,6 @@ footer.note code{font-family:"IBM Plex Mono",monospace;background:var(--surface-
       </table>
       <div class="empty-state" id="jobs-empty" hidden>Ningún job coincide con estos filtros.</div>
     </div>
-  </section>
-
-  <section class="panel">
-    <div class="panel-head">
-      <h2>Jobs v2 (piloto: n_bins parametrizable) <span class="count" id="jobs-v2-count"></span></h2>
-    </div>
-    <div class="stats" id="stats-v2">
-      <div class="stat pending"><span class="n tab-num" id="statv2-pending">–</span><span class="l">Pendientes</span></div>
-      <div class="stat running"><span class="n tab-num" id="statv2-running">–</span><span class="l">Corriendo</span></div>
-      <div class="stat done"><span class="n tab-num" id="statv2-done">–</span><span class="l">Listos</span></div>
-      <div class="stat failed"><span class="n tab-num" id="statv2-failed">–</span><span class="l">Fallidos</span></div>
-    </div>
-    <div class="table-scroll">
-      <table id="jobs-v2-table">
-        <thead><tr id="jobs-v2-head"></tr></thead>
-        <tbody id="jobs-v2-body"></tbody>
-      </table>
-      <div class="empty-state" id="jobs-v2-empty" hidden>Ningún job_v2 sembrado todavía.</div>
     </div>
   </section>
 
@@ -1152,6 +1175,51 @@ document.querySelectorAll("#jobs-table th.sortable").forEach(th => {
     if (e.key === "Enter" || e.key === " "){ e.preventDefault(); activate(); }
   });
 });
+
+// Paneles contraibles -- estado persistido por viewer en localStorage
+// (nunca compartido entre viewers ni leido por el servidor, solo una
+// conveniencia local; si localStorage falla -- modo privado, storage
+// bloqueado -- el panel simplemente no recuerda el estado entre cargas,
+// pero el toggle en si sigue funcionando).
+const PANEL_COLLAPSE_KEY = "coordinator-dashboard:collapsed-panels";
+
+function loadCollapsedPanels(){
+  try {
+    return new Set(JSON.parse(localStorage.getItem(PANEL_COLLAPSE_KEY) || "[]"));
+  } catch {
+    return new Set();
+  }
+}
+function saveCollapsedPanels(ids){
+  try {
+    localStorage.setItem(PANEL_COLLAPSE_KEY, JSON.stringify([...ids]));
+  } catch {
+    // almacenamiento no disponible -- el toggle sigue funcionando, solo
+    // no persiste entre recargas.
+  }
+}
+
+function setPanelCollapsed(section, collapsed){
+  section.classList.toggle("collapsed", collapsed);
+  const btn = section.querySelector(".panel-toggle");
+  if (btn) btn.setAttribute("aria-expanded", String(!collapsed));
+}
+
+(function initCollapsiblePanels(){
+  const collapsed = loadCollapsedPanels();
+  document.querySelectorAll("section.panel[id]").forEach(section => {
+    if (collapsed.has(section.id)) setPanelCollapsed(section, true);
+    const btn = section.querySelector(".panel-toggle");
+    if (!btn) return;
+    btn.addEventListener("click", () => {
+      const nowCollapsed = !section.classList.contains("collapsed");
+      setPanelCollapsed(section, nowCollapsed);
+      const current = loadCollapsedPanels();
+      if (nowCollapsed) current.add(section.id); else current.delete(section.id);
+      saveCollapsedPanels(current);
+    });
+  });
+})();
 
 fetchAll();
 </script>

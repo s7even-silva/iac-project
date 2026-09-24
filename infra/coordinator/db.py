@@ -285,6 +285,24 @@ def _migrate_jobs_add_phase(conn) -> None:
         return  # la tabla jobs ni siquiera existe todavia -- SCHEMA la crea ya con phase, nada que migrar
 
     print("Migrando tabla 'jobs': agregando columna 'phase' (recrea la tabla, ver _migrate_jobs_add_phase)")
+    # Bug real de produccion (2026-09-24): con foreign_keys=ON (ver
+    # get_conn()), el DROP TABLE jobs_pre_phase_migration de mas abajo
+    # fallaba con "FOREIGN KEY constraint failed" -- results.job_id
+    # REFERENCES jobs(job_id) sigue resolviendo contra el nombre logico
+    # `jobs` mientras la tabla vieja lo ocupa (renombrada), y SQLite no
+    # permite dropear una tabla con una FK entrante pendiente de
+    # resolver contra el nombre nuevo. El proceso murio a mitad de la
+    # transaccion (excepcion sin capturar en init_db()), dejando `jobs`
+    # vacia y `jobs_pre_phase_migration` con los datos originales
+    # intactos -- recuperado a mano esa vez (ver infra/OPERATIONS_LOG.md).
+    # Esta migracion entera ya corre dentro de una sola transaccion
+    # (BEGIN/COMMIT implicito de get_conn()), asi que desactivar el
+    # chequeo de FK solo aqui es seguro: se re-activa solo al abrir la
+    # PROXIMA conexion (get_conn() siempre la pone ON de nuevo), y ninguna
+    # fila con una FK realmente invalida puede colarse -- el propio
+    # INSERT...SELECT de mas abajo copia los mismos job_id, sin crear
+    # ninguna referencia nueva.
+    conn.execute("PRAGMA foreign_keys=OFF")
     conn.execute("ALTER TABLE jobs RENAME TO jobs_pre_phase_migration")
     # Definicion explicita e independiente de SCHEMA -- parsear SCHEMA con
     # split(";") es fragil (los comentarios SQL de varias lineas de ese
