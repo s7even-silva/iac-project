@@ -4,8 +4,13 @@ produccion) via monkeypatch de db.DB_PATH.
 
 Correr:
     cd infra/coordinator
-    pip install -r requirements.txt pytest
+    pip install -r requirements.txt pytest httpx
     pytest test_coordinator.py -v
+
+httpx (2026-09-24, ver test_next_job_204_has_no_body_through_middleware):
+requerido por fastapi.testclient.TestClient -- solo esa prueba lo usa,
+para ejercitar el middleware HTTP completo (donde vivia un bug real de
+produccion), no la capa db.py directa como el resto de este archivo.
 """
 import concurrent.futures
 import time
@@ -1053,3 +1058,37 @@ def test_migrate_jobs_add_phase_with_results_referencing_old_table(tmp_path, mon
         ).fetchone()[0]
     assert results_intact == 1
     assert no_leftover_table == 0
+
+
+def test_next_job_204_has_no_body_through_middleware(tmp_path, monkeypatch):
+    """Regresion del bug real de produccion 2026-09-24 (ver
+    infra/OPERATIONS_LOG.md): /api/v1/jobs/next (y su equivalente v2)
+    devolvia JSONResponse(status_code=204, content=None) cuando no habia
+    jobs -- eso serializa el literal "null" como body, violando el propio
+    Content-Length=0 que un 204 exige. El @app.middleware("http") de
+    require_worker_token() (BaseHTTPMiddleware por dentro) reenvia esa
+    respuesta y el conflicto se manifiesta como
+    h11._util.LocalProtocolError: "Too much data for declared
+    Content-Length" -- confirmado en vivo con un worker real (candidate-
+    0fad4ba) atascado en un loop de ConnectionResetError contra un
+    coordinator de prueba, nunca podia tomar ningun job mientras la cola
+    estuviera vacia en el momento exacto de su poll. Este test usa
+    TestClient de verdad (no llama db.claim_next_job() directo) para
+    ejercitar el middleware completo, que es donde vivia el bug real --
+    un test a nivel de db.py nunca lo habria detectado."""
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "test.db")
+    monkeypatch.setenv("COORDINATOR_DB", str(tmp_path / "test.db"))
+    import importlib
+    import app as app_module
+    importlib.reload(app_module)
+    from fastapi.testclient import TestClient
+
+    with TestClient(app_module.app) as client:
+        db.upsert_worker("w-204-test", "host", 4, 8.0, "test")
+        resp = client.post("/api/v1/jobs/next", json={"worker_id": "w-204-test"})
+        assert resp.status_code == 204
+        assert resp.content == b""
+
+        resp_v2 = client.post("/api/v1/jobs/v2/next", json={"worker_id": "w-204-test"})
+        assert resp_v2.status_code == 204
+        assert resp_v2.content == b""

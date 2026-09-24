@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import Response
 from fastapi.responses import FileResponse, JSONResponse
 
 import db
@@ -130,7 +131,20 @@ def next_job(body: dict):
         raise HTTPException(422, "worker_id requerido")
     row = db.claim_next_job(worker_id)
     if row is None:
-        return JSONResponse(status_code=204, content=None)
+        # 204 No Content NO debe llevar body -- JSONResponse(content=None)
+        # serializa el literal "null" (4 bytes) como cuerpo, lo que viola
+        # el propio Content-Length que Starlette calcula para un 204 (debe
+        # ser 0). Bug real de produccion (2026-09-24, ver
+        # infra/OPERATIONS_LOG.md): el middleware de token
+        # (@app.middleware("http"), BaseHTTPMiddleware por dentro) reenvia
+        # esa respuesta y el conflicto se manifiesta como
+        # h11._util.LocalProtocolError: "Too much data for declared
+        # Content-Length" -- el worker nunca ve un 204 limpio, entra en un
+        # loop de reintentos por ConnectionResetError y no puede tomar
+        # ningun job mientras la cola este vacia en el momento exacto de
+        # su poll. Response(status_code=204) sin content evita el body por
+        # completo, que es lo correcto para este status.
+        return Response(status_code=204)
     return JobOut(**row_to_dict(row))
 
 
@@ -270,7 +284,7 @@ def next_job_v2(body: dict):
         raise HTTPException(422, "worker_id requerido")
     row = db_v2.claim_next_job_v2(worker_id)
     if row is None:
-        return JSONResponse(status_code=204, content=None)
+        return Response(status_code=204)  # ver next_job() para el porque
     return JobOutV2(**row_to_dict(row))
 
 
