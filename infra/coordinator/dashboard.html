@@ -455,20 +455,15 @@ footer.note code{font-family:"IBM Plex Mono",monospace;background:var(--surface-
     </div>
   </header>
 
-  <div class="stats" id="stats">
-    <div class="stat pending"><span class="n tab-num" id="stat-pending">–</span><span class="l">Pendientes</span></div>
-    <div class="stat running"><span class="n tab-num" id="stat-running">–</span><span class="l">Corriendo</span></div>
-    <div class="stat done"><span class="n tab-num" id="stat-done">–</span><span class="l">Listos</span></div>
-    <div class="stat failed"><span class="n tab-num" id="stat-failed">–</span><span class="l">Fallidos</span></div>
-    <div class="stat workers"><span class="n tab-num" id="stat-workers">–</span><span class="l">Workers online</span></div>
-  </div>
-
   <section class="panel" id="panel-workers">
     <div class="panel-head">
       <button class="panel-toggle" type="button" aria-expanded="true" aria-controls="panel-workers-body" title="Contraer/expandir">▾</button>
       <h2>Workers <span class="count" id="workers-count"></span></h2>
     </div>
     <div class="panel-body" id="panel-workers-body">
+    <div class="stats" id="stats-workers">
+      <div class="stat workers"><span class="n tab-num" id="stat-workers">–</span><span class="l">Workers online</span></div>
+    </div>
     <div class="table-scroll">
       <table id="workers-table">
         <thead>
@@ -493,7 +488,7 @@ footer.note code{font-family:"IBM Plex Mono",monospace;background:var(--surface-
   <section class="panel" id="panel-jobs-v2">
     <div class="panel-head">
       <button class="panel-toggle" type="button" aria-expanded="true" aria-controls="panel-jobs-v2-body" title="Contraer/expandir">▾</button>
-      <h2>Jobs v2 (piloto: n_bins parametrizable) <span class="count" id="jobs-v2-count"></span></h2>
+      <h2>Jobs v2 <span class="count" id="jobs-v2-count"></span></h2>
     </div>
     <div class="panel-body" id="panel-jobs-v2-body">
     <div class="stats" id="stats-v2">
@@ -518,6 +513,12 @@ footer.note code{font-family:"IBM Plex Mono",monospace;background:var(--surface-
       <h2>Jobs <span class="count" id="jobs-count"></span></h2>
     </div>
     <div class="panel-body" id="panel-jobs-body">
+    <div class="stats" id="stats">
+      <div class="stat pending"><span class="n tab-num" id="stat-pending">–</span><span class="l">Pendientes</span></div>
+      <div class="stat running"><span class="n tab-num" id="stat-running">–</span><span class="l">Corriendo</span></div>
+      <div class="stat done"><span class="n tab-num" id="stat-done">–</span><span class="l">Listos</span></div>
+      <div class="stat failed"><span class="n tab-num" id="stat-failed">–</span><span class="l">Fallidos</span></div>
+    </div>
     <div class="filters">
       <div class="msel" id="msel-status" data-field="status"><button class="msel-btn" type="button" aria-haspopup="true"><span class="label">Estado</span><span class="caret">▾</span></button><div class="msel-panel"></div></div>
       <div class="msel" id="msel-species" data-field="species"><button class="msel-btn" type="button" aria-haspopup="true"><span class="label">Especie</span><span class="caret">▾</span></button><div class="msel-panel"></div></div>

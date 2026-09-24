@@ -2324,3 +2324,62 @@ sin `label`/`hostname` (`00000000-0000-0000-0000-000000000000`, `OFFLINE`
 desde antes de esta sesión, cero jobs/results referenciándolo en ninguna
 tabla, verificado antes de borrarlo) — registro basura de origen
 desconocido, sin relación con el trabajo de hoy.
+
+### Bug real de producción: `204 No Content` con body rompía el polling de jobs (2026-09-24)
+
+**Encontrado validando la imagen candidata de `jobs_v2` con un canario**
+(coordinator de prueba aislado, DB propia, nunca contra producción — ver
+la nota de convención más abajo): un worker real corriendo la imagen
+candidata quedaba atrapado en un loop de
+`('Connection aborted.', ConnectionResetError(104, 'Connection reset by
+peer'))` en cada poll, sin poder tomar ningún job aunque hubiera uno
+`pending` sembrado explícitamente para la prueba. El mismo patrón exacto
+ya estaba en los logs de la VM de producción desde el despliegue de
+`jobs_v2` esa misma mañana, sin que se hubiera investigado a fondo
+todavía.
+
+**Causa raíz:** `/api/v1/jobs/next` y `/api/v1/jobs/v2/next` devolvían
+`JSONResponse(status_code=204, content=None)` cuando no había trabajo —
+eso serializa el literal `"null"` (4 bytes) como cuerpo, violando el
+`Content-Length=0` que un `204 No Content` exige por definición.
+`@app.middleware("http")` (`require_worker_token()`, `BaseHTTPMiddleware`
+por dentro) reenvía esa respuesta, y el conflicto se manifiesta en el
+servidor como `h11._util.LocalProtocolError: "Too much data for declared
+Content-Length"` — el cliente (`worker.py`, vía `requests`) nunca ve un
+`204` limpio, solo la conexión reseteada a mitad, y entra en su
+reintento normal, pero sin avanzar nunca.
+
+**Por qué no se había detectado antes:** el endpoint v1 usa este mismo
+patrón desde que existe, pero casi siempre hay algún job `pending` en
+producción real, así que el camino "cola vacía" rara vez se ejercitaba.
+El endpoint v2 se agregó en `5541a04` y nunca se había desplegado contra
+un coordinator real hasta hoy — el bug estaba latente desde su creación,
+sin ningún test que lo cubriera (los tests existentes llaman
+`db.claim_next_job()` directo, nunca pasan por la capa HTTP/middleware
+real donde vivía el problema).
+
+**Corregido:** `Response(status_code=204)` (sin `content`) en vez de
+`JSONResponse(status_code=204, content=None)`, en ambos endpoints. Test
+de regresión nuevo (`test_next_job_204_has_no_body_through_middleware`,
+`infra/coordinator/test_coordinator.py`) usando `TestClient` real (no
+`db.py` directo) para ejercitar el middleware completo — confirmado que
+falla sin el fix (`resp.content == b'null'`) y pasa con él. Requiere
+`httpx` (dependencia de `fastapi.testclient.TestClient`, no listada en
+`requirements.txt` — es dependencia de test, no de producción, mismo
+criterio que `pytest`, documentado en el docstring del archivo).
+
+**Validado end-to-end con el canario tras el fix:** el mismo worker
+(imagen `candidate-0fad4ba`) tomó el job de prueba, corrió Geant4 real
+(142 filas de órgano), y reportó `done` sin ningún reintento. Confirmado
+también que `self_image_digest()` funciona correctamente cuando el
+socket de Docker está montado — el `image_digest` reportado coincidió
+exactamente con el digest real de la imagen publicada en GHCR.
+
+**Convención de despliegue seguida** (ver "El checklist anterior... era
+incorrecto: publicar y validar el candidato primero, activar el digest
+después" en `infra/DISTRIBUTED_SWEEP_HISTORY.md`): la imagen candidata
+se publicó a un tag separado (`candidate-0fad4ba`, no `:latest`) y se
+validó contra un coordinator de prueba con su propia DB — en ningún
+momento se tocó el coordinator de producción ni su `worker_image_digest`
+durante esta validación. Ese fue precisamente el proceso que permitió
+encontrar este bug antes de activarlo para workers reales.
