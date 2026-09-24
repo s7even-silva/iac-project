@@ -2241,3 +2241,86 @@ El barrido rechaza resume sobre CSV con esquema antiguo o grilla diferente antes
 de escribir, evitando columnas corridas y saltar combinaciones de otra grilla.
 Conservar esas salidas y usar otro directorio; no se migran ni borran resultados.
 Revisión local: no despliegue, cambios de jobs ni push.
+
+### Bug real de producción: `_migrate_jobs_add_phase()` vació la tabla `jobs` al desplegar jobs_v2 (2026-09-24)
+
+**Contexto:** primer despliegue de `jobs_v2` en la VM (código en `main`
+desde antes, nunca desplegado hasta hoy). Tras `git pull` + `systemctl
+restart geant4-coordinator`, el servicio entró en crashloop:
+`_migrate_jobs_add_phase()` (agregada hace semanas para backfillear
+`phase`, pensada como no-op en cualquier DB ya migrada) se disparó de
+nuevo, renombró `jobs`→`jobs_pre_phase_migration`, creó la `jobs` nueva,
+copió las 600 filas, y **falló en su último paso**
+(`DROP TABLE jobs_pre_phase_migration`) con
+`sqlite3.IntegrityError: FOREIGN KEY constraint failed` — `results.job_id
+REFERENCES jobs(job_id)` bloquea el DROP de una tabla que sigue teniendo
+ese nombre lógico referenciado, algo que nunca se había ejercitado porque
+esta migración jamás se había vuelto a disparar sobre una DB ya migrada
+en producción real. El proceso murió a mitad de la transacción; el WAL no
+llegó a aplicar el rollback completo antes de que systemd reiniciara el
+servicio, dejando `jobs` vacía (0 filas) y `jobs_pre_phase_migration` con
+las 600 filas originales intactas — **`/api/v1/jobs` y `/health` mostraban
+`jobs_done: 0`, pero ningún dato se había perdido realmente.**
+
+**Recuperado sin pérdida:** con el servicio detenido, se re-ejecutó a mano
+la copia `jobs_pre_phase_migration → jobs` (mismo backfill de `phase` que
+el código original), se verificó fila a fila contra la tabla vieja y que
+ningún `results.job_id` quedara huérfano, y solo entonces se hizo el DROP
+(esta vez sin FK bloqueante, porque ya no había una segunda tabla con el
+nombre lógico `jobs` en juego). 600/600 filas recuperadas bit a bit
+(status/phase/species/bin_index/etc. idénticos a la copia de respaldo
+tomada antes del despliegue). Dos backups completos de la DB de
+producción tomados en el proceso (`/var/lib/geant4-coordinator/backups/`),
+ninguno necesitó usarse para restaurar.
+
+**Causa raíz sin corregir todavía:** `_migrate_jobs_add_phase()` no debería
+poder volver a disparar su rama de migración sobre una DB que ya tiene
+`phase` en `jobs` — el propio código ya tiene ese guard
+(`if "phase" in cols: return`) al principio de la función, así que el
+disparo real implica que, en el momento exacto del restart, `jobs`
+todavía no tenía `phase` (consistente con que esta era la primera vez que
+esta versión del código corría contra la DB de producción real desde que
+se agregó esa columna hace semanas — la migración nunca se había
+ejecutado ahí antes de hoy). El bug real y no corregido es que el DROP
+final no tolera la FK de `results` apuntando al nombre `jobs` durante la
+ventana en que la tabla vieja ocupa ese nombre renombrado — cualquier
+migración futura de forma similar (rename+recreate+copy+drop) sobre una
+tabla referenciada por FK debería probarse primero contra una copia real
+de la DB de producción, no solo contra fixtures de test sintéticos
+(los 65+ tests existentes nunca ejercitan esto porque parten de una DB
+nueva, sin la tabla vieja post-rename en juego).
+
+**Corregido de raíz (mismo día):** `_migrate_jobs_add_phase()` ahora hace
+`PRAGMA foreign_keys=OFF` antes del rename y lo deja así hasta el final de
+la migración (dentro de la misma transacción; `get_conn()` siempre vuelve
+a ponerlo `ON` en la próxima conexión) — el `DROP TABLE` ya no puede
+volver a fallar contra ninguna DB, migrada o no.
+
+### Bug propio en el seed de jobs_v2 de Fase 8: worker sintético duplicado (2026-09-24)
+
+Al sembrar `jobs_v2` con las 64 corridas ya hechas standalone por Bryam
+(ver Fase 8 en `docs/bitacora/plan_estadistico.md`), `seed_fase8_tanda1_v2.py`
+creó un `worker_id` sintético nuevo (literal `"bryam-local"`) para dejar
+trazabilidad de ese trabajo retro-registrado — sin notar que la máquina
+real de Bryam ya tenía una identidad registrada desde el barrido v1
+original (`ba49a04b-c669-4011-a5b5-a2803825f6af`, label `bryam-local`,
+`bryam-VirtualBox`, 2026-09-13). Resultado: dos entidades con el mismo
+nombre visible en el dashboard, una de ellas (la sintética) apareciendo
+brevemente como `ONLINE` justo después de crearse (cualquier worker recién
+registrado tiene `seconds_since_heartbeat` bajo, sin relación con si vaya
+a mandar heartbeats reales alguna vez).
+
+**Corregido:** los 64 `jobs_v2`/`results_v2` se reasignaron al
+`worker_id` real (`UPDATE ... SET claimed_by=/worker_id=`, dentro de una
+transacción, verificado que cero filas quedaron con el `worker_id`
+sintético antes de borrarlo) y el worker sintético se eliminó.
+`seed_fase8_tanda1_v2.py` ahora usa el `worker_id` real como constante y
+solo registra un worker nuevo (con advertencia explícita) si de verdad no
+existe todavía — nunca sobrescribe un worker real preexistente con datos
+mínimos falsos.
+
+De paso, se limpió un tercer artefacto no relacionado: un `worker_id`
+sin `label`/`hostname` (`00000000-0000-0000-0000-000000000000`, `OFFLINE`
+desde antes de esta sesión, cero jobs/results referenciándolo en ninguna
+tabla, verificado antes de borrarlo) — registro basura de origen
+desconocido, sin relación con el trabajo de hoy.

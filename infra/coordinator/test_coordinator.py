@@ -975,3 +975,81 @@ def test_log_cli_waits_for_matching_empty_response(monkeypatch, capsys):
     output = capsys.readouterr().out
     assert 'log recibido vacío' in output
     assert 'old output' not in output
+
+
+def test_migrate_jobs_add_phase_with_results_referencing_old_table(tmp_path, monkeypatch):
+    """Regresion del bug real de produccion 2026-09-24 (ver
+    infra/OPERATIONS_LOG.md): _migrate_jobs_add_phase() fallaba con
+    'FOREIGN KEY constraint failed' en su DROP TABLE final cuando `results`
+    ya tenia filas referenciando `jobs` -- nunca se habia probado ese
+    escenario porque el fixture temp_db siempre parte de una DB nueva
+    (jobs sin filas, migracion no-op). Este test arma a mano el schema
+    VIEJO (jobs sin `phase`, foreign_keys=ON) con filas reales en jobs Y
+    en results apuntando a ellas, y confirma que init_db() migra sin
+    excepcion, preservando ambas tablas intactas."""
+    import sqlite3
+
+    db_path = tmp_path / "legacy.db"
+    monkeypatch.setattr(db, "DB_PATH", db_path)
+
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("""
+        CREATE TABLE jobs (
+            job_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            species TEXT NOT NULL,
+            bin_index INTEGER NOT NULL,
+            offset_x_m REAL NOT NULL,
+            repeticion INTEGER NOT NULL DEFAULT 0,
+            n_events INTEGER NOT NULL,
+            priority INTEGER NOT NULL DEFAULT 0,
+            min_ram_gb REAL NOT NULL DEFAULT 0,
+            min_cpu_count INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'pending',
+            claimed_by TEXT,
+            claimed_at TEXT,
+            attempt INTEGER NOT NULL DEFAULT 0,
+            max_attempts INTEGER NOT NULL DEFAULT 3,
+            last_error TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(species, bin_index, offset_x_m, repeticion)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE results (
+            result_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id INTEGER NOT NULL REFERENCES jobs(job_id),
+            worker_id TEXT NOT NULL,
+            duration_s REAL,
+            exit_code INTEGER,
+            n_rows INTEGER,
+            results_csv_path TEXT NOT NULL,
+            manifest_csv_path TEXT NOT NULL,
+            submitted_at TEXT NOT NULL
+        )
+    """)
+    conn.execute(
+        "INSERT INTO jobs (job_id, species, bin_index, offset_x_m, repeticion, n_events, status, "
+        "created_at, updated_at) VALUES (1, 'GCR_H', 0, 0.0, 0, 100, 'done', 'x', 'x')"
+    )
+    conn.execute(
+        "INSERT INTO results (job_id, worker_id, duration_s, exit_code, n_rows, results_csv_path, "
+        "manifest_csv_path, submitted_at) VALUES (1, 'w1', 10.0, 0, 1, 'r.csv', 'm.csv', 'x')"
+    )
+    conn.commit()
+    conn.close()
+
+    db.init_db()  # no debe lanzar sqlite3.IntegrityError
+
+    jobs = db.list_jobs()
+    assert len(jobs) == 1
+    assert jobs[0]["phase"] == "min"  # backfill por _LEGACY_SPECIES_PHASE["GCR_H"]
+
+    with db.get_conn() as conn:
+        results_intact = conn.execute("SELECT COUNT(*) FROM results WHERE job_id=1").fetchone()[0]
+        no_leftover_table = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE name='jobs_pre_phase_migration'"
+        ).fetchone()[0]
+    assert results_intact == 1
+    assert no_leftover_table == 0
