@@ -6,6 +6,14 @@ central del arreglo de bobinas es la posición de MAYOR dosis, no la más
 protegida:** ver
 [`INTERPRETACION_PROTECCION_RADIOLOGICA.md`](INTERPRETACION_PROTECCION_RADIOLOGICA.md).
 
+**Todas las limitaciones/constraints conocidas del barrido completo de
+600 simulaciones (alcance físico, validez estadística de las
+repeticiones, fases de validación metodológica todavía abiertas, y por
+qué los CSV de este directorio pueden estar desactualizados respecto al
+coordinator) — leer antes de citar cualquier número de este barrido en
+el paper:** ver
+[`LIMITACIONES_BARRIDO_600.md`](LIMITACIONES_BARRIDO_600.md).
+
 Este directorio junta los resultados reales del barrido por órgano de
 `ActiveShield_Sim` (dosis absorbida/equivalente por órgano ICRP110, en
 función de la posición radial del fantoma dentro de la nave) — ver
