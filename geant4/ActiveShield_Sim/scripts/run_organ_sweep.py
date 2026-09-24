@@ -199,8 +199,17 @@ MACRO_TEMPLATE = """\
 """
 
 
-def build_combinations(spectra_dir):
-    bins_by_key = energy_bins.build_bins(spectra_dir)
+def build_combinations(spectra_dir, n_bins=None):
+    """n_bins (2026-09-20, agregado para jobs_v2 del coordinator, ver
+    AGENTS.md "Computo distribuido"): default None -> energy_bins.N_BINS_PER_SPECIES,
+    el mismo default de siempre (build_bins() ya lo trae como default propio,
+    pero se resuelve aqui explicitamente para poder guardarlo en cada combo
+    dict, ya que aggregate_organ_doses.py/el coordinator necesitan saber a
+    que grilla pertenece cada bin_index -- bin_index=3 de una grilla de 8 NO
+    es el mismo rango de energia que bin_index=3 de una grilla de 16)."""
+    if n_bins is None:
+        n_bins = energy_bins.N_BINS_PER_SPECIES
+    bins_by_key = energy_bins.build_bins(spectra_dir, n_bins=n_bins)
     combos = []
     index = 0
     for species, phase in SPECIES_PHASE:
@@ -208,30 +217,86 @@ def build_combinations(spectra_dir):
             for offset_x_m in OFFSET_X_VALUES_M:
                 combos.append({
                     "index": index, "species": species, "phase": phase,
-                    "bin_index": bin_index, "energy_mev": energy_rep, "flux_bin": flux_bin,
-                    "offset_x_m": offset_x_m,
+                    "bin_index": bin_index, "n_bins": n_bins, "energy_mev": energy_rep,
+                    "flux_bin": flux_bin, "offset_x_m": offset_x_m,
                 })
                 index += 1
     return combos
 
 
+def validate_resume_grid(build_dir, n_bins):
+    """Never append a new CSV layout or grid to an existing run directory."""
+    for filename in ("organ_sweep_manifest.csv", "resultados_organo_sweep.csv"):
+        path = build_dir / filename
+        if not path.exists():
+            continue
+        with path.open(newline="") as stream:
+            reader = csv.DictReader(stream)
+            required = {"n_bins"}
+            if filename.startswith("resultados"):
+                required.update(("s1_j", "s2_j2", "n", "se_run_j", "se_run_total_j"))
+            if not required.issubset(reader.fieldnames or []):
+                raise ValueError(f"{path}: esquema antiguo; conservarlo y usar otro directorio de build/salida")
+            if any(int(row["n_bins"]) != n_bins for row in reader):
+                raise ValueError(f"{path}: otra grilla n_bins; usar otro directorio de salida")
+
+
 def parse_icrp110_out(out_path):
-    """Extrae (organ_id, edep_J, dose_Gy) de la tabla "para TODOS los
-    organos" de ICRP110.out (incluye IDs con edep 0, en orden estrictamente
-    creciente de ID). Se usa esta tabla -- no la de "solo organos con edep
-    != 0" que aparece antes en el mismo archivo -- porque da un valor por ID
-    sin depender de alinear posicionalmente esa otra tabla con la lista de
-    nombres de organo que le sigue. El mapeo ID->nombre se hace aparte, en
-    aggregate_organ_doses.py, leyendo ICRPdata/.../AM_organs.dat directamente.
-    Formato exacto parseado aqui: ver ICRP110UserScoreWriter.cc, seccion
-    final ("OrganID | Edep Dose", todos los IDs 0..NOrganIDs-1).
+    """Extrae, por organo, edep/dosis y (si el binario tiene el scorer
+    instrumentado) los acumuladores intra-run S1/S2/N/SE_run, de la tabla
+    "para TODOS los organos" de ICRP110.out (incluye IDs con edep 0, en
+    orden estrictamente creciente de ID). Se usa esta tabla -- no la de
+    "solo organos con edep != 0" que aparece antes en el mismo archivo --
+    porque da un valor por ID sin depender de alinear posicionalmente esa
+    otra tabla con la lista de nombres de organo que le sigue. El mapeo
+    ID->nombre se hace aparte, en aggregate_organ_doses.py, leyendo
+    ICRPdata/.../AM_organs.dat directamente. Formato exacto parseado aqui:
+    ver ICRP110UserScoreWriter.cc, seccion final ("OrganID | Edep Dose
+    [S1_J S2_J2 N SE_run_J]", todos los IDs 0..NOrganIDs-1).
+
+    Devuelve {organ_id: {"edep_J", "dose_Gy", ["s1_j", "s2_j2", "n",
+    "se_run_j", "se_run_total_j"]}} -- las ultimas 5 keys solo estan
+    presentes si el .out trae las columnas 3-6 (binario compilado con el
+    scorer instrumentado, ver ICRP110UserScoreWriter.cc); ausentes en un
+    .out del formato viejo (2 columnas), sin fallar por eso.
+
+    2026-09-20: reescrita de "devuelve list[(organ_id, edep_J, dose_Gy)]"
+    a este dict con S1/S2/N/SE_run -- identica a lo que hasta ahora vivia
+    por separado en pilots/pilot_common.py:parse_organ_table_full()
+    (mismo formato, misma tolerancia al formato viejo). Esa copia paralela
+    ahora es un alias a esta funcion (ver pilot_common.py) -- una sola
+    implementacion, no dos que pudieran divergir con el tiempo. El unico
+    call-site real de esta funcion (mas abajo en este modulo) se ajusto al
+    nuevo formato de retorno.
+
+    2026-09-21: BUG REAL encontrado (sesion "iac-project-1d", piloto Fase 7
+    parcial 9/36) y corregido aqui -- "se_run_j" tal como lo escribe el C++
+    es sqrt(variance/N) con N = numero de PARES (voxel,evento), es decir el
+    error estandar de la MEDIA de un par, no del total del organo. Pero
+    "s1_j"/"edep_J" (con los que se compara contra s_between entre seeds
+    en run_intrarun_pilot.py) es la suma TOTAL, no la media -- comparar
+    "se_run_j" contra la dispersion del total mezclaba dos escalas
+    distintas (ratio ~1e-4 en vez de ~0.4-0.5 real, ver analisis de esa
+    sesion). Bajo el supuesto de pares iid (Camino B, ver comentario en
+    ICRP110UserScoreWriter.cc), el SE del TOTAL de N pares con la misma
+    varianza es N veces el SE de la media: se_run_total_j = se_run_j * n.
+    Se agrega como campo NUEVO ("se_run_total_j") en vez de redefinir
+    "se_run_j" para no romper que el nombre siga describiendo lo que el
+    C++ realmente calcula (la media) -- ver tambien la nota en el mismo
+    sentido puesta en ICRP110UserScoreWriter.cc. Se corrige aqui, en
+    Python, y NO en el C++: evita forzar una recompilacion del binario en
+    todas las maquinas a mitad de un piloto en curso, y el .out crudo ya
+    trae (s1, s2, n) suficientes para derivar el total sin perder
+    informacion. Todo consumidor de "se_run_j" como si fuera el SE del
+    total (run_intrarun_pilot.py, run_fase9_calibracion_mb.py,
+    run_fase10_endpoint.py) debe migrar a "se_run_total_j".
     """
     text = out_path.read_text()
     marker = "ORGAN ENERGY DEPOSITIONS AND ABSORBED DOSE"
     if marker not in text:
         raise ValueError(f"{out_path}: no se encontro la seccion '{marker}'")
     tail = text.split(marker, 1)[1]
-    rows = []
+    rows = {}
     in_table = False
     for line in tail.splitlines():
         if line.startswith("OrganID"):
@@ -247,7 +312,17 @@ def parse_icrp110_out(out_path):
         parts = right.split()
         if len(parts) < 2:
             continue
-        rows.append((int(left.strip()), float(parts[0]), float(parts[1])))
+        organ_id = int(left.strip())
+        entry = {"edep_J": float(parts[0]), "dose_Gy": float(parts[1])}
+        if len(parts) >= 6:
+            entry["s1_j"] = float(parts[2])
+            entry["s2_j2"] = float(parts[3])
+            entry["n"] = int(parts[4])
+            entry["se_run_j"] = float(parts[5])
+            # SE del TOTAL del organo (no de la media por par voxel-evento)
+            # -- ver nota de 2026-09-21 en el docstring de esta funcion.
+            entry["se_run_total_j"] = entry["se_run_j"] * entry["n"]
+        rows[organ_id] = entry
     if not rows:
         raise ValueError(f"{out_path}: no se pudo parsear ninguna fila de la tabla de organos")
     return rows
@@ -271,6 +346,13 @@ def main():
                          help="Directorio de build con ICRP110phantoms compilado (default: <repo>/build)")
     parser.add_argument("--n-events", type=int, default=sweep_config.DEFAULT_N_EVENTS,
                          help=f"Eventos por corrida, default {sweep_config.DEFAULT_N_EVENTS}")
+    parser.add_argument("--n-bins", type=int, default=energy_bins.N_BINS_PER_SPECIES,
+                         help=f"Bins de energia por especie/fase (default {energy_bins.N_BINS_PER_SPECIES}, "
+                              "el mismo de siempre -- ver energy_bins.py). Cambiar esto cambia el rango de "
+                              "bin_index valido (0..n_bins-1) y a que grilla energetica corresponde cada uno "
+                              "-- bin_index=3 de una grilla de 8 NO es el mismo rango de energia que bin_index=3 "
+                              "de una grilla de 16. Agregado 2026-09-20 para jobs_v2 del coordinator, que puede "
+                              "pedir una grilla distinta de 8 por job.")
     parser.add_argument("--print-progress-every", type=int, default=1, help="Imprimir progreso cada N eventos (default 1; no es un temporizador).")
     parser.add_argument("--threads", type=int, default=os.cpu_count(),
                          help="Hilos de Geant4 MT por corrida via /run/numberOfThreads (default: todos los "
@@ -319,6 +401,8 @@ def main():
     parser.add_argument("--repetition-start", type=int, default=0,
                         help="Indice inicial de repeticion (default 0); con --repeats 1 ejecuta solo ese indice.")
     args = parser.parse_args()
+    if args.n_bins < 1:
+        parser.error("--n-bins debe ser positivo")
     if args.print_progress_every < 1:
         parser.error("--print-progress-every debe ser positivo")
     if args.repetition_start < 0 or args.repeats < 1:
@@ -341,6 +425,8 @@ def main():
                   "field/mesh_swept.py + field/mesh_to_gdml.py, o pasa --no-coil-geometry para omitirlo "
                   "(no es el comportamiento de produccion, ver AGENTS.md).")
 
+    if args.resume:
+        validate_resume_grid(build_dir, args.n_bins)
     generated_dir = build_dir / "macros" / "generated_organ"
     logs_dir = build_dir / "logs_organ"
     archive_dir = build_dir / "organ_out_archive"
@@ -349,7 +435,7 @@ def main():
     archive_dir.mkdir(parents=True, exist_ok=True)
 
     spectra_dir = project_root / "data" / "sources" / "oltaris"  # fuente de verdad versionada, no build_dir/data
-    combos = build_combinations(spectra_dir)
+    combos = build_combinations(spectra_dir, args.n_bins)
     if args.only_positions is not None:
         wanted = {float(x) for x in args.only_positions.split(",")}
         combos = [c for c in combos if c["offset_x_m"] in wanted]
@@ -369,8 +455,8 @@ def main():
         combos = combos[:args.limit]
 
     manifest_path = build_dir / "organ_sweep_manifest.csv"
-    manifest_fieldnames = ["index", "repeticion", "especie", "fase", "bin_index", "energy_mev", "offset_x_m",
-                            "n_events", "seed1", "seed2", "macro_path", "exit_code",
+    manifest_fieldnames = ["index", "repeticion", "especie", "fase", "bin_index", "n_bins", "energy_mev",
+                            "offset_x_m", "n_events", "seed1", "seed2", "macro_path", "exit_code",
                             "duration_s", "log_path", "out_archive_path"]
 
     done_runs = set()
@@ -389,11 +475,17 @@ def main():
         manifest_file.flush()
 
     results_path = build_dir / "resultados_organo_sweep.csv"
-    results_fieldnames = ["especie", "fase", "bin_index", "energy_mev", "offset_x_m", "repeticion",
-                           "organo_id", "edep_J", "dose_gy_run", "n_eventos"]
+    # s1_j/s2_j2/n/se_run_j (2026-09-20, ver parse_icrp110_out()): solo
+    # presentes si el binario tiene el scorer instrumentado -- restval=""
+    # (no el default de DictWriter) para no fallar al escribir una fila
+    # que no las trae, tolerando mezclar corridas de binarios viejos y
+    # nuevos en el mismo CSV (mismo criterio que parse_icrp110_out()).
+    results_fieldnames = ["especie", "fase", "bin_index", "n_bins", "energy_mev", "offset_x_m", "repeticion",
+                           "organo_id", "edep_J", "dose_gy_run", "n_eventos",
+                           "s1_j", "s2_j2", "n", "se_run_j", "se_run_total_j"]
     results_mode = "a" if (args.resume and results_path.is_file()) else "w"
     results_file = open(results_path, results_mode, newline="")
-    results_writer = csv.DictWriter(results_file, fieldnames=results_fieldnames)
+    results_writer = csv.DictWriter(results_file, fieldnames=results_fieldnames, restval="")
     if results_mode == "w":
         results_writer.writeheader()
         results_file.flush()
@@ -461,14 +553,29 @@ def main():
                 out_path.rename(archive_path)
                 try:
                     rows = parse_icrp110_out(archive_path)
-                    for organ_id, edep_j, dose_gy in rows:
-                        results_writer.writerow({
+                    for organ_id, stats in rows.items():
+                        row = {
                             "especie": combo["species"], "fase": combo["phase"],
-                            "bin_index": combo["bin_index"], "energy_mev": combo["energy_mev"],
+                            "bin_index": combo["bin_index"], "n_bins": combo["n_bins"],
+                            "energy_mev": combo["energy_mev"],
                             "offset_x_m": combo["offset_x_m"], "repeticion": rep,
-                            "organo_id": organ_id, "edep_J": edep_j, "dose_gy_run": dose_gy,
-                            "n_eventos": args.n_events,
-                        })
+                            "organo_id": organ_id, "edep_J": stats["edep_J"],
+                            "dose_gy_run": stats["dose_Gy"], "n_eventos": args.n_events,
+                        }
+                        # s1_j/s2_j2/n/se_run_j/se_run_total_j solo presentes
+                        # si el binario tiene el scorer instrumentado --
+                        # ausentes en un .out del formato viejo, sin que eso
+                        # sea un error (restval="" en el DictWriter de mas
+                        # abajo cubre esas columnas para esas filas).
+                        # se_run_j = SE de la MEDIA por par (voxel,evento);
+                        # se_run_total_j = SE del TOTAL del organo (ver nota
+                        # 2026-09-21 en parse_icrp110_out()) -- este ultimo
+                        # es el que se compara contra s_between entre seeds.
+                        if "se_run_j" in stats:
+                            row.update(s1_j=stats["s1_j"], s2_j2=stats["s2_j2"],
+                                       n=stats["n"], se_run_j=stats["se_run_j"],
+                                       se_run_total_j=stats["se_run_total_j"])
+                        results_writer.writerow(row)
                     results_file.flush()
                     parsed_ok = True
                 except ValueError as exc:
@@ -481,7 +588,7 @@ def main():
 
             manifest_writer.writerow({
                 "index": combo["index"], "repeticion": rep, "especie": combo["species"], "fase": combo["phase"],
-                "bin_index": combo["bin_index"], "energy_mev": combo["energy_mev"],
+                "bin_index": combo["bin_index"], "n_bins": combo["n_bins"], "energy_mev": combo["energy_mev"],
                 "offset_x_m": combo["offset_x_m"],
                 "n_events": args.n_events, "seed1": seed1, "seed2": seed2,
                 "macro_path": str(macro_path),

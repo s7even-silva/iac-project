@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS workers (
     label           TEXT,
     registered_at   TEXT NOT NULL,
     last_heartbeat  TEXT,
-    status          TEXT NOT NULL DEFAULT 'online'
+    status          TEXT NOT NULL DEFAULT 'online',
+    orphans_killed_total INTEGER
 );
 
 -- Clave/valor generico para config global de despliegue -- pensado para
@@ -244,6 +245,7 @@ _MIGRATIONS = [
     "ALTER TABLE jobs ADD COLUMN log_requested INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE jobs ADD COLUMN log_tail TEXT",
     "ALTER TABLE jobs ADD COLUMN log_tail_updated_at TEXT",
+    "ALTER TABLE workers ADD COLUMN orphans_killed_total INTEGER",
 ]
 
 
@@ -283,6 +285,24 @@ def _migrate_jobs_add_phase(conn) -> None:
         return  # la tabla jobs ni siquiera existe todavia -- SCHEMA la crea ya con phase, nada que migrar
 
     print("Migrando tabla 'jobs': agregando columna 'phase' (recrea la tabla, ver _migrate_jobs_add_phase)")
+    # Bug real de produccion (2026-09-24): con foreign_keys=ON (ver
+    # get_conn()), el DROP TABLE jobs_pre_phase_migration de mas abajo
+    # fallaba con "FOREIGN KEY constraint failed" -- results.job_id
+    # REFERENCES jobs(job_id) sigue resolviendo contra el nombre logico
+    # `jobs` mientras la tabla vieja lo ocupa (renombrada), y SQLite no
+    # permite dropear una tabla con una FK entrante pendiente de
+    # resolver contra el nombre nuevo. El proceso murio a mitad de la
+    # transaccion (excepcion sin capturar en init_db()), dejando `jobs`
+    # vacia y `jobs_pre_phase_migration` con los datos originales
+    # intactos -- recuperado a mano esa vez (ver infra/OPERATIONS_LOG.md).
+    # Esta migracion entera ya corre dentro de una sola transaccion
+    # (BEGIN/COMMIT implicito de get_conn()), asi que desactivar el
+    # chequeo de FK solo aqui es seguro: se re-activa solo al abrir la
+    # PROXIMA conexion (get_conn() siempre la pone ON de nuevo), y ninguna
+    # fila con una FK realmente invalida puede colarse -- el propio
+    # INSERT...SELECT de mas abajo copia los mismos job_id, sin crear
+    # ninguna referencia nueva.
+    conn.execute("PRAGMA foreign_keys=OFF")
     conn.execute("ALTER TABLE jobs RENAME TO jobs_pre_phase_migration")
     # Definicion explicita e independiente de SCHEMA -- parsear SCHEMA con
     # split(";") es fragil (los comentarios SQL de varias lineas de ese
@@ -490,7 +510,8 @@ def requeue_orphaned_jobs_for_worker(conn, worker_id: str, active_job_id: int | 
 
 
 def touch_heartbeat(worker_id: str, ram_free_gb: float = None, cpu_load_pct: float = None,
-                     image_digest: str = None, active_job_id: int | None = None) -> dict | None:
+                     image_digest: str = None, active_job_id: int | None = None,
+                     orphans_killed_total: int | None = None) -> dict | None:
     """None si el worker no esta registrado (llamador responde 404).
     Si esta registrado: {"cancel_job_id": int | None, "request_log": bool}
     -- job_id del job activo de este worker si fue marcado para cancelar
@@ -513,7 +534,19 @@ def touch_heartbeat(worker_id: str, ram_free_gb: float = None, cpu_load_pct: flo
     job claimed/running en la tabla jobs -- computo huerfano tras un
     reencolado manual que nunca senalizo al proceso real. Sin esto, la
     unica forma de saber que job cree el worker que tiene activo era
-    adivinar o acceder a la maquina."""
+    adivinar o acceder a la maquina.
+
+    orphans_killed_total (2026-09-20, ver cleanup_orphaned_simulations()
+    en worker.py): COALESCE, NO escritura directa como active_job_id --
+    a diferencia de active_job_id (donde NULL es un dato real, "sin job
+    activo ahora"), un heartbeat de un worker VIEJO que todavia no manda
+    este campo simplemente no trae informacion sobre orfanos, no dice
+    "cero orfanos matados" -- COALESCE conserva el ultimo valor conocido
+    en ese caso, igual que ram_free_gb/cpu_load_pct/image_digest. El
+    contador en si ya es manejado por el worker para reflejar reinicios
+    (vuelve a 0 en cada arranque del proceso, ver worker.py) -- este
+    COALESCE es solo para no perder el ultimo valor real ante un
+    heartbeat que no lo informa, no para acumular entre reinicios."""
     with get_conn() as conn:
         conn.execute("BEGIN IMMEDIATE")
         previous = conn.execute("SELECT last_heartbeat FROM workers WHERE worker_id=?", (worker_id,)).fetchone()
@@ -524,10 +557,12 @@ def touch_heartbeat(worker_id: str, ram_free_gb: float = None, cpu_load_pct: flo
             """
             UPDATE workers SET last_heartbeat=?, status='online',
                    ram_free_gb=COALESCE(?, ram_free_gb), cpu_load_pct=COALESCE(?, cpu_load_pct),
-                   image_digest=COALESCE(?, image_digest), active_job_id=?, active_job_reported_at=?
+                   image_digest=COALESCE(?, image_digest), active_job_id=?, active_job_reported_at=?,
+                   orphans_killed_total=COALESCE(?, orphans_killed_total)
             WHERE worker_id=?
             """,
-            (now_iso(), ram_free_gb, cpu_load_pct, image_digest, active_job_id, now_iso(), worker_id),
+            (now_iso(), ram_free_gb, cpu_load_pct, image_digest, active_job_id, now_iso(),
+             orphans_killed_total, worker_id),
         )
         if cur.rowcount == 0:
             return None

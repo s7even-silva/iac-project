@@ -268,6 +268,54 @@ Piezas clave para administrar el sistema:
   duplicado ante un timeout de abandono vencido — detalle y justificación
   en `infra/DISTRIBUTED_SWEEP_HISTORY.md`.
 
+### `jobs_v2`: grilla de bins parametrizable + estadísticos intra-run (2026-09-20)
+
+El barrido de 600 combinaciones (arriba) siempre usa la grilla de 8 bins
+fija (`energy_bins.N_BINS_PER_SPECIES`) y nunca sube los estadísticos
+intra-run S1/S2/N/SE_run que el scorer ya calcula (ver Fase 7 del plan
+estadístico). Para cuando el equipo decida los parámetros finales de
+producción (p. ej. 16 bins, M distinto por bin vía la Fase 9), se agregó
+un **segundo esquema de jobs** en la misma base de datos y el mismo
+proceso `worker.py`, sin tocar nada del barrido de 600 ya sembrado:
+
+- **`infra/coordinator/db_v2.py`** (módulo separado, no una versión de
+  `db.py`): tablas `jobs_v2`/`results_v2` en el mismo `coordinator.db`.
+  `jobs_v2` agrega la columna `n_bins` (y la incluye en su `UNIQUE` —
+  `bin_index=3` de una grilla de 8 y de una grilla de 16 no son el mismo
+  job). Lógica de asignación deliberadamente más simple que `db.py`
+  (sin emparejamiento por `cpu_score` ni worker "élite") — si `jobs_v2`
+  alcanza un volumen similar al barrido actual, portar ese refinamiento
+  ahí, no antes.
+- **Endpoints nuevos** bajo `/api/v1/jobs/v2/...` en `app.py` (paths
+  propios, no una rama dentro de los handlers v1) — `submit_result_v2`
+  extiende la misma verificación fila-por-fila que ya existía (`especie`,
+  `bin_index`, `offset_x_m`, `repeticion`, `n_eventos`) para incluir
+  también `n_bins`: un resultado subido con una grilla distinta de la
+  pedida se rechaza con HTTP 422.
+- **`run_organ_sweep.py --n-bins`** (nuevo, default 8): pasa la grilla
+  elegida a `energy_bins.build_bins()`. `parse_icrp110_out()` se
+  reescribió para devolver también S1/S2/N/SE_run cuando el binario los
+  trae (tolerante al formato viejo de 2 columnas) — `pilots/pilot_common.py`
+  ya no tiene su propia copia de este parseo, es un alias a esta función.
+- **`worker.py`**: el mismo proceso atiende ambas colas sin ningún cambio
+  de configuración — intenta un job v1 primero, si no hay, intenta v2.
+  `RESULTS_FIELDNAMES_V2` agrega las columnas nuevas al CSV filtrado que
+  se sube.
+- **Sin retroactividad**: los 529 resultados ya subidos del barrido v1
+  NO se re-parsean — los `.out` crudos de esas corridas no se guardaron
+  en ningún lugar accesible (ni el coordinator ni este repo los
+  conservan), así que no hay nada real de donde extraer S1/S2/N para
+  ellos. Solo jobs_v2 (trabajo nuevo) trae estos estadísticos.
+- **`infra/coordinator/seed_full_sweep_v2.py`**: siembra `jobs_v2` con
+  `--n-bins` explícito (sin default — a diferencia de `seed_full_sweep.py`,
+  que asume 8 bins fijo).
+
+Nada de esto desplegado en la VM de producción todavía (trabajo local,
+verificado con `pytest infra/coordinator infra/worker` y un ciclo HTTP
+real contra `uvicorn` local) — ver `docs/bitacora/plan_estadistico.md`
+para cuándo/si el equipo decide los parámetros finales que motivarían
+sembrar `jobs_v2` de verdad.
+
 ## ¿Qué es `WORKER_TOKEN` y por qué no está activado?
 
 Es un secreto compartido simple: si el coordinator arranca con la

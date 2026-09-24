@@ -2138,3 +2138,248 @@ se reencola en el mismo heartbeat que lo revela; respeta
 de `db.py`/`app.py` — **no requiere imagen Docker nueva**, se despliega
 con el procedimiento normal (`git pull` + `systemctl restart
 geant4-coordinator`).
+
+### 7 procesos `ICRP110phantoms` huérfanos en `tania`, hasta 24h vivos, ~800% CPU sumado (2026-09-20)
+
+**Reportado por el usuario, vía el agente de la sesión del coordinator**
+(que tenía acceso al journal de `uvicorn` y a la DB, no a `tania`
+directamente): 7 PIDs del binario pesado de Geant4 seguían corriendo
+dentro del contenedor de `tania` — entre 1h y 24h vivos, sumando
+~800% CPU (8 núcleos completos) — pese a que el coordinator ya daba esos
+jobs por `failed`/cancelados. Mientras tanto, el job realmente activo en
+ese momento (148) solo podía usar los núcleos que sobraban, no los 10
+hilos pedidos (`--threads 10`).
+
+**Diagnóstico colaborativo entre dos sesiones (esta y la del
+coordinator), con evidencia real, no supuesta:**
+
+- `terminate_process_group()` en `worker.py` ya usaba `os.killpg()`
+  (mata el grupo de procesos completo, no solo el PID padre) desde antes
+  de este incidente — reproducido localmente con un árbol de 2 niveles
+  (proceso Python padre → `subprocess.run` hijo, `sleep` como sustituto
+  de `ICRP110phantoms`) y con un `SIGTERM` real interrumpiendo
+  `process.wait()`: en ambos casos el `killpg` mató correctamente todo
+  el árbol, sin dejar huérfanos. El diagnóstico inicial de "la
+  cancelación solo mata el proceso padre" **no reproduce** con el código
+  del repo.
+- La sesión del coordinator correlacionó los 7 timestamps de arranque de
+  esos jobs (del 15-sep) contra la edad real de cada PID huérfano — las
+  diferencias coinciden casi exactamente (616 vs. 618 min, 85 vs. 85 min,
+  etc.), y confirmó en el journal que el worker de `tania` SÍ mandó
+  `POST /fail` entre 4 y 31s después de cada `cancel`, lo cual solo pasa
+  después de que `terminate_process_group()`/`watcher.join()` ya
+  corrieron — es decir, el worker estaba vivo y completó la ruta de
+  cancelación, no murió a mitad de camino. Las demás causas de huérfanos
+  en otras máquinas (reinicios de worker, timeout de heartbeat) sí dejan
+  al binario limpio porque el contenedor entero termina.
+- Conclusión: el `killpg` sí se disparó en `tania` específicamente, pero
+  no alcanzó al nieto. Sospechoso, no confirmado con un `ps` real
+  todavía: `tania` corre **Podman rootless con `NetworkMode: pasta`**
+  (mismo incidente ya documentado arriba, "Auto-actualización con
+  Podman" — misma máquina, mismo digest de imagen vieja `639b183c...`),
+  que puede intercalar procesos de red en el árbol de forma que rompa la
+  asunción de que el nieto queda en el mismo grupo de sesión que
+  `run_organ_sweep.py`. Pendiente: comparar el `pgid` real de un
+  huérfano contra el `pgid`/`sid` de su `run_organ_sweep.py` padre
+  (`ps -o pid,ppid,pgid,sid,lstart,cmd`) para confirmar o descartar esto
+  — dato que solo puede traer quien tenga acceso directo a `tania`.
+
+**Fix aplicado, independiente del diagnóstico raíz exacto** (`worker.py`,
+`cleanup_orphaned_simulations()`): un barrido que mata cualquier
+`ICRP110phantoms` cuyo `cwd` (vía `/proc/<pid>/cwd`) está dentro de un
+directorio `geant4-job-*` — el prefijo único que solo `worker.py` crea
+(`tempfile.TemporaryDirectory` en `_run_job()`) para cada intento.
+Diseño revisado dos veces con el equipo antes de esta forma final:
+
+1. **No alcanza con correr esto solo al arrancar** — los 7 huérfanos de
+   `tania` se acumularon a lo largo de ~19h con el *mismo* proceso
+   worker vivo todo el tiempo (heartbeats continuos, sin reinicio). Por
+   eso corre también periódicamente, en cada vuelta del loop principal
+   en que este worker no tiene ningún job propio activo (`job is None`,
+   justo antes de dormir hasta el siguiente poll) — nunca compite con
+   una simulación legítima en curso de este mismo worker.
+2. **No filtrar solo por nombre de binario en toda la máquina** — en un
+   worker sin contenedor (`bryam-local` corre `worker.py` directo contra
+   su build ya compilado) eso mataría una corrida manual legítima del
+   usuario, ajena por completo al worker. Acotar por `cwd` dentro de
+   `geant4-job-*` evita ese falso positivo por diseño: ningún proceso
+   ajeno a este worker corre nunca ahí.
+
+Verificado con un test real (no simulado): un proceso `sleep` como
+sustituto del binario, uno dentro de `geant4-job-*` (debe morir) y otro
+en un directorio normal (nunca debe tocarse) — ambos casos se comportan
+como se espera. `infra/worker/test_worker.py`, 71 tests en total.
+Cambio puro de `worker.py` — no requiere imagen Docker nueva, aplica con
+el procedimiento normal de actualización del worker.
+
+### Revisión previa al push de jobs_v2 (2026-09-20)
+
+Corregidos: arranque v2 enviado por error a `/jobs/{id}/start`; colisiones de
+outbox/fallos entre IDs v1/v2 (v2 usa prefijo propio, legados v1 conservados);
+heartbeat de v2 que podía recibir cancelación/log de v1 con el mismo ID;
+reencolado v2 basado en updated_at aun con heartbeat vivo, sin transacción
+ni límite de intentos. Ahora exige heartbeat vencido y respeta max_attempts.
+Resultados v2 verifican también fase. Seed valida bins/eventos positivos.
+
+**Bug propio introducido en esta misma revisión, encontrado y corregido
+antes de comitear:** `claim_next_job_v2()` había quedado con el fallback de
+`cpu_score` desconocido en `0.0` en vez de `float("inf")` — invertía el
+criterio ya establecido en `db.py` v1 (`claim_next_job()`, comentario
+explícito ahí: "un worker sin `cpu_score` real... no debe bloquearse por
+`min_cpu_score`"). Con `0.0`, exactamente el worker que menos telemetría
+tiene de sí mismo (versión vieja, o el benchmark de arranque falló)
+quedaba bloqueado de cualquier job que pidiera `min_cpu_score > 0` — al
+revés de lo previsto. Revertido a `float("inf")`, mismo criterio que v1.
+
+La limpieza global por cwd `geant4-job-*` quedó desactivada: no prueba propiedad
+ni que otro worker haya terminado. Sigue la terminación del grupo subprocess
+propio por cancelación. Para recuperar limpieza automática se necesita un registro
+persistente de propietario e identidad de proceso (incluido starttime), no un
+filtro por nombre. El contador no suma señales no verificadas.
+
+El barrido rechaza resume sobre CSV con esquema antiguo o grilla diferente antes
+de escribir, evitando columnas corridas y saltar combinaciones de otra grilla.
+Conservar esas salidas y usar otro directorio; no se migran ni borran resultados.
+Revisión local: no despliegue, cambios de jobs ni push.
+
+### Bug real de producción: `_migrate_jobs_add_phase()` vació la tabla `jobs` al desplegar jobs_v2 (2026-09-24)
+
+**Contexto:** primer despliegue de `jobs_v2` en la VM (código en `main`
+desde antes, nunca desplegado hasta hoy). Tras `git pull` + `systemctl
+restart geant4-coordinator`, el servicio entró en crashloop:
+`_migrate_jobs_add_phase()` (agregada hace semanas para backfillear
+`phase`, pensada como no-op en cualquier DB ya migrada) se disparó de
+nuevo, renombró `jobs`→`jobs_pre_phase_migration`, creó la `jobs` nueva,
+copió las 600 filas, y **falló en su último paso**
+(`DROP TABLE jobs_pre_phase_migration`) con
+`sqlite3.IntegrityError: FOREIGN KEY constraint failed` — `results.job_id
+REFERENCES jobs(job_id)` bloquea el DROP de una tabla que sigue teniendo
+ese nombre lógico referenciado, algo que nunca se había ejercitado porque
+esta migración jamás se había vuelto a disparar sobre una DB ya migrada
+en producción real. El proceso murió a mitad de la transacción; el WAL no
+llegó a aplicar el rollback completo antes de que systemd reiniciara el
+servicio, dejando `jobs` vacía (0 filas) y `jobs_pre_phase_migration` con
+las 600 filas originales intactas — **`/api/v1/jobs` y `/health` mostraban
+`jobs_done: 0`, pero ningún dato se había perdido realmente.**
+
+**Recuperado sin pérdida:** con el servicio detenido, se re-ejecutó a mano
+la copia `jobs_pre_phase_migration → jobs` (mismo backfill de `phase` que
+el código original), se verificó fila a fila contra la tabla vieja y que
+ningún `results.job_id` quedara huérfano, y solo entonces se hizo el DROP
+(esta vez sin FK bloqueante, porque ya no había una segunda tabla con el
+nombre lógico `jobs` en juego). 600/600 filas recuperadas bit a bit
+(status/phase/species/bin_index/etc. idénticos a la copia de respaldo
+tomada antes del despliegue). Dos backups completos de la DB de
+producción tomados en el proceso (`/var/lib/geant4-coordinator/backups/`),
+ninguno necesitó usarse para restaurar.
+
+**Causa raíz sin corregir todavía:** `_migrate_jobs_add_phase()` no debería
+poder volver a disparar su rama de migración sobre una DB que ya tiene
+`phase` en `jobs` — el propio código ya tiene ese guard
+(`if "phase" in cols: return`) al principio de la función, así que el
+disparo real implica que, en el momento exacto del restart, `jobs`
+todavía no tenía `phase` (consistente con que esta era la primera vez que
+esta versión del código corría contra la DB de producción real desde que
+se agregó esa columna hace semanas — la migración nunca se había
+ejecutado ahí antes de hoy). El bug real y no corregido es que el DROP
+final no tolera la FK de `results` apuntando al nombre `jobs` durante la
+ventana en que la tabla vieja ocupa ese nombre renombrado — cualquier
+migración futura de forma similar (rename+recreate+copy+drop) sobre una
+tabla referenciada por FK debería probarse primero contra una copia real
+de la DB de producción, no solo contra fixtures de test sintéticos
+(los 65+ tests existentes nunca ejercitan esto porque parten de una DB
+nueva, sin la tabla vieja post-rename en juego).
+
+**Corregido de raíz (mismo día):** `_migrate_jobs_add_phase()` ahora hace
+`PRAGMA foreign_keys=OFF` antes del rename y lo deja así hasta el final de
+la migración (dentro de la misma transacción; `get_conn()` siempre vuelve
+a ponerlo `ON` en la próxima conexión) — el `DROP TABLE` ya no puede
+volver a fallar contra ninguna DB, migrada o no.
+
+### Bug propio en el seed de jobs_v2 de Fase 8: worker sintético duplicado (2026-09-24)
+
+Al sembrar `jobs_v2` con las 64 corridas ya hechas standalone por Bryam
+(ver Fase 8 en `docs/bitacora/plan_estadistico.md`), `seed_fase8_tanda1_v2.py`
+creó un `worker_id` sintético nuevo (literal `"bryam-local"`) para dejar
+trazabilidad de ese trabajo retro-registrado — sin notar que la máquina
+real de Bryam ya tenía una identidad registrada desde el barrido v1
+original (`ba49a04b-c669-4011-a5b5-a2803825f6af`, label `bryam-local`,
+`bryam-VirtualBox`, 2026-09-13). Resultado: dos entidades con el mismo
+nombre visible en el dashboard, una de ellas (la sintética) apareciendo
+brevemente como `ONLINE` justo después de crearse (cualquier worker recién
+registrado tiene `seconds_since_heartbeat` bajo, sin relación con si vaya
+a mandar heartbeats reales alguna vez).
+
+**Corregido:** los 64 `jobs_v2`/`results_v2` se reasignaron al
+`worker_id` real (`UPDATE ... SET claimed_by=/worker_id=`, dentro de una
+transacción, verificado que cero filas quedaron con el `worker_id`
+sintético antes de borrarlo) y el worker sintético se eliminó.
+`seed_fase8_tanda1_v2.py` ahora usa el `worker_id` real como constante y
+solo registra un worker nuevo (con advertencia explícita) si de verdad no
+existe todavía — nunca sobrescribe un worker real preexistente con datos
+mínimos falsos.
+
+De paso, se limpió un tercer artefacto no relacionado: un `worker_id`
+sin `label`/`hostname` (`00000000-0000-0000-0000-000000000000`, `OFFLINE`
+desde antes de esta sesión, cero jobs/results referenciándolo en ninguna
+tabla, verificado antes de borrarlo) — registro basura de origen
+desconocido, sin relación con el trabajo de hoy.
+
+### Bug real de producción: `204 No Content` con body rompía el polling de jobs (2026-09-24)
+
+**Encontrado validando la imagen candidata de `jobs_v2` con un canario**
+(coordinator de prueba aislado, DB propia, nunca contra producción — ver
+la nota de convención más abajo): un worker real corriendo la imagen
+candidata quedaba atrapado en un loop de
+`('Connection aborted.', ConnectionResetError(104, 'Connection reset by
+peer'))` en cada poll, sin poder tomar ningún job aunque hubiera uno
+`pending` sembrado explícitamente para la prueba. El mismo patrón exacto
+ya estaba en los logs de la VM de producción desde el despliegue de
+`jobs_v2` esa misma mañana, sin que se hubiera investigado a fondo
+todavía.
+
+**Causa raíz:** `/api/v1/jobs/next` y `/api/v1/jobs/v2/next` devolvían
+`JSONResponse(status_code=204, content=None)` cuando no había trabajo —
+eso serializa el literal `"null"` (4 bytes) como cuerpo, violando el
+`Content-Length=0` que un `204 No Content` exige por definición.
+`@app.middleware("http")` (`require_worker_token()`, `BaseHTTPMiddleware`
+por dentro) reenvía esa respuesta, y el conflicto se manifiesta en el
+servidor como `h11._util.LocalProtocolError: "Too much data for declared
+Content-Length"` — el cliente (`worker.py`, vía `requests`) nunca ve un
+`204` limpio, solo la conexión reseteada a mitad, y entra en su
+reintento normal, pero sin avanzar nunca.
+
+**Por qué no se había detectado antes:** el endpoint v1 usa este mismo
+patrón desde que existe, pero casi siempre hay algún job `pending` en
+producción real, así que el camino "cola vacía" rara vez se ejercitaba.
+El endpoint v2 se agregó en `5541a04` y nunca se había desplegado contra
+un coordinator real hasta hoy — el bug estaba latente desde su creación,
+sin ningún test que lo cubriera (los tests existentes llaman
+`db.claim_next_job()` directo, nunca pasan por la capa HTTP/middleware
+real donde vivía el problema).
+
+**Corregido:** `Response(status_code=204)` (sin `content`) en vez de
+`JSONResponse(status_code=204, content=None)`, en ambos endpoints. Test
+de regresión nuevo (`test_next_job_204_has_no_body_through_middleware`,
+`infra/coordinator/test_coordinator.py`) usando `TestClient` real (no
+`db.py` directo) para ejercitar el middleware completo — confirmado que
+falla sin el fix (`resp.content == b'null'`) y pasa con él. Requiere
+`httpx` (dependencia de `fastapi.testclient.TestClient`, no listada en
+`requirements.txt` — es dependencia de test, no de producción, mismo
+criterio que `pytest`, documentado en el docstring del archivo).
+
+**Validado end-to-end con el canario tras el fix:** el mismo worker
+(imagen `candidate-0fad4ba`) tomó el job de prueba, corrió Geant4 real
+(142 filas de órgano), y reportó `done` sin ningún reintento. Confirmado
+también que `self_image_digest()` funciona correctamente cuando el
+socket de Docker está montado — el `image_digest` reportado coincidió
+exactamente con el digest real de la imagen publicada en GHCR.
+
+**Convención de despliegue seguida** (ver "El checklist anterior... era
+incorrecto: publicar y validar el candidato primero, activar el digest
+después" en `infra/DISTRIBUTED_SWEEP_HISTORY.md`): la imagen candidata
+se publicó a un tag separado (`candidate-0fad4ba`, no `:latest`) y se
+validó contra un coordinator de prueba con su propia DB — en ningún
+momento se tocó el coordinator de producción ni su `worker_image_digest`
+durante esta validación. Ese fue precisamente el proceso que permitió
+encontrar este bug antes de activarlo para workers reales.
