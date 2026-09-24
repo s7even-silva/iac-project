@@ -787,6 +787,37 @@ tocar el CSV/veredicto principal — útil para ver cuánto cambiaría
 `compatible_con_ruido_mc` con un factor menos conservador (ej. la mediana
 observada en Fase 7, ~0.3) en vez del peor caso (0.08).
 
+**Reparto de la tanda 1 vía `jobs_v2` (2026-09-24):** la tanda 1 de
+producción (`SEP_p/max` + `GCR_H/min`, n_bins∈{8,16,32}, offset=0,
+n_events=10000, 112 combinaciones) venía corriendo standalone en la
+máquina de Bryam (`run_fase8_binning.py` directo, sin pasar por el
+coordinator) — al llegar a 64/112 (SEP_p/max completo, GCR_H/min solo en
+8 bins) se decidió repartir lo restante (48 combinaciones: toda la
+grilla 16/32 de GCR_H/min) entre los workers voluntarios vía `jobs_v2`
+(`db_v2.py`/`/api/v1/jobs/v2/...`, código ya en `main` desde antes pero
+sin desplegar en la VM). `seed_full_sweep_v2.py` no sirve para esto tal
+cual: siembra los 3 combos fijos de producción (incluye `GCR_He/min`,
+bloqueado hasta confirmación explícita) × las 5 posiciones del eje
+(`OFFSET_X_VALUES_M`), mientras que Fase 8 fija offset en 0.0 y no debe
+tocar `GCR_He/min` — usarlo habría sembrado 5x el trabajo real y
+adelantado un combo no autorizado. Se agregó
+`infra/coordinator/seed_fase8_tanda1_v2.py` (scope acotado a esta
+tanda), que siembra las 112 combinaciones y marca como `done` las 64 ya
+corridas por Bryam, asociadas a un worker `bryam-local` registrado
+explícitamente (con `results_csv_path`/`manifest_csv_path` apuntando a
+la referencia git real en `results/fase8-prod`, no a un CSV filtrado —
+ese trabajo no pasó por el protocolo HTTP del worker) — trazabilidad
+honesta de un retro-registro, no un resultado inventado. Verificado
+localmente contra una DB de prueba aislada antes de tocar producción:
+112/112 sembradas, 64 `done`/48 `pending` coincide con el manifest real,
+`pytest infra/coordinator/test_db_v2.py` en verde. Bryam detiene su
+corrida local de las 48 restantes una vez el coordinator las reparte,
+para no duplicar cómputo. `dashboard.html` se actualizó en el mismo
+cambio con un panel de solo lectura para `jobs_v2` (ver
+`infra/coordinator/dashboard.html`, función genérica
+`renderSimpleJobsTable()` — reutilizable para una futura `jobs_v3` sin
+copiar/pegar render logic, declarando solo un objeto de columnas).
+
 ## Objetivo
 
 Determinar si la discretización actual de 8 bins es suficientemente precisa **antes** de optimizar `M_b` o comprobar la precisión de la comparación shield/control.

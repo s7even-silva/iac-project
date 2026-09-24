@@ -519,13 +519,33 @@ footer.note code{font-family:"IBM Plex Mono",monospace;background:var(--surface-
     </div>
   </section>
 
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Jobs v2 (piloto: n_bins parametrizable) <span class="count" id="jobs-v2-count"></span></h2>
+    </div>
+    <div class="stats" id="stats-v2">
+      <div class="stat pending"><span class="n tab-num" id="statv2-pending">–</span><span class="l">Pendientes</span></div>
+      <div class="stat running"><span class="n tab-num" id="statv2-running">–</span><span class="l">Corriendo</span></div>
+      <div class="stat done"><span class="n tab-num" id="statv2-done">–</span><span class="l">Listos</span></div>
+      <div class="stat failed"><span class="n tab-num" id="statv2-failed">–</span><span class="l">Fallidos</span></div>
+    </div>
+    <div class="table-scroll">
+      <table id="jobs-v2-table">
+        <thead><tr id="jobs-v2-head"></tr></thead>
+        <tbody id="jobs-v2-body"></tbody>
+      </table>
+      <div class="empty-state" id="jobs-v2-empty" hidden>Ningún job_v2 sembrado todavía.</div>
+    </div>
+  </section>
+
   <footer class="note">
-    Datos leídos directamente vía <code>fetch()</code> a <code>/api/v1/health</code>, <code>/api/v1/jobs</code> y <code>/api/v1/workers</code> del mismo origen — solo lectura, sin credenciales. <code>online</code> y el tiempo desde el último latido los calcula el propio coordinator con su reloj de servidor. Actualiza bajo demanda con el botón de arriba.
+    Datos leídos directamente vía <code>fetch()</code> a <code>/api/v1/health</code>, <code>/api/v1/jobs</code>, <code>/api/v1/jobs/v2</code> y <code>/api/v1/workers</code> del mismo origen — solo lectura, sin credenciales. <code>online</code> y el tiempo desde el último latido los calcula el propio coordinator con su reloj de servidor. Actualiza bajo demanda con el botón de arriba. La tabla "Jobs v2" es de solo lectura, sin los filtros multi-select de la tabla v1 (jobs_v2 es un volumen mucho menor por ahora — ver AGENTS.md/db_v2.py sobre por qué nace deliberadamente más simple).
   </footer>
 </div>
 
 <script>
 let jobs = [];
+let jobsV2 = [];
 let workers = [];
 let workerById = {};
 
@@ -578,16 +598,21 @@ async function fetchAll(){
   btn.classList.add("spinning");
   btn.disabled = true;
   try {
-    const [healthRes, jobsRes, workersRes] = await Promise.all([
+    const [healthRes, jobsRes, workersRes, jobsV2Res] = await Promise.all([
       fetch("/api/v1/health"),
       fetch("/api/v1/jobs"),
       fetch("/api/v1/workers"),
+      fetch("/api/v1/jobs/v2"),
     ]);
     if (!healthRes.ok || !jobsRes.ok || !workersRes.ok) throw new Error("HTTP no-ok");
     const health = await healthRes.json();
     jobs = await jobsRes.json();
     workers = await workersRes.json();
     workerById = Object.fromEntries(workers.map(w => [w.worker_id, w]));
+    // jobsV2Res puede no existir todavia si la VM no se actualizo con el
+    // codigo de jobs_v2 -- degrada a tabla vacia en vez de romper todo
+    // el dashboard (ver footer: "Jobs v2" es un panel aparte, opcional).
+    jobsV2 = jobsV2Res.ok ? await jobsV2Res.json() : [];
 
     document.getElementById("stat-pending").textContent = health.jobs_pending;
     document.getElementById("stat-running").textContent = health.jobs_running + health.jobs_claimed;
@@ -601,6 +626,7 @@ async function fetchAll(){
     populateFilterOptions();
     renderWorkers();
     renderJobs();
+    renderJobsV2();
   } catch (err) {
     dot.className = "dot err";
     text.textContent = "sin conexión al coordinator";
@@ -995,6 +1021,88 @@ function renderJobs(){
       renderJobs();
     });
   });
+}
+
+// Fabrica de tablas de solo lectura para colas de jobs "secundarias"
+// (jobs_v2 hoy, cualquier jobs_v3/etc. futura) -- sin filtros ni orden
+// por columna como la tabla v1 (esas colas nacen deliberadamente mas
+// simples, ver db_v2.py; si alguna crece al volumen de v1, portarle el
+// mismo sistema de filtros de jobs v1 en vez de complicar esta fabrica).
+// cfg = {
+//   idPrefix: string -- ej. "jobs-v2" -- debe matchear los ids del HTML
+//     (#<idPrefix>-count, #<idPrefix>-head, #<idPrefix>-body,
+//     #<idPrefix>-empty) y, si statsIdPrefix se da, de las 4 stats
+//     (pending/running/done/failed). El <thead><tr id="idPrefix-head">
+//     empieza vacio en el HTML -- esta funcion lo rellena una sola vez
+//     desde cfg.columns, asi que agregar/quitar una columna solo se toca
+//     aqui, nunca en el HTML.
+//   statsIdPrefix: string opcional -- ej. "statv2" -- omitir si la tabla
+//     no tiene tarjetas de resumen propias.
+//   columns: [{header: string, cell: (row) => string}] -- cell devuelve
+//     HTML ya escapado (usar esc() para cualquier texto libre).
+//   getData: () => array -- de donde sacar las filas en cada render.
+// }
+function renderSimpleJobsTable(cfg){
+  const head = document.getElementById(`${cfg.idPrefix}-head`);
+  if (!head.dataset.filled){
+    head.innerHTML = cfg.columns.map(col => `<th>${esc(col.header)}</th>`).join("");
+    head.dataset.filled = "1";
+  }
+
+  const rows = cfg.getData();
+  document.getElementById(`${cfg.idPrefix}-count`).textContent = `(${rows.length})`;
+
+  if (cfg.statsIdPrefix){
+    const counts = {pending: 0, claimed: 0, running: 0, done: 0, failed: 0};
+    for (const r of rows) counts[r.status] = (counts[r.status] ?? 0) + 1;
+    document.getElementById(`${cfg.statsIdPrefix}-pending`).textContent = counts.pending;
+    document.getElementById(`${cfg.statsIdPrefix}-running`).textContent = counts.running + counts.claimed;
+    document.getElementById(`${cfg.statsIdPrefix}-done`).textContent = counts.done;
+    document.getElementById(`${cfg.statsIdPrefix}-failed`).textContent = counts.failed;
+  }
+
+  const body = document.getElementById(`${cfg.idPrefix}-body`);
+  const empty = document.getElementById(`${cfg.idPrefix}-empty`);
+  if (rows.length === 0){
+    body.innerHTML = "";
+    empty.hidden = false;
+    return;
+  }
+  empty.hidden = true;
+  // Mismo orden por defecto que jobs v1 (estado, luego job_id desc).
+  const sorted = [...rows].sort((a,b) =>
+    (DEFAULT_STATUS_ORDER[a.status] ?? 9) - (DEFAULT_STATUS_ORDER[b.status] ?? 9) || b.job_id - a.job_id
+  );
+  body.innerHTML = sorted.map(r =>
+    `<tr>${cfg.columns.map(col => `<td>${col.cell(r)}</td>`).join("")}</tr>`
+  ).join("");
+}
+
+// Declaracion de la tabla jobs_v2 -- para agregar una tabla nueva en el
+// futuro, declarar aqui otro objeto de columnas + su seccion en el HTML
+// (copiar la seccion "Jobs v2" como plantilla) y llamar
+// renderSimpleJobsTable(esaConfig) junto a las demas en fetchAll().
+const JOBS_V2_TABLE = {
+  idPrefix: "jobs-v2",
+  statsIdPrefix: "statv2",
+  getData: () => jobsV2,
+  columns: [
+    {header: "ID", cell: j => `<span class="tab-num">${j.job_id}</span>`},
+    {header: "Estado", cell: j => `<span class="pill ${esc(j.status)}">${esc(j.status)}</span>`},
+    {header: "Especie", cell: j => `${esc(j.species)}/${esc(j.phase)}`},
+    {header: "Bin", cell: j => `<span class="tab-num">${j.bin_index}</span>`},
+    {header: "n_bins", cell: j => `<span class="tab-num">${j.n_bins}</span>`},
+    {header: "Offset X", cell: j => `<span class="tab-num">${Number(j.offset_x_m).toFixed(1)} m</span>`},
+    {header: "Rep.", cell: j => `<span class="tab-num">${j.repeticion}</span>`},
+    {header: "n_events", cell: j => `<span class="tab-num">${j.n_events}</span>`},
+    {header: "Asignado a", cell: j => j.claimed_by ? esc(workerLabelFor(j.claimed_by)) : "—"},
+    {header: "Intento", cell: j => `<span class="tab-num">${j.attempt}/${j.max_attempts}</span>`},
+    {header: "Actualizado", cell: j => fmtDate(j.updated_at)},
+  ],
+};
+
+function renderJobsV2(){
+  renderSimpleJobsTable(JOBS_V2_TABLE);
 }
 
 document.getElementById("refresh-btn").addEventListener("click", fetchAll);
