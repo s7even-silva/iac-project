@@ -1,5 +1,11 @@
 # Resultados de `run_organ_sweep.py`/`aggregate_organ_doses.py`
 
+**Interpretación de los primeros resultados (rep0) contra límites de
+protección radiológica reales, incluyendo el hallazgo de que el eje
+central del arreglo de bobinas es la posición de MAYOR dosis, no la más
+protegida:** ver
+[`INTERPRETACION_PROTECCION_RADIOLOGICA.md`](INTERPRETACION_PROTECCION_RADIOLOGICA.md).
+
 Este directorio junta los resultados reales del barrido por órgano de
 `ActiveShield_Sim` (dosis absorbida/equivalente por órgano ICRP110, en
 función de la posición radial del fantoma dentro de la nave) — ver
