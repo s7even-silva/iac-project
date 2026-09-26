@@ -42,7 +42,7 @@ SOURCE_RADIUS_CM = math.sqrt((SHIP_RADIUS_M * 100) ** 2 + (SHIP_HALF_LENGTH_M * 
 AREA_CM2 = math.pi * SOURCE_RADIUS_CM ** 2
 
 SPECIES_PHASE = {"SEP_p": "max", "GCR_H": "min", "GCR_He": "min"}
-N_BINS_GRID = [8, 16, 32, 64]  # 64 solo existe para SEP_p
+N_BINS_GRID = [8, 16, 32, 64, 128]  # 64/128 solo existen para SEP_p
 
 
 def main():
