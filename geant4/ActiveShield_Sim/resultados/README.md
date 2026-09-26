@@ -14,6 +14,22 @@ coordinator) — leer antes de citar cualquier número de este barrido en
 el paper:** ver
 [`LIMITACIONES_BARRIDO_600.md`](LIMITACIONES_BARRIDO_600.md).
 
+**Datos reales de Fase 8 (convergencia de binning energético, 8/16/32/64
+bins), consolidados para analizar desde cualquier sesión/máquina sin
+acceso al coordinator ni a `git show` sobre `results/fase8-prod`:**
+`resultados_organo_sweep_fase8_binning.csv` (232 corridas reales, ~33k
+filas de órgano — combina las 64 corridas locales de Bryam vía git más
+las 168 subidas por HTTP real desde los workers de `jobs_v2`) y
+`epsilon_binning_fase8_resumen.py` (script reproducible que recalcula
+`epsilon_binning` con la misma fórmula que `run_fase8_binning.py`,
+escribe `epsilon_binning_fase8_resultado.csv`). Hallazgo con el dato ya
+completo (2026-09-26): `GCR_H`/`GCR_He` convergen bien dentro del
+presupuesto de 2.5pp (`GCR_He` 16→32 = 0.99%); `SEP_p` no converge a 32
+bins (18.5%) pero mejora fuerte a 64 (4.22%) — ver
+`docs/bitacora/plan_estadistico.md`, Fase 8, para el detalle completo y
+por qué (dosis concentrada en 65-300 MeV, fracción angosta del espectro
+0.01-300 MeV).
+
 Este directorio junta los resultados reales del barrido por órgano de
 `ActiveShield_Sim` (dosis absorbida/equivalente por órgano ICRP110, en
 función de la posición radial del fantoma dentro de la nave) — ver
