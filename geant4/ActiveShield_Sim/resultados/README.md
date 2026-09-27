@@ -1,5 +1,55 @@
 # Resultados de `run_organ_sweep.py`/`aggregate_organ_doses.py`
 
+**Interpretación de los primeros resultados (rep0) contra límites de
+protección radiológica reales, incluyendo el hallazgo de que el eje
+central del arreglo de bobinas es la posición de MAYOR dosis, no la más
+protegida:** ver
+[`INTERPRETACION_PROTECCION_RADIOLOGICA.md`](INTERPRETACION_PROTECCION_RADIOLOGICA.md).
+
+**Todas las limitaciones/constraints conocidas del barrido completo de
+600 simulaciones (alcance físico, validez estadística de las
+repeticiones, fases de validación metodológica todavía abiertas, y por
+qué los CSV de este directorio pueden estar desactualizados respecto al
+coordinator) — leer antes de citar cualquier número de este barrido en
+el paper:** ver
+[`LIMITACIONES_BARRIDO_600.md`](LIMITACIONES_BARRIDO_600.md).
+
+**Datos reales de Fase 8 (convergencia de binning energético, 8/16/32/64/128
+bins), consolidados para analizar desde cualquier sesión/máquina sin
+acceso al coordinator ni a `git show` sobre `results/fase8-prod`:**
+`resultados_organo_sweep_fase8_binning.csv` (360 corridas reales, ~51k
+filas de órgano — combina las 64 corridas locales de Bryam vía git más
+las 296 subidas por HTTP real desde los workers de `jobs_v2`, tandas 1-4)
+y `epsilon_binning_fase8_resumen.py` (script reproducible que recalcula
+`epsilon_binning` con la misma fórmula que `run_fase8_binning.py`,
+escribe `epsilon_binning_fase8_resultado.csv`). Hallazgo con el dato ya
+completo hasta 128 bins (2026-09-26): `GCR_H`/`GCR_He` convergen bien
+dentro del presupuesto de 2.5pp (`GCR_He` 16→32 = 0.99%); `SEP_p` no
+converge con binning uniforme — se estanca ~3.5-4.5% de error residual
+entre 32→64 (4.22%) y 64→128 (3.66%), y se confirmó (con `se_run_total_j`)
+que el salto 64→128 es compatible con ruido Monte Carlo puro (no señal
+real), mientras que 32→64 sí es señal real — ver
+`docs/bitacora/plan_estadistico.md`, Fase 8, para el detalle completo y
+por qué (dosis concentrada en 65-300 MeV, fracción angosta del espectro
+0.01-300 MeV).
+
+**Propuesta (todavía SIN validar ni decidir por el equipo) de binning no
+uniforme para `SEP_p`:** `propuesta_binning_hibrido_sep.py` /
+`propuesta_binning_hibrido_sep_resultado.csv` — estima, por interpolación
+log-log de la curva `R(E)` ya medida en los 128 bins (sin correr Geant4 de
+nuevo), que un esquema de 2 segmentos log-espaciados (pocos bins en
+0.01-65 MeV + la mayoría en 65-300 MeV, donde vive el 99% de la dosis)
+llegaría muy por debajo del presupuesto de 2.5pp con solo 14 bins —
+~4.6× menos cómputo que los 64 uniformes que hacen falta hoy. Es una
+ESTIMACIÓN, no una validación (el propio script documenta su límite:
+reconstruir los binnings uniformes ya medidos con este método no
+reproduce el valor exacto del `epsilon_binning` real, solo el orden de
+magnitud). Requiere trabajo de código (soporte de bordes custom en
+`energy_bins.py`/`run_organ_sweep.py`, hoy solo aceptan grilla
+log-uniforme por especie) y una tanda de validación real antes de
+adoptarse en producción — ver `docs/bitacora/plan_estadistico.md`, Fase 8,
+sección "PROPUESTA sin validar todavía".
+
 Este directorio junta los resultados reales del barrido por órgano de
 `ActiveShield_Sim` (dosis absorbida/equivalente por órgano ICRP110, en
 función de la posición radial del fantoma dentro de la nave) — ver

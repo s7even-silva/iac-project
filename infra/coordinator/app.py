@@ -22,6 +22,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi import Response
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
 import db
@@ -74,6 +75,18 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="ActiveShield_Sim compute coordinator", lifespan=lifespan)
+
+# Comprime respuestas (2026-09-26, reducir egreso de red -- ver AGENTS.md/
+# infra/OPERATIONS_LOG.md): GET /api/v1/jobs sin comprimir pesaba ~401 KB
+# por llamada; con cientos de workers/dashboard haciendo poll, esto era una
+# fraccion significativa de un egreso medido en ~16 GB/mes (16x el limite
+# gratuito de GCP de 1 GB/mes). Debe registrarse ANTES del middleware de
+# abajo (require_worker_token) para quedar como capa MAS EXTERNA -- en
+# Starlette, el primer middleware registrado envuelve a los demas, asi que
+# ve/comprime la respuesta final ya procesada por todo lo demas. Sin efecto
+# en clientes (negociado por Accept-Encoding, todo cliente HTTP normal lo
+# soporta transparentemente) -- no requiere ningun cambio en worker.py.
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 
 @app.middleware("http")

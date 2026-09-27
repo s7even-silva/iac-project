@@ -818,6 +818,105 @@ cambio con un panel de solo lectura para `jobs_v2` (ver
 `renderSimpleJobsTable()` — reutilizable para una futura `jobs_v3` sin
 copiar/pegar render logic, declarando solo un objeto de columnas).
 
+**Tandas 2/3/4 completadas, `epsilon_binning` con dato real hasta 128 bins
+(2026-09-26):** con la tanda 1 (arriba) ya completa, se sembraron y
+corrieron tres tandas más vía `jobs_v2` (mismo patrón de
+`seed_fase8_tandaN_v2.py`, `ON CONFLICT DO NOTHING`, sin tocar v1 ni las
+tandas previas): tanda 2 (`GCR_He/min`, n_bins∈{8,16,32}, 56 combos —
+GCR_He no tenía ningún dato de Fase 8 todavía), tanda 3 (`SEP_p/max`,
+n_bins=64, 64 combos) y tanda 4 (`SEP_p/max`, n_bins=128, 128 combos).
+Con las 4 tandas completas (360 combinaciones reales, consolidadas en
+`geant4/ActiveShield_Sim/resultados/resultados_organo_sweep_fase8_binning.csv`
+y recalculadas con `epsilon_binning_fase8_resumen.py` →
+`epsilon_binning_fase8_resultado.csv`):
+
+| especie | par (n_bins) | epsilon_binning | veredicto |
+|---|---|---|---|
+| GCR_H  | 8→16  | 2.25% | auto_continue |
+| GCR_H  | 16→32 | 2.88% | limítrofe |
+| GCR_He | 8→16  | 1.88% | auto_continue |
+| GCR_He | 16→32 | 0.99% | auto_continue |
+| SEP_p  | 8→16  | 36.16% | revisar |
+| SEP_p  | 16→32 | 18.45% | revisar |
+| SEP_p  | 32→64 | 4.22% | revisar |
+| SEP_p  | 64→128 | 3.66% | revisar |
+
+**Lectura:** `GCR_H`/`GCR_He` convergen bien dentro (o muy cerca) del
+presupuesto de 2.5pp con binning log-uniforme estándar. `SEP_p` **no
+converge** con binning uniforme dentro del presupuesto ni a 128 bins —
+se estancó alrededor de 3.5-4.5% de error residual entre 32→64→128, sin
+tendencia clara a seguir bajando con más bins uniformes.
+
+**Separación señal real vs. ruido MC (usando `se_run_total_j` por bin,
+propagado igual que en la sección "Barra de ruido MC de referencia" de
+arriba, con los dos factores de corrección de Fase 7 — conservador 0.08 y
+mediana ~0.4):** el salto `32→64` (4.22%) tiene razón señal/ruido ≈5.7
+(factor 0.08) y ≈28.5 (factor 0.4) — **claramente señal real**, no ruido.
+El salto `64→128` (3.66%) tiene razón ≈0.16 y ≈0.82 — **compatible con
+ruido MC puro** bajo ambos factores. Conclusión: el binning uniforme para
+`SEP_p` ya agotó su capacidad de mejora real alrededor de 64 bins; seguir
+subdividiendo uniformemente no va a bajar el error de discretización por
+debajo del presupuesto, solo agrega ruido de medición.
+
+**Causa física identificada:** ~99% de la dosis de `SEP_p` viene de una
+franja angosta del espectro tabulado (64.95-300 MeV, de un rango total de
+0.01-300 MeV — menos de 1 década de 4.5 décadas). El binning log-uniforme
+reparte los bins por igual en escala logarítmica sobre todo el rango, así
+que le da muy pocos bins útiles a esa franja (1 de 8, 2 de 16, ~7 de 32,
+~14 de 64) — de ahí que agregar más bins uniformes tenga rendimientos
+decrecientes: la mayoría de los bins nuevos caen donde la dosis ya es
+despreciable.
+
+**PROPUESTA sin validar todavía — binning no uniforme (2 segmentos) para
+`SEP_p` (2026-09-26):** en vez de seguir subdividiendo uniformemente, usar
+un esquema de 2 segmentos log-espaciados independientes: pocos bins en
+0.01–`corte` MeV (dosis despreciable) + la mayoría en `corte`–300 MeV
+(donde vive el 99% de la dosis). Script reproducible:
+`geant4/ActiveShield_Sim/resultados/propuesta_binning_hibrido_sep.py` →
+`propuesta_binning_hibrido_sep_resultado.csv`. Método: sin correr Geant4
+de nuevo, interpola en log-log la curva empírica `R(E)` ya medida en los
+128 bins (la energía representativa de cada bin es el único punto donde
+realmente se aproxima `R(E)≈constante`, así que interpolar esa curva en
+la energía representativa de un bin candidato nuevo estima qué mediría
+ese bin sin tener que correrlo), y usa el flujo real integrado exacto
+(`energy_bins.integral_between`) como peso. Resultado del barrido de
+candidatos (corte 40-100 MeV, `n_low` 1-5, presupuesto total 10-16 bins),
+contra la referencia de 128 bins (`D_ref=2.395e+01`, proxy de dosis de
+cuerpo completo):
+
+| n_low | corte (MeV) | n_high | total bins | epsilon estimado |
+|---|---|---|---|---|
+| 2 | 50 | 14 | 16 | 0.66% |
+| 3 | 65 | 13 | 16 | 1.34% |
+| 1 | 65 | 11 | 12 | 0.09% |
+| **2** | **65** | **12** | **14** | **1.03%** |
+| 3 | 65 | 11 | 14 | 0.09% |
+
+**Recomendación (todavía sin decidir/validar por el equipo):** 14 bins —
+2 bajos (log-espaciados, 0.01–65 MeV) + 12 altos (log-espaciados,
+65–300 MeV). No es el óptimo numérico (`n_low=1` da un residual menor)
+pero se prefiere por robustez: un solo punto representando 4 décadas de
+espectro es frágil aunque el flujo ahí sea despreciable, y el costo de un
+segundo bin bajo es nulo. Esto reemplazaría los 64 bins uniformes
+necesarios hoy por 14 — **~4.6× menos cómputo** por corrida de `SEP_p`,
+con mejor exactitud estimada.
+
+**Limitación explícita del método (verificada, no solo advertida):**
+reconstruir los esquemas uniformes 8/16/32/64 con este mismo método de
+interpolación y compararlos contra el `epsilon_binning` REAL medido no
+reproduce el valor exacto (mismo orden de magnitud, ej. 64 bins da 2.57%
+interpolado vs. 4.22%/3.66% real en los pares vecinos) — la interpolación
+log-log entre puntos espaciados no captura curvatura fina de `R(E)`. Por
+eso esto es una ESTIMACIÓN para priorizar qué candidato probar, no un
+reemplazo de correrlo. **Pendiente antes de adoptarlo para producción:**
+(1) agregar soporte de bordes de bin no uniformes/custom por especie a
+`energy_bins.py`/`run_organ_sweep.py` (hoy solo aceptan una grilla
+log-uniforme por especie — cambio de código real, no solo de config);
+(2) sembrar una tanda de validación real (14 corridas, mucho más barata
+que las 128 ya hechas) y comparar su `epsilon_binning` real contra la
+referencia de 128 bins antes de reemplazar el binning de producción de
+`SEP_p`. **Nada de esto implementado ni decidido por el equipo todavía.**
+
 ## Objetivo
 
 Determinar si la discretización actual de 8 bins es suficientemente precisa **antes** de optimizar `M_b` o comprobar la precisión de la comparación shield/control.
