@@ -11,13 +11,46 @@ posterior; este worker ejecuta únicamente el lanzador Geant4 existente.
   GCP, Always Free Tier, `us-central1-a` — ver `infra/deploy/`. Azure
   quedó bloqueado por una restricción de plataforma en la suscripción
   del usuario, no algo resoluble desde este repo; el script de Azure
-  sigue listo para cuando eso se resuelva). HTTPS vía Caddy/Let's
-  Encrypt, puerto 8000 HTTP directo sigue abierto en paralelo. **La IP
-  pública de la VM es efímera, no estática** (confirmado 2026-09-18:
-  cambió tras un reinicio de la VM, de `34.134.100.224` a
-  `35.253.238.197`, dejando el DNS desactualizado hasta corregirlo a
-  mano) — no hardcodear la IP en ningún lado, usar siempre el dominio;
-  pendiente reservarla como estática para que esto no se repita.
+  sigue listo para cuando eso se resuelva).
+- **La VM ya NO tiene IP pública (desde 2026-09-27)**, para eliminar el
+  cargo fijo de la IPv4 externa (~$2-4/mes; no afecta el egreso de red,
+  que ya se redujo antes con gzip). El acceso es:
+  - **HTTPS al coordinator:** vía **Cloudflare Tunnel** (`cloudflared`,
+    corriendo como servicio systemd en la VM) — Cloudflare termina el
+    TLS en su borde y reenvía por el túnel a `http://localhost:8000`
+    (el `uvicorn` del coordinator directo). **Caddy quedó deshabilitado**
+    (`systemctl disable --now caddy`) — ya no hace falta (Cloudflare
+    hace el TLS) y de todos modos no podría renovar su certificado
+    Let's Encrypt sin IP pública.
+  - **SSH:** solo vía IAP (`gcloud compute ssh geant4-coordinator
+    --zone=us-central1-a --tunnel-through-iap`), habilitado por el
+    firewall rule `allow-iap-ssh` (permite `35.235.240.0/20:22`, el
+    rango fijo de Google para IAP). La regla histórica
+    `default-allow-ssh` (`0.0.0.0/0:22`) se eliminó (2026-09-27,
+    confirmado con `gcloud compute firewall-rules list` que ya no
+    aparece) — ya no aportaba nada con la IP pública fuera, y dejarla
+    habría sido una superficie de ataque innecesaria si algún día se
+    reasigna una IP externa a esta VM sin recordar cerrarla.
+  - **No hardcodear IPs en ningún lado** — usar siempre el dominio
+    (`coordinator.vlaboratory.org`); ya no aplica el problema histórico
+    de la IP efímera cambiando tras reinicios (2026-09-18: cambió de
+    `34.134.100.224` a `35.253.238.197`), porque ahora no hay ninguna
+    IP pública que rastrear.
+  - **Egress (tráfico saliente de la VM) vía Cloud NAT**
+    (`geant4-nat-router` + `geant4-nat-config`, `us-central1`) — **paso
+    obligatorio, no opcional**, encontrado el 2026-09-27 al ejecutar
+    este cambio: la subred `default` no tenía `privateIpGoogleAccess`
+    activado, así que sin IP pública y sin Cloud NAT la VM se queda
+    *completamente* sin egress (ni gateway de su propia subred, ni
+    ninguna IP externa) aunque el firewall, las rutas de VPC y el SO
+    estén bien — rompe Tailscale, `cloudflared`, y cualquier llamada
+    saliente, mientras SSH-vía-IAP sigue funcionando porque no usa la
+    ruta normal de la VPC. Ni un `reset` ni un `stop`/`start` completo
+    de la VM lo arreglan por sí solos — hace falta Cloud NAT (o Private
+    Google Access, según lo que se necesite alcanzar). Detalle completo
+    del diagnóstico en `infra/OPERATIONS_LOG.md`. Si se repite esta
+    migración en otro proyecto/VM, crear el Cloud NAT **antes** de
+    borrar el access-config externo, no después.
 - **Imagen del worker:** `ghcr.io/s7even-silva/iac-project/geant4-worker:latest`.
 - **Para reclutar gente que preste CPU (sin el proyecto instalado):** ver
   [`infra/GUIA_VOLUNTARIOS.md`](GUIA_VOLUNTARIOS.md) — Docker, un solo

@@ -2383,3 +2383,156 @@ validó contra un coordinator de prueba con su propia DB — en ningún
 momento se tocó el coordinator de producción ni su `worker_image_digest`
 durante esta validación. Ese fue precisamente el proceso que permitió
 encontrar este bug antes de activarlo para workers reales.
+
+### Migración a "sin IP pública" rompió todo el egress; causa real era falta de Cloud NAT, no el runbook (2026-09-27)
+
+**Objetivo de la sesión:** eliminar el cargo fijo de la IPv4 externa de
+`geant4-coordinator` (~$2-4/mes) moviendo el acceso a **Cloudflare
+Tunnel** (HTTPS) + **IAP** (SSH), siguiendo un runbook de 6 fases
+preparado de antemano: instalar/configurar `cloudflared`, verificar que
+sostiene el tráfico sin Caddy, abrir firewall para IAP, verificar SSH
+por IAP, recién ahí borrar el access-config externo (`external-nat`), y
+por último deshabilitar Caddy.
+
+**El runbook se ejecutó fase por fase, con verificación explícita antes
+de cada paso irreversible** (patrón correcto, no fue el problema): el
+usuario confirmó personalmente, desde su propia sesión SSH, que tras
+apuntar el DNS al túnel (`cloudflared tunnel route dns --overwrite-dns`)
+el health-check respondía `200` incluso con Caddy detenido — exactamente
+la verificación que el runbook pedía antes de tocar la IP. Recién con
+eso confirmado se ejecutó `gcloud compute instances delete-access-config
+... --access-config-name=external-nat`.
+
+**Síntoma reportado inmediatamente después:** el mismo endpoint que
+acababa de dar `200` empezó a dar `502`, y el usuario reportó que ni
+Tailscale ni el SSH-in-browser de la consola web de GCP podían conectar
+a la VM — "el problema es más serio" que lo que el runbook anticipaba.
+
+**Diagnóstico, hecho en gran parte desde esta sesión (Claude Code con
+acceso a `gcloud` autenticado localmente, no solo leyendo lo que el
+usuario pegaba):**
+
+1. **Primer sospechoso descartado: mi propia conexión SSH.** Un primer
+   intento de `gcloud compute ssh --tunnel-through-iap` desde esta
+   sesión colgó y terminó en `Connection timed out during banner
+   exchange` — con `ssh -vvv` se confirmó que el handshake SSH llegaba
+   hasta ofrecer la clave pública y nunca recibía `PK_OK` del servidor.
+   Se investigó OS Login (deshabilitado), `block-project-ssh-keys` (no
+   seteado) y las reglas de firewall (`allow-iap-ssh` correcta,
+   permitiendo `35.235.240.0/20:22`) — todo estaba bien configurado.
+   Una prueba de socket TCP crudo contra el puerto 22 vía el túnel IAP
+   confirmó que el socket aceptaba la conexión pero `sshd` nunca
+   enviaba su banner (`SSH-2.0-...`) — el proceso no respondía, aunque
+   el socket systemd sí escuchaba.
+
+2. **`gcloud compute instances get-serial-port-output` confirmó que la
+   VM no se había reiniciado** desde su último boot completo (9 días
+   antes) — descartó un crash/reboot loop como causa de `sshd`
+   colgado.
+
+3. **`gcloud compute instances reset` (power-cycle a nivel de
+   hipervisor, no un `reboot` dentro del SO) resolvió el problema de
+   SSH** — tras el reset, SSH-vía-IAP volvió a responder de inmediato.
+   Pero al revisar el resto de los servicios con SSH ya funcionando,
+   **el problema real seguía ahí**: `cloudflared` atascado en
+   `activating` (nunca `active`), `curl` al dominio público en
+   `HTTP_000` (ni siquiera conectaba), y `tailscale status` reportando
+   `offline` — sshd colgado había sido un síntoma más del mismo
+   problema de fondo, no la causa.
+
+4. **Causa raíz real, encontrada revisando conectividad de salida desde
+   dentro de la VM (ya con SSH funcionando):** `ping` al propio gateway
+   de la subred (`10.128.0.1`) daba 100% de pérdida — igual que
+   cualquier IP externa (`8.8.8.8`). Solo el metadata server
+   (`169.254.169.254`, link-local, no cruza la red virtual real) y
+   SSH-vía-IAP (canal especial de Google, tampoco usa la ruta normal de
+   la VPC) seguían funcionando. Se descartó explícitamente, en este
+   orden, cada capa que normalmente explicaría esto: firewall de VPC
+   (el egress implícito de GCP permite todo si no hay reglas explícitas
+   de `EGRESS`, y no había ninguna), rutas de la VPC (`gcloud compute
+   routes list` mostró la ruta `0.0.0.0/0 → default-internet-gateway`
+   intacta, prioridad 1000, sin tags que la restringieran), Org
+   Policies / firewall jerárquico / Cloud Armor (ninguno configurado en
+   el proyecto), iptables/nftables dentro de la VM (política `OUTPUT
+   ACCEPT`, sin reglas de bloqueo — las únicas cadenas no triviales
+   eran las que Tailscale gestiona para sí mismo), y un supuesto
+   segundo `access-config` fantasma borrado por error (descartado
+   releyendo el audit log completo: las dos entradas de
+   `deleteAccessConfig` a las 00:26:34 y 00:26:41 eran el inicio y fin
+   de la MISMA operación sobre el mismo `external-nat`, no dos borrados
+   distintos).
+
+5. **Confirmado con `gcloud logging read` sobre el audit log real del
+   proyecto** (no solo inspección del estado actual): la secuencia
+   exacta de llamadas API (`deleteAccessConfig` seguido de
+   `setMetadata`/`reset` intentando reparar) coincidía con el
+   diagnóstico — sin ninguna llamada a `firewall-rules` ni `routes`
+   ajena a las hechas deliberadamente en esta sesión.
+
+**Con firewall, rutas y SO descartados, la única explicación que queda
+es la correcta: la subred `default` de este proyecto nunca tuvo
+`privateIpGoogleAccess` activado ni Cloud NAT configurado.** Sin IP
+pública en la VM y sin ninguno de esos dos mecanismos, no existe
+ninguna ruta física de traducción para tráfico saliente desde una IP
+privada — el `default-internet-gateway` de la ruta por defecto no tiene
+forma de enrutar el retorno. Esto es un modo de falla conocido y
+documentado de GCP (proyectos creados con el patrón "IP pública +
+firewall abierto" nunca necesitan configurar egress alternativo, hasta
+que alguien quita la IP pública), pero el runbook original — preparado
+sin verificar el estado de la subred de antemano — no lo contempló.
+
+**Se intentó primero `gcloud compute instances stop` + `start` completo**
+(power-cycle total del hipervisor, no solo `reset`) como hipótesis
+alternativa (interfaz de red en estado inconsistente tras el
+`deleteAccessConfig`) — **no resolvió nada**, confirmando que el
+problema no era de la VM ni de su interfaz, sino de la configuración de
+red a nivel de proyecto/VPC.
+
+**Corregido creando Cloud NAT:**
+
+```
+gcloud compute routers create geant4-nat-router \
+  --network=default --region=us-central1
+
+gcloud compute routers nats create geant4-nat-config \
+  --router=geant4-nat-router --region=us-central1 \
+  --nat-all-subnet-ip-ranges --auto-allocate-nat-external-ips
+```
+
+Verificado end-to-end inmediatamente después (no solo "el comando no
+dio error"): `curl` saliente a `https://www.google.com` desde la VM
+pasó de `HTTP_000` a `HTTP_200` en el momento en que Cloud NAT terminó
+de propagar (segundos, no minutos). Tras reiniciar `cloudflared`
+(`systemctl restart`) para forzar una reconexión inmediata en vez de
+esperar su backoff interno, `cloudflared` pasó a `active`, `tailscale
+status` dejó de mostrar `offline` para `geant4-coordinator`, y
+`https://coordinator.vlaboratory.org/api/v1/health` volvió a responder
+`200` con el JSON real del coordinator (`jobs_done: 600, jobs_failed:
+0` — sin pérdida de datos en ningún momento; el proceso
+`geant4-coordinator.service` en sí nunca dejó de correr durante todo el
+incidente, solo quedó inalcanzable desde afuera).
+
+**Runbook completado tras el fix:** Fase 6 (`sudo systemctl disable
+--now caddy`) ejecutada y verificada — el health-check público sigue en
+`200` con Caddy `inactive`, confirmando que el túnel de Cloudflare
+sostiene el servicio por sí solo. Limpieza adicional identificada
+(bloqueada inicialmente por el clasificador de modo automático de
+Claude Code por tratarse de un recurso de red compartido, ejecutada por
+el usuario directamente): la regla `default-allow-ssh` (`0.0.0.0/0:22`)
+se eliminó — confirmado con `gcloud compute firewall-rules list` que ya
+no aparece — redundante ahora que `allow-iap-ssh` cubre el acceso real
+y sin ningún propósito con la IP pública ya fuera.
+
+**Costo real de la solución, no solo del problema original:** Cloud NAT
+tiene un cargo propio (~$0.045/hora del gateway + cargo por GB
+procesado) — mucho menor que quedarse sin egress de forma permanente,
+pero es un costo nuevo que el objetivo original de la sesión ("ahorrar
+el cargo fijo de la IP externa") no contemplaba. Si el equipo repite
+este patrón en otro proyecto, el ahorro neto depende de comparar ambos
+cargos, no asumir que quitar la IP pública es gratis.
+
+**Lección para la próxima vez que se intente esto en otro proyecto/VM:**
+verificar `gcloud compute networks subnets describe <subred>
+--format="yaml(privateIpGoogleAccess)"` **antes** de borrar el
+access-config externo, y crear Cloud NAT primero si da `false` — no
+después de descubrir en producción que todo el tráfico saliente murió.
