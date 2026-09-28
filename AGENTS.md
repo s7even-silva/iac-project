@@ -255,8 +255,11 @@ Piezas clave para administrar el sistema:
   `/api/v1/jobs`, `/api/v1/workers` — filtros multi-valor y orden
   multi-columna por header.
 - **Despliegue**: coordinator en una VM de GCP Always Free Tier (Azure
-  quedó bloqueado por política de cuenta), HTTPS vía Caddy/Let's Encrypt.
-  Workers: imagen Docker publicada en GHCR (instalador
+  quedó bloqueado por política de cuenta). **Desde 2026-09-27 sin IP
+  pública** — acceso HTTPS vía Cloudflare Tunnel, SSH vía IAP, egress vía
+  Cloud NAT (con su propio costo, ver detalle e incidente de la migración
+  en `infra/README.md`/`infra/OPERATIONS_LOG.md`); Caddy/Let's Encrypt
+  quedó deshabilitado. Workers: imagen Docker publicada en GHCR (instalador
   `infra/deploy/install-worker.ps1` para Windows, con auto-actualización
   Docker), o `infra/worker/worker.py` corriendo local directo contra un
   build ya compilado (`infra/GUIA_WORKER_LOCAL.md`).
