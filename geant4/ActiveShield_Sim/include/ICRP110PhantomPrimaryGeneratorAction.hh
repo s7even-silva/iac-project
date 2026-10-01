@@ -69,6 +69,11 @@ class ICRP110PhantomPrimaryGeneratorAction : public G4VUserPrimaryGeneratorActio
     void SetFixedEnergy(G4double e) { fFixedEnergy = e; }
     G4double GetFixedEnergy() const { return fFixedEnergy; }
 
+    // radial: todos los primarios apuntan al origen (historico, NO compatible
+    // con el peso pi*R^2*flujo). cosine: entrada con ley coseno, fluencia
+    // isotropa dentro de la esfera. Ver docs/modelo_realista.md.
+    void SetAngularDistribution(const G4String& mode) { fAngular = mode; }
+
     // Flujo/fluencia integrado (SpectrumSampler::GetIntegratedFlux) de la
     // especie/fase actualmente seleccionada -- mismas unidades nativas que
     // en GCR_SEP_Sim (particles/(day*cm2) para GCR, particles/cm2 para SEP).
@@ -83,6 +88,7 @@ class ICRP110PhantomPrimaryGeneratorAction : public G4VUserPrimaryGeneratorActio
     G4String fSpecies = "GCR_H";
     G4String fPhase   = "min";
     G4double fFixedEnergy = -1.;
+    G4String fAngular = "radial";
 
     SpectrumSampler* fGCR_H_max  = nullptr;
     SpectrumSampler* fGCR_H_min  = nullptr;

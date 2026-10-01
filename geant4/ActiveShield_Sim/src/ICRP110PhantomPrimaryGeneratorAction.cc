@@ -73,7 +73,16 @@ void ICRP110PhantomPrimaryGeneratorAction::SampleIsotropicPosition(
 
   G4ThreeVector onSphere(sinTheta*std::cos(phi), sinTheta*std::sin(phi), cosTheta);
   pos = onSphere * radius;
-  dir = -onSphere;
+  if (fAngular != "cosine") {
+    dir = -onSphere;
+    return;
+  }
+  const G4double cosA = std::sqrt(G4UniformRand());
+  const G4double sinA = std::sqrt(1. - cosA*cosA);
+  const G4double psi = CLHEP::twopi * G4UniformRand();
+  const G4ThreeVector u = onSphere.orthogonal().unit();
+  const G4ThreeVector v = onSphere.cross(u);
+  dir = -(cosA*onSphere) + sinA*(std::cos(psi)*u + std::sin(psi)*v);
 }
 
 void ICRP110PhantomPrimaryGeneratorAction::GeneratePrimaries(G4Event* anEvent)

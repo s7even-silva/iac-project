@@ -245,7 +245,18 @@ Idle, después de `/run/initialize`):
 /gun/species GCR_H|GCR_He|SEP_p
 /gun/phase max|min
 /gun/fixedEnergyMeV <valor>   # opcional -- MeV/amu (GCR_H|GCR_He) o MeV (SEP_p)
+/gun/angularDistribution radial|cosine   # default radial (histórico)
 ```
+
+`angularDistribution cosine` (2026-09-30) hace entrar a los primarios con ley
+coseno, que es la única distribución compatible con el peso `π R² × flujo`
+de `aggregate_organ_doses.py`. `radial`, el default, conserva el
+comportamiento histórico (todos apuntan al origen) solo para reproducir
+corridas viejas. Todavía no es el default de producción porque falta la
+decisión de equipo. `scripts/run_organ_sweep.py --angular-distribution
+radial|cosine` lo escribe en la macro y lo registra en la columna
+`angular_distribution` del manifiesto. Ver `docs/modelo_realista.md`, "Hallazgo crítico
+(2026-09-30)".
 
 `fixedEnergyMeV` fuerza esa energía exacta en TODOS los primarios de la
 corrida en vez de muestrear el espectro continuo de `SpectrumSampler` — es

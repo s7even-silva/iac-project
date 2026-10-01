@@ -32,8 +32,8 @@ Uso:
 
     # 2) Importar el trabajo de Bryam (offsets 2,3,4, ya versionado):
     python3 import_local_results.py --worker-label bryam \
-        --results-csv ../../geant4/ActiveShield_Sim/resultados/resultados_organo_sweep_bryam.csv \
-        --manifest-csv ../../geant4/ActiveShield_Sim/resultados/organ_sweep_manifest_bryam.csv
+        --results-csv ../../geant4/ActiveShield_Sim/resultados/historico_barrido600_radial/resultados_organo_sweep_bryam.csv \
+        --manifest-csv ../../geant4/ActiveShield_Sim/resultados/historico_barrido600_radial/organ_sweep_manifest_bryam.csv
 
     # 3) Importar el trabajo de Joel (offsets 0,1, cuando suba sus CSV):
     python3 import_local_results.py --worker-label joel \

@@ -51,6 +51,10 @@ results/
 # Excepcion: resultados finales del barrido (crudos por persona + agregado
 # con estadistica), SI se versionan -- son los datos que van al articulo
 !geant4/**/resultados/*.csv
+# Subcarpetas de resultados/ (reorganizacion 2026-09-30), salvo la descarga
+# cruda del coordinator, que es estado local y no se versiona.
+!geant4/**/resultados/**/*.csv
+geant4/**/resultados/coordinator_raw/
 
 # ─── ANSYS ───
 *.aedtresults/

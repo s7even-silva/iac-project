@@ -47,11 +47,11 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import energy_bins  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
-REPO_ROOT = HERE.parents[2]
+REPO_ROOT = HERE.parents[3]
 INPUT_CSV = HERE / "resultados_organo_sweep_fase8_binning.csv"
 OUTPUT_CSV = HERE / "propuesta_binning_hibrido_sep_resultado.csv"
 SPECTRA_DIR = REPO_ROOT / "geant4/ActiveShield_Sim/data/sources/oltaris"

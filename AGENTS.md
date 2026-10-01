@@ -64,6 +64,15 @@ enlaces:
   esto desplegado en la VM de producción todavía, y el equipo no decidió
   aún si expandir a los 6 casos especie/fase (hoy solo 3)** — ver "Decisión
   recomendada hoy" y el checklist de despliegue (Fase 20) en ese documento.
+- **[`docs/bitacora/auditoria_2026-09-30.md`](docs/bitacora/auditoria_2026-09-30.md)**
+  (2026-09-30) — auditoría de bugs (malla de scoring, apuntado radial, vista
+  por órgano ×N, agregador, semillas, procedencia) y requisitos del scorer
+  para la próxima producción.
+- **[`docs/bitacora/plan_barrido_corregido.md`](docs/bitacora/plan_barrido_corregido.md)**
+  (2026-09-30, propuesta) — cómo volver a correr todo: núcleo de respuesta
+  R(E) por partícula (6 casos especie/fase desde 2 núcleos), grilla no
+  uniforme, escudo frente a control, `M_b` por costo, sesgo de fuente,
+  decisiones pendientes y orden de pasos.
 - **[`infra/README.md`](infra/README.md)**, **[`infra/deploy/README.md`](infra/deploy/README.md)**,
   **[`infra/GUIA_VOLUNTARIOS.md`](infra/GUIA_VOLUNTARIOS.md)**,
   **[`infra/GUIA_WORKER_LOCAL.md`](infra/GUIA_WORKER_LOCAL.md)** —
@@ -92,9 +101,10 @@ reales, a diferencia del piloto esférico de `GCR_SEP_Sim`). Estado actual:
   probaron), nave escalada a `shipRadius=4.5m`/`shipHalfLength=5m`.
 - **Campo de producción: Elmer FEM a escala real**
   (`field/production/crewhat_elmer_fullscale.map`), no Biot-Savart —
-  Biot-Savart sobreestima la dosis ~36-48% frente a Elmer en la misma
-  configuración porque trata cada bobina como un filamento con núcleo
-  regularizado mucho menor que el winding pack real.
+  Biot-Savart trata cada bobina como un filamento con núcleo regularizado
+  mucho menor que el winding pack real. La cifra histórica "Biot-Savart da
+  36-48% más dosis" (una semilla, apuntado radial) **no se reprodujo** el
+  2026-09-30: dio 0.93 ± 0.08 a 562 MeV. Ver `docs/modelo_realista.md`.
   `field/production/crewhat_niac_max.map` (Biot-Savart) se conserva solo
   para comparación. Archivos de producción (`.map`/GDML + manifiestos
   SHA256) versionados en `field/production/` (excepción explícita en
@@ -350,6 +360,44 @@ coordinación operativa, no más desarrollo.
 
 ## Pendientes conocidos
 
+- **Auditoría completa del 2026-09-30:**
+  [`docs/bitacora/auditoria_2026-09-30.md`](docs/bitacora/auditoria_2026-09-30.md).
+  Tiene la lista de bugs con su estado y los requisitos del scorer (R1–R11:
+  acumulación por evento, Q(L) con espectro de LET, procedencia, AM+AF,
+  energía muestreada dentro del bin, etc.), que hay que implementar antes de
+  la próxima producción. Bug crítico corregido en ese documento: los
+  `resultados_organo_agregados_*.csv` (vista por órgano) estaban inflados
+  por un factor N; las vistas por categoría no.
+- **Bug de la malla de scoring (2026-09-30), invalida las filas con
+  `offset_x_m ≥ 1` del barrido de 600.** `run_organ_sweep.py` fija
+  `/score/mesh/translate/xyz 0. 0. 0. mm` aunque el fantoma se desplace, así
+  que con offset≥1 m se mide aire de cabina etiquetado como órganos
+  (caída ×1000, igual a la relación de densidades tejido/aire). Corregido
+  en `run_organ_sweep.py` y `pilots/pilot_common.py`, pero hay que repetir
+  esas corridas y actualizar los workers. También se agregó
+  `/gun/angularDistribution cosine` (el default sigue siendo `radial`).
+  Verificado: sin campo, la dosis en x=1 m da 0.91 veces la de x=0. La cifra
+  "Biot-Savart +36–48%" no se reproduce: 0.93 ± 0.08 con ley coseno y 1.03
+  con apuntado radial a 562 MeV, así que no se debe citar. Detalle y
+  plan de mejoras (ley coseno, sesgo de fuente, scorer por evento, Q(L),
+  GOES, AM+AF, w_T) en
+  [`docs/modelo_realista.md`](geant4/ActiveShield_Sim/docs/modelo_realista.md),
+  secciones "Bug crítico" y "Mejoras propuestas".
+- **Muestreo de primarios de `ActiveShield_Sim` (2026-09-30), crítico antes
+  de citar dosis absolutas.** (1) Todos los primarios
+  apuntan exactamente al origen (`dir = -onSphere`). El peso `π R² Φ`
+  supone ley coseno, así que el apuntado radial favorece artificialmente
+  `offset_x_m=0` y hace que la dosis dependa del radio de la esfera. El
+  campo medido en el eje es 0.54 T, igual que a 1–2 m, lo que descarta la
+  cancelación Halbach como explicación del salto ×100–×1000 en x=0. (2) La
+  esfera fuente (≈6.94 m, heredada de `GCR_SEP_Sim`) corta el arreglo de
+  bobinas, que ocupa un radio de 5.67–10.34 m y z ±4.34 m, en una zona con
+  |B| de hasta 5 T. Además el mapa se trunca en sus caras con 0.16–0.40 T.
+  La nota de `GCR_SEP_Sim` más abajo ("independiente de si el muestreo
+  interno de direcciones es radial") no es correcta para el apuntado radial.
+  Sin decisión de equipo todavía. Detalle y medidas en
+  [`docs/modelo_realista.md`](geant4/ActiveShield_Sim/docs/modelo_realista.md),
+  secciones "Hallazgo pendiente (2026-09-30)" y "Hallazgo crítico (2026-09-30)".
 - **Validez estadística de las 5 repeticiones y expansión a 6 combinaciones
   especie/fase (2026-09-16/17).** El barrido de producción usaba 5
   repeticiones sin justificación estadística formal, y solo cubre 3 de las
@@ -420,6 +468,11 @@ coordinación operativa, no más desarrollo.
   respuestas monoenergéticas. Ver el documento de decisiones enlazado arriba.
 
 ### Resultados de `ActiveShield_Sim` versionados en `resultados/` (2026-09-12)
+
+> **Reorganizado el 2026-09-30.** Los archivos que describe esta sección
+> están ahora en `resultados/historico_barrido600_radial/` (crudos y
+> manifiestos) y `resultados/fase8_binning/`. Los agregados se eliminaron
+> por estar mal. Índice vigente en `geant4/ActiveShield_Sim/resultados/README.md`.
 
 Hasta ahora, los resultados reales del barrido (`organ_sweep_manifest.csv`,
 `resultados_organo_sweep.csv`, los agregados) vivían solo dentro de

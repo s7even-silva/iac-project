@@ -321,7 +321,17 @@ def main():
     # empaquetado dentro de "species") -- mas verboso al desempaquetar
     # pero mas legible que un valor compuesto oculto en la primera
     # posicion.
-    bins_by_key = energy_bins.build_bins(spectra_dir)
+    # La grilla de bins sale de los datos, no del default de energy_bins:
+    # bin_index=3 de una grilla de 8 y de una de 16 son energias distintas.
+    # CSV anteriores a la columna n_bins son siempre de la grilla de 8.
+    n_bins_seen = {int(row.get("n_bins") or energy_bins.N_BINS_PER_SPECIES)
+                   for row in iter_result_rows(results_paths)}
+    if len(n_bins_seen) != 1:
+        sys.exit(f"ERROR: los resultados mezclan grillas de bins distintas {sorted(n_bins_seen)}; "
+                 "agregar cada grilla por separado.")
+    n_bins = n_bins_seen.pop()
+    print(f"Grilla de bins detectada en los resultados: n_bins={n_bins}")
+    bins_by_key = energy_bins.build_bins(spectra_dir, n_bins=n_bins)
     weight_by_key = {}
     print("Pesos fisicos W[s,bin] (primarios reales de esa franja de energia que cruzan la esfera fuente):")
     for (species, phase), bins in bins_by_key.items():
@@ -360,6 +370,10 @@ def main():
     edep_by_run = defaultdict(lambda: defaultdict(float))
     n_events_by_run_rep = {}  # (run_key, repeticion) -> n
     edep_by_run_rep = defaultdict(lambda: defaultdict(float))  # (run_key,repeticion) -> {organo_id: edep_J}
+    # Una misma (corrida, repeticion, organo) en dos archivos de entrada (p.ej.
+    # dos intentos del mismo job del coordinator) sumaria su edep dos veces
+    # mientras n_eventos se cuenta una sola: dosis duplicada sin aviso.
+    seen_rows = set()
     for row in iter_result_rows(results_paths):
         n = int(row["n_eventos"])
         if n == 0:
@@ -369,6 +383,12 @@ def main():
         # siempre (escrito por run_organ_sweep.py), solo no se usaba aqui.
         run_key = (row["especie"], row["fase"], int(row["bin_index"]), float(row["offset_x_m"]))
         rep = int(row.get("repeticion", 0) or 0)
+        row_key = (run_key, rep, int(row["organo_id"]))
+        if row_key in seen_rows:
+            sys.exit(f"ERROR: fila duplicada en los resultados de entrada {row_key} -- probablemente el "
+                     "mismo job/repeticion aparece en dos archivos (p.ej. dos intentos del coordinator). "
+                     "Quitar el duplicado antes de agregar.")
+        seen_rows.add(row_key)
         edep_by_run[run_key][int(row["organo_id"])] += float(row["edep_J"])
         n_events_by_run_rep[(run_key, rep)] = n
         edep_by_run_rep[(run_key, rep)][int(row["organo_id"])] += float(row["edep_J"])
@@ -377,19 +397,20 @@ def main():
         n_events_by_run[run_key] += n
     reps_seen = sorted({rep for (_run_key, rep) in n_events_by_run_rep})
 
-    # --- CSV completo por organo_id (sin agrupar), R[o,s,bin] = dose_gy_run/N,
-    # pooled sobre repeticiones. dose_gy_run ya es edep_J/masa_organo de ESA
-    # corrida -- pool correcto via promedio ponderado por N: R_pooled =
-    # sum(dose_gy_run_i * n_i) / sum(n_i) = sum(edep_i)/(masa*sum(n_i)),
-    # sin necesitar la masa explicita aqui (se cancela en el promedio). ---
-    _dose_n_sum = defaultdict(lambda: [0.0, 0])  # (organo_id,offset,especie,fase,bin) -> [sum(dose*n), sum(n)]
+    # --- CSV completo por organo_id (sin agrupar), R[o,s,bin] en Gy por
+    # primario, pooled sobre repeticiones. dose_gy_run_i = edep_i/masa es la
+    # dosis de TODA la corrida i (n_i primarios), asi que
+    # R_pooled = sum(dose_gy_run_i) / sum(n_i) = sum(edep_i)/(masa*sum(n_i)).
+    # (Hasta 2026-09-30 se usaba sum(dose_i*n_i)/sum(n_i), que es la dosis
+    # de una corrida, no por primario: este CSV salia inflado por ~N.) ---
+    _dose_n_sum = defaultdict(lambda: [0.0, 0])  # (organo_id,offset,especie,fase,bin) -> [sum(dose_run), sum(n)]
     for row in iter_result_rows(results_paths):
         n = int(row["n_eventos"])
         if n == 0:
             continue
         key5 = (int(row["organo_id"]), float(row["offset_x_m"]), row["especie"], row["fase"], int(row["bin_index"]))
         acc = _dose_n_sum[key5]
-        acc[0] += float(row["dose_gy_run"]) * n
+        acc[0] += float(row["dose_gy_run"])
         acc[1] += n
     r_by_key = defaultdict(dict)  # (organo_id, offset_x_m) -> {(species,phase,bin_index): R}
     for (organo_id, offset_x_m, especie, fase, bin_index), (dose_n_sum, n_sum) in _dose_n_sum.items():
@@ -430,7 +451,16 @@ def main():
             )
 
         offsets = sorted({offset for (_species, _phase, _bin, offset) in edep_by_run})
-        species_phase_bins = sorted({(species, phase, bin_idx) for (species, phase, bin_idx, _offset) in edep_by_run})
+        # Bins ESPERADOS (toda la grilla de cada especie/fase presente), no solo
+        # los que aparecen en los datos: un bin que falta en todas las corridas
+        # debe verse como ausente, no desaparecer en silencio de la suma.
+        species_phases_seen = {(species, phase) for (species, phase, _bin, _offset) in edep_by_run}
+        species_phase_bins = sorted(key for key in weight_by_key if key[:2] in species_phases_seen)
+        for offset_x_m in offsets:
+            missing = [f"{s}/{p}/{b}" for s, p, b in species_phase_bins if (s, p, b, offset_x_m) not in edep_by_run]
+            if missing:
+                print(f"ADVERTENCIA: offset {offset_x_m} m sin datos para {len(missing)} bin(s) "
+                      f"({', '.join(missing)}) -- la vista pooled los omite y su dosis queda incompleta.")
         risk_fieldnames = ["categoria", "offset_x_m", "masa_kg"] + out_fieldnames[2:]
         with open(risk_out_path, "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=risk_fieldnames)
@@ -703,6 +733,7 @@ def main():
                 for offset_x_m in offsets:
                     r_values_by_bin = defaultdict(list)
                     for species, phase, bin_idx in species_phase_bins:
+                        r_values_by_bin[(species, phase, bin_idx)]  # registra el bin aunque no tenga datos -> bins_ausentes
                         run_key = (species, phase, bin_idx, offset_x_m)
                         for rep in reps_seen:
                             key_rep = (run_key, rep)

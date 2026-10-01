@@ -23,6 +23,12 @@ ICRP110PhantomGeneratorMessenger::ICRP110PhantomGeneratorMessenger(ICRP110Phanto
       "TODOS los primarios de la corrida (MeV/amu para GCR_H|GCR_He, MeV para SEP_p), en vez de "
       "muestrear el espectro continuo. Omitir para mantener el muestreo continuo (default).");
   fFixedEnergyCmd->SetParameterName("energyMeV", false);
+
+  fAngularCmd = new G4UIcmdWithAString("/gun/angularDistribution", this);
+  fAngularCmd->SetGuidance("radial (default historico: todos los primarios apuntan al origen) | "
+      "cosine (ley coseno; la unica compatible con el peso pi*R^2*flujo).");
+  fAngularCmd->SetParameterName("mode", false);
+  fAngularCmd->SetCandidates("radial cosine");
 }
 
 ICRP110PhantomGeneratorMessenger::~ICRP110PhantomGeneratorMessenger()
@@ -30,6 +36,7 @@ ICRP110PhantomGeneratorMessenger::~ICRP110PhantomGeneratorMessenger()
   delete fSpeciesCmd;
   delete fPhaseCmd;
   delete fFixedEnergyCmd;
+  delete fAngularCmd;
   delete fDir;
 }
 
@@ -38,4 +45,5 @@ void ICRP110PhantomGeneratorMessenger::SetNewValue(G4UIcommand* command, G4Strin
   if (command == fSpeciesCmd) fGenerator->SetSpecies(newValue);
   else if (command == fPhaseCmd) fGenerator->SetPhase(newValue);
   else if (command == fFixedEnergyCmd) fGenerator->SetFixedEnergy(fFixedEnergyCmd->GetNewDoubleValue(newValue));
+  else if (command == fAngularCmd) fGenerator->SetAngularDistribution(newValue);
 }

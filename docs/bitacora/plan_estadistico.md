@@ -1,5 +1,12 @@
 # Plan estadístico y de simulación — Geant4 / IAC
 
+> **Actualización 2026-09-30:** la auditoría (`auditoria_2026-09-30.md`)
+> invalidó todos los resultados de producción y de los pilotos (malla de
+> scoring fija y primarios apuntados al origen). La forma de volver a correr
+> todo, reutilizando las fases de este plan, está en
+> `plan_barrido_corregido.md`. Las conclusiones numéricas de las Fases 7 y 8
+> de este documento se obtuvieron con apuntado radial y deben revalidarse.
+
 **Estado:** actualizado con el trabajo realizado hoy  
 **Objetivo:** documentar el flujo completo desde el estado actual del barrido hasta el análisis final publicable, incluyendo decisiones estadísticas, alternativas más robustas, limitaciones y criterios de aceptación.
 
@@ -826,7 +833,7 @@ tandas previas): tanda 2 (`GCR_He/min`, n_bins∈{8,16,32}, 56 combos —
 GCR_He no tenía ningún dato de Fase 8 todavía), tanda 3 (`SEP_p/max`,
 n_bins=64, 64 combos) y tanda 4 (`SEP_p/max`, n_bins=128, 128 combos).
 Con las 4 tandas completas (360 combinaciones reales, consolidadas en
-`geant4/ActiveShield_Sim/resultados/resultados_organo_sweep_fase8_binning.csv`
+`geant4/ActiveShield_Sim/resultados/fase8_binning/resultados_organo_sweep_fase8_binning.csv`
 y recalculadas con `epsilon_binning_fase8_resumen.py` →
 `epsilon_binning_fase8_resultado.csv`):
 
@@ -872,7 +879,7 @@ despreciable.
 un esquema de 2 segmentos log-espaciados independientes: pocos bins en
 0.01–`corte` MeV (dosis despreciable) + la mayoría en `corte`–300 MeV
 (donde vive el 99% de la dosis). Script reproducible:
-`geant4/ActiveShield_Sim/resultados/propuesta_binning_hibrido_sep.py` →
+`geant4/ActiveShield_Sim/resultados/fase8_binning/propuesta_binning_hibrido_sep.py` →
 `propuesta_binning_hibrido_sep_resultado.csv`. Método: sin correr Geant4
 de nuevo, interpola en log-log la curva empírica `R(E)` ya medida en los
 128 bins (la energía representativa de cada bin es el único punto donde

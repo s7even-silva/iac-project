@@ -23,4 +23,5 @@ private:
   G4UIcmdWithAString* fSpeciesCmd;
   G4UIcmdWithAString* fPhaseCmd;
   G4UIcmdWithADouble* fFixedEnergyCmd;
+  G4UIcmdWithAString* fAngularCmd;
 };

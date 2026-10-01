@@ -185,11 +185,12 @@ MACRO_TEMPLATE = """\
 /gun/species {species}
 /gun/phase {phase}
 /gun/fixedEnergyMeV {energy_mev}
+/gun/angularDistribution {angular}
 
 /score/create/boxMesh PhantomMesh
 /score/mesh/boxSize 271.399 135.6995 888. mm
 /score/mesh/nBin 254 127 222
-/score/mesh/translate/xyz 0. 0. 0. mm
+/score/mesh/translate/xyz {offset_x_mm} 0. 0. mm
 /score/quantity/energyDeposit energyDeposit
 /score/close
 
@@ -235,6 +236,8 @@ def validate_resume_grid(build_dir, n_bins):
             required = {"n_bins"}
             if filename.startswith("resultados"):
                 required.update(("s1_j", "s2_j2", "n", "se_run_j", "se_run_total_j"))
+            else:
+                required.add("angular_distribution")
             if not required.issubset(reader.fieldnames or []):
                 raise ValueError(f"{path}: esquema antiguo; conservarlo y usar otro directorio de build/salida")
             if any(int(row["n_bins"]) != n_bins for row in reader):
@@ -389,6 +392,11 @@ def main():
                               "si SPECIES_PHASE alguna vez tiene la misma especie en dos fases, --only-species "
                               "solo no alcanza para aislar una combinacion -- --limit 1 sigue como red de "
                               "seguridad final igual que con los otros filtros.")
+    parser.add_argument("--angular-distribution", choices=("radial", "cosine"), default="radial",
+                         help="Direccion de entrada de los primarios. cosine (ley coseno) es la unica "
+                              "compatible con el peso pi*R^2*flujo de aggregate_organ_doses.py; radial (default "
+                              "historico, todos apuntan al origen) se conserva hasta que el equipo cambie el "
+                              "default de produccion. Ver docs/bitacora/auditoria_2026-09-30.md.")
     parser.add_argument("--limit", type=int, default=None,
                          help="Solo correr las primeras N combinaciones ya filtradas (piloto)")
     parser.add_argument("--repeats", type=int, default=1,
@@ -436,6 +444,13 @@ def main():
 
     spectra_dir = project_root / "data" / "sources" / "oltaris"  # fuente de verdad versionada, no build_dir/data
     combos = build_combinations(spectra_dir, args.n_bins)
+    # seed1 = BASE_SEED + 1000*rep + 2*index: con 2*index+1 >= 1000 las semillas
+    # de la repeticion r chocan con las de r+1. Se valida sobre la grilla
+    # completa (antes de filtrar), porque el indice global no depende del filtro.
+    if 2 * (len(combos) - 1) + 1 >= 1000:
+        sys.exit(f"ERROR: {len(combos)} combinaciones desbordan el esquema de semillas "
+                 "(BASE_SEED + 1000*rep + 2*index admite hasta 500); ampliar el paso por repeticion "
+                 "con una version nueva de semillas antes de correr esta grilla.")
     if args.only_positions is not None:
         wanted = {float(x) for x in args.only_positions.split(",")}
         combos = [c for c in combos if c["offset_x_m"] in wanted]
@@ -457,7 +472,7 @@ def main():
     manifest_path = build_dir / "organ_sweep_manifest.csv"
     manifest_fieldnames = ["index", "repeticion", "especie", "fase", "bin_index", "n_bins", "energy_mev",
                             "offset_x_m", "n_events", "seed1", "seed2", "macro_path", "exit_code",
-                            "duration_s", "log_path", "out_archive_path"]
+                            "duration_s", "log_path", "out_archive_path", "angular_distribution"]
 
     done_runs = set()
     if args.resume and manifest_path.is_file():
@@ -523,9 +538,10 @@ def main():
                 ship_radius_m=SHIP_RADIUS_M, ship_half_length_m=SHIP_HALF_LENGTH_M,
                 world_half_size_m=WORLD_HALF_SIZE_M, coil_geometry_line=coil_geometry_line,
                 field_map=field_map, offset_x_m=f"{combo['offset_x_m']:.3f}",
+                offset_x_mm=f"{combo['offset_x_m'] * 1000:.1f}",
                 seed1=seed1, seed2=seed2,
                 species=combo["species"], phase=combo["phase"],
-                energy_mev=f"{combo['energy_mev']:.6e}",
+                energy_mev=f"{combo['energy_mev']:.6e}", angular=args.angular_distribution,
                 n_events=args.n_events, n_threads=args.threads,
                 print_progress_every=print_progress_every,
             ))
@@ -595,6 +611,7 @@ def main():
                 "exit_code": result.returncode if parsed_ok else (result.returncode or 1),
                 "duration_s": round(duration_s, 2), "log_path": str(log_path),
                 "out_archive_path": str(archive_path) if parsed_ok else "",
+                "angular_distribution": args.angular_distribution,
             })
             manifest_file.flush()
 

@@ -181,6 +181,19 @@ de producción; por ahora es una inferencia a partir de la dosis, no una
 medición del campo.
 Fuente: `resultados/INTERPRETACION_PROTECCION_RADIOLOGICA.md`.
 
+**Actualización 2026-09-30:** se leyó `|B|` en el mapa de producción: 0.54 T
+en x=0, 0.54 T en x=1 m y 0.55 T en x=2 m. El campo **no** se cancela en el
+eje, así que la hipótesis Halbach queda descartada. **Causa encontrada:** la
+malla de scoring está fija en el origen (`/score/mesh/translate/xyz 0. 0. 0.
+mm` en `run_organ_sweep.py`) y no sigue al fantoma. Con `offset_x_m ≥ 1` mide
+aire de cabina (0.001 g/cm³, ~1000 veces menos denso que el tejido)
+etiquetado como órganos. **Las filas con offset≥1 m no son dosis en órganos
+y no se deben citar.** Con la malla corregida y sin campo, x=1 m da 0.91
+veces la dosis de x=0 (verificado el 2026-09-30). Las de x=0 además están
+infladas por el apuntado
+radial de los primarios. Ver `docs/modelo_realista.md`, "Bug crítico
+(2026-09-30)" y "Hallazgo crítico (2026-09-30)".
+
 ## 14. SEP_p bin0 da dosis cero — confirmado físico, pero no generalizable a otros ceros
 
 El bin de menor energía de SEP_p (~19 keV) deposita `edep_J=0` de forma

@@ -16,6 +16,9 @@ def test_resume_rejects_old_schema_and_changed_grid(tmp_path):
     with pytest.raises(ValueError, match='esquema antiguo'):
         sweep.validate_resume_grid(tmp_path, 8)
     manifest.write_text('n_bins\n8\n')
+    with pytest.raises(ValueError, match='esquema antiguo'):
+        sweep.validate_resume_grid(tmp_path, 8)
+    manifest.write_text('n_bins,angular_distribution\n8,cosine\n')
     with pytest.raises(ValueError, match='otra grilla'):
         sweep.validate_resume_grid(tmp_path, 16)
     sweep.validate_resume_grid(tmp_path, 8)

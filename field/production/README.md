@@ -84,5 +84,7 @@ python3 field/elmer_array_to_map.py elmer_mesh/elmer_pilot_air_t0001.vtu crewhat
 
 Detalle completo, por qué estos parámetros y no otros, y el hallazgo de
 que Biot-Savart sobreestima la dosis 36-48% frente a Elmer en esta
-geometría: `AGENTS.md`, sección "Error de campo vs. error de dosis en
-Elmer, y extensión a escala real".
+geometría: `docs/bitacora/activeshield_sim_historia.md`, sección "Error de
+campo vs. error de dosis en Elmer, y extensión a escala real". **Esa cifra
+no se reprodujo el 2026-09-30** (0.93 ± 0.08 a 562 MeV, con ley coseno y 3
+semillas). Ver `geant4/ActiveShield_Sim/docs/modelo_realista.md`.

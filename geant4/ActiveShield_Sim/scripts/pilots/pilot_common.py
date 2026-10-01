@@ -73,7 +73,7 @@ PILOT_MACRO_TEMPLATE = """\
 /score/create/boxMesh PhantomMesh
 /score/mesh/boxSize 271.399 135.6995 888. mm
 /score/mesh/nBin 254 127 222
-/score/mesh/translate/xyz 0. 0. 0. mm
+/score/mesh/translate/xyz {offset_x_mm} 0. 0. mm
 /score/quantity/energyDeposit energyDeposit
 /score/close
 
@@ -94,7 +94,8 @@ def build_macro(combo, offset_x_m, seed1, seed2, n_threads, print_progress_every
     return PILOT_MACRO_TEMPLATE.format(
         ship_radius_m=ros.SHIP_RADIUS_M, ship_half_length_m=ros.SHIP_HALF_LENGTH_M,
         world_half_size_m=ros.WORLD_HALF_SIZE_M, coil_geometry_line=coil_geometry_line,
-        field_map=field_map, field_scale=field_scale, offset_x_m=offset_x_m, n_threads=n_threads,
+        field_map=field_map, field_scale=field_scale, offset_x_m=offset_x_m,
+        offset_x_mm=f"{float(offset_x_m) * 1000:.1f}", n_threads=n_threads,
         seed1=seed1, seed2=seed2, print_progress_every=print_progress_every,
         species=combo["species"], phase=combo["phase"], energy_mev=combo["energy_mev"],
         n_events=n_events, out_path=out_path,

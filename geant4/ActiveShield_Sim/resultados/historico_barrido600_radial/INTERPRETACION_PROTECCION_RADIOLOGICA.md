@@ -1,5 +1,11 @@
 # Primeros resultados del barrido por órgano: interpretación de protección radiológica
 
+> **Aviso (2026-09-30): esta interpretación ya no es válida.** Las filas con
+> `offset_x_m ≥ 1` miden aire de cabina, porque la malla de scoring no sigue
+> al fantoma. Las de x=0 están infladas por el apuntado radial de los
+> primarios. Ver `../docs/modelo_realista.md`, "Bug crítico (2026-09-30)" y
+> "Hallazgo crítico (2026-09-30)". Se conserva como registro histórico.
+
 **Fuente de datos:** `resultados_riesgo_estocastico_rep0.csv` — la primera
 vuelta completa del barrido (120/120 combinaciones especie×bin×posición,
 repetición 0), tal como la define `resultados/README.md`. Los números se

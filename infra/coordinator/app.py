@@ -234,7 +234,8 @@ async def submit_result(
         if not rows or len(manifest) != 1:
             raise ValueError("Require organ rows and exactly one manifest row")
         for row in rows + manifest:
-            if (row["especie"] != job["species"] or int(row["bin_index"]) != job["bin_index"]
+            if (row["especie"] != job["species"] or row.get("fase", job["phase"]) != job["phase"]
+                    or int(row["bin_index"]) != job["bin_index"]
                     or int(row["repeticion"]) != job["repeticion"]
                     or not math.isclose(float(row["offset_x_m"]), job["offset_x_m"], abs_tol=1e-6)
                     or int(row.get("n_eventos", row.get("n_events", ""))) != job["n_events"]):
