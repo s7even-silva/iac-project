@@ -1,0 +1,36 @@
+/phantom/setPhantomSex male
+/phantom/setScoreWriterSex male
+/phantom/setPhantomSection full
+/phantom/setScoreWriterSection full
+/spacecraft/shipRadius 4.5 m
+/spacecraft/shipHalfLength 5.0 m
+/spacecraft/hullThickness 0.001 cm
+/spacecraft/phantomOffsetX 0 m
+/spacecraft/phantomOffsetY 0 m
+/run/numberOfThreads 7
+/run/initialize
+/random/setSeeds 7401 7402
+/run/printProgress 200000
+/gun/species GCR_H
+/gun/phase min
+/gun/angularDistribution cosine
+/gun/fixedEnergyMeV 1778.28
+/score/create/boxMesh PhantomMesh
+/score/mesh/boxSize 271.399 135.6995 888. mm
+/score/mesh/nBin 254 127 222
+/score/mesh/translate/xyz 0. 0. 0. mm
+/score/quantity/energyDeposit energyDeposit
+/score/close
+/score/create/boxMesh FluxBox
+/score/mesh/boxSize 250. 250. 250. mm
+/score/mesh/nBin 1 1 1
+/score/mesh/translate/xyz 1500. 0. 0. mm
+/score/quantity/trackLength primLen
+/score/filter/particleWithKineticEnergy f1 1000 1800 MeV proton
+/score/quantity/passageCellCurrent primCur
+/score/filter/particleWithKineticEnergy primFilt 1000 1800 MeV proton
+/score/close
+/run/beamOn 1000000
+/score/dumpQuantityToFile FluxBox primLen FluxLen.txt
+/score/dumpQuantityToFile FluxBox primCur FluxCur.txt
+/score/dumpQuantityToFile PhantomMesh energyDeposit PhantomMesh_Edep.txt

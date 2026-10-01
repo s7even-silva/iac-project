@@ -68,15 +68,21 @@ enlaces:
   (2026-09-30) — auditoría de bugs (malla de scoring, apuntado radial, vista
   por órgano ×N, agregador, semillas, procedencia) y requisitos del scorer
   para la próxima producción.
-- **[`docs/bitacora/plan_barrido_corregido.md`](docs/bitacora/plan_barrido_corregido.md)**
-  (2026-09-30, propuesta) — cómo volver a correr todo. Cada cifra de diseño
-  es un candidato hasta que la valida un protocolo estadístico. Incluye:
-  curva de respuesta R(E) por partícula, validada caso por caso contra una
-  referencia de muestreo continuo estratificado (prueba de equivalencia,
-  refinamiento adaptativo); asignación de eventos solo tras demostrar la
-  convergencia de cada punto; criterio de convergencia para cuánto ampliar
-  la esfera fuente y el dominio del campo (decidido que se amplían);
-  decisiones pendientes y orden de pasos.
+- **[`docs/bitacora/plan_piloto.md`](docs/bitacora/plan_piloto.md)**
+  (2026-10-01) — pilotos P0–P6 que deben aprobarse antes del barrido
+  corregido. Incluye:
+  - las verificaciones ya hechas (normalización de la fuente verificada en
+    un Monte Carlo independiente y dentro de Geant4: 1.010 ± 0.020);
+  - las decisiones bloqueantes D1–D7;
+  - para cada piloto, su referencia, su criterio fijado de antemano, el
+    resultado esperado y qué bloquea;
+  - la condición para empezar el barrido.
+- **[`docs/bitacora/plan_barrido.md`](docs/bitacora/plan_barrido.md)**
+  (2026-10-01) — especificación técnica y de cálculo del barrido:
+  configuración congelada, normalización, integración espectral con la
+  curva de respuesta, Q(L) y dosis efectiva, estimadores y covarianzas
+  (incluida CRN para η), asignación de eventos, semillas v2, procedencia,
+  tests T1–T11 y parámetros pendientes de cada piloto.
 - **[`infra/README.md`](infra/README.md)**, **[`infra/deploy/README.md`](infra/deploy/README.md)**,
   **[`infra/GUIA_VOLUNTARIOS.md`](infra/GUIA_VOLUNTARIOS.md)**,
   **[`infra/GUIA_WORKER_LOCAL.md`](infra/GUIA_WORKER_LOCAL.md)** —

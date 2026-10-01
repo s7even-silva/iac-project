@@ -1,0 +1,25 @@
+/phantom/setPhantomSex male
+/phantom/setScoreWriterSex male
+/phantom/setPhantomSection full
+/phantom/setScoreWriterSection full
+/spacecraft/shipRadius 4.5 m
+/spacecraft/shipHalfLength 5.0 m
+/spacecraft/hullThickness 0.001 cm
+/spacecraft/phantomOffsetX 0 m
+/spacecraft/phantomOffsetY 0 m
+/run/numberOfThreads 7
+/run/initialize
+/random/setSeeds 7001 7002
+/run/printProgress 5000
+/gun/species GCR_H
+/gun/phase min
+/gun/angularDistribution cosine
+/gun/fixedEnergyMeV 1778.28
+/score/create/boxMesh PhantomMesh
+/score/mesh/boxSize 271.399 135.6995 888. mm
+/score/mesh/nBin 254 127 222
+/score/mesh/translate/xyz 0. 0. 0. mm
+/score/quantity/energyDeposit energyDeposit
+/score/close
+/run/beamOn 40000
+/score/dumpQuantityToFile PhantomMesh energyDeposit PhantomMesh_Edep.txt

@@ -4,7 +4,7 @@ Reorganizado el 2026-09-30 tras la auditoría
 [`docs/bitacora/auditoria_2026-09-30.md`](../../../docs/bitacora/auditoria_2026-09-30.md).
 **Todavía no hay ninguna dosis físicamente válida en este directorio.**
 Las dosis correctas requieren el barrido corregido, planificado en
-[`docs/bitacora/plan_barrido_corregido.md`](../../../docs/bitacora/plan_barrido_corregido.md).
+[`docs/bitacora/plan_piloto.md`](../../../docs/bitacora/plan_piloto.md).
 
 | Carpeta | Contenido | Estado |
 |---|---|---|

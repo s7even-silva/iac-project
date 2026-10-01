@@ -49,7 +49,7 @@ El factor de inflación **depende de la energía y del campo**. En la prueba
 de 562 MeV con campo, la dosis por primario fue 7.3e-14 J con apuntado
 radial y 3.1e-14 J con ley coseno. Por eso no existe un factor único que
 corrija los resultados en post-proceso: hay que volver a simular. Ver
-`docs/bitacora/plan_barrido_corregido.md`.
+`docs/bitacora/plan_piloto.md`.
 
 Además, las incertidumbres de SEP son enormes (H% del 67% al 430%) y
 GCR_H bins 6–7 tienen una sola repetición (`bins_R1_sin_varianza`).

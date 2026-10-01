@@ -85,6 +85,14 @@ pregunta, el cambio de C++ debería registrar todo esto en una sola pasada:
 - **R10. AM y AF**, con la malla de scoring correcta para cada sexo, los
   datos de órganos de cada sexo y los nombres de órgano en la salida.
 - **R11. Tiempo por evento y CPU**, para el modelo de costo del coordinator.
+- **R12. Totales por evento de cada categoría** (un archivo de N ×
+  categorías), para estimar la covarianza entre escudo y control con
+  semillas comunes (CRN) y calcular η.
+
+Nota técnica (2026-10-01): `ICRP110UserScoreWriter` divide por `joule`
+**cualquier** magnitud que vuelca, no solo la energía. Un `trackLength`
+volcado con él salió en mm/6.24e12. Cualquier scorer nuevo que pase por
+ese writer tiene que corregirlo (test T5 de `plan_barrido.md`).
 
 Ya disponible sin cambios: dosis en todos los órganos (incluidos piel,
 cristalino y los demás tejidos con w_T), suficiente para la dosis efectiva
@@ -92,8 +100,8 @@ completa y para métricas de efectos deterministas.
 
 ## Orden recomendado
 
-Versión detallada, con el diseño del barrido nuevo, en
-[`plan_barrido_corregido.md`](plan_barrido_corregido.md).
+Versión detallada: los pilotos en [`plan_piloto.md`](plan_piloto.md) y la
+especificación del barrido en [`plan_barrido.md`](plan_barrido.md).
 
 1. Decidir: ley coseno como default, radio de la esfera y dominio del mapa.
 2. Un solo cambio de C++ con R1–R11, más tests: comparar contra una corrida

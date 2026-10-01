@@ -3,8 +3,9 @@
 > **Actualización 2026-09-30:** la auditoría (`auditoria_2026-09-30.md`)
 > invalidó todos los resultados de producción y de los pilotos (malla de
 > scoring fija y primarios apuntados al origen). La forma de volver a correr
-> todo, reutilizando las fases de este plan, está en
-> `plan_barrido_corregido.md`. Las conclusiones numéricas de las Fases 7 y 8
+> todo, reutilizando las fases de este plan, está en `plan_piloto.md`
+> (pilotos) y `plan_barrido.md` (especificación del barrido). Las
+> conclusiones numéricas de las Fases 7 y 8
 > de este documento se obtuvieron con apuntado radial y deben revalidarse.
 
 **Estado:** actualizado con el trabajo realizado hoy  
