@@ -69,9 +69,13 @@ enlaces:
   por órgano ×N, agregador, semillas, procedencia) y requisitos del scorer
   para la próxima producción.
 - **[`docs/bitacora/plan_barrido_corregido.md`](docs/bitacora/plan_barrido_corregido.md)**
-  (2026-09-30, propuesta) — cómo volver a correr todo: núcleo de respuesta
-  R(E) por partícula (6 casos especie/fase desde 2 núcleos), grilla no
-  uniforme, escudo frente a control, `M_b` por costo, sesgo de fuente,
+  (2026-09-30, propuesta) — cómo volver a correr todo. Cada cifra de diseño
+  es un candidato hasta que la valida un protocolo estadístico. Incluye:
+  curva de respuesta R(E) por partícula, validada caso por caso contra una
+  referencia de muestreo continuo estratificado (prueba de equivalencia,
+  refinamiento adaptativo); asignación de eventos solo tras demostrar la
+  convergencia de cada punto; criterio de convergencia para cuánto ampliar
+  la esfera fuente y el dominio del campo (decidido que se amplían);
   decisiones pendientes y orden de pasos.
 - **[`infra/README.md`](infra/README.md)**, **[`infra/deploy/README.md`](infra/deploy/README.md)**,
   **[`infra/GUIA_VOLUNTARIOS.md`](infra/GUIA_VOLUNTARIOS.md)**,
