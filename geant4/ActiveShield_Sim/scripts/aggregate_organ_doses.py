@@ -256,6 +256,39 @@ def iter_result_rows(paths):
             yield from csv.DictReader(f)
 
 
+def validate_result_rows(rows, bins_by_key):
+    """Reject incompatible scenarios and corrupt run denominators before writing output."""
+    phases_by_model = defaultdict(set)
+    counts = {}
+    for row in rows:
+        species, phase = row["especie"], row["fase"]
+        bin_index = int(row["bin_index"])
+        if (species, phase) not in bins_by_key or not 0 <= bin_index < len(bins_by_key[(species, phase)]):
+            raise ValueError(f"Especie/fase/bin desconocido: {species}/{phase}/{bin_index}")
+        phases_by_model[MODEL_OF[species]].add(phase)
+        n = int(row["n_eventos"])
+        if n <= 0:
+            raise ValueError("n_eventos debe ser positivo")
+        for name in ("edep_J", "dose_gy_run", "offset_x_m"):
+            value = float(row[name])
+            if not math.isfinite(value) or (name != "offset_x_m" and value < 0):
+                raise ValueError(f"{name} debe ser finito" + (" y no negativo" if name != "offset_x_m" else ""))
+        if row.get("energy_mev"):
+            expected = bins_by_key[(species, phase)][bin_index][1]
+            if not math.isclose(float(row["energy_mev"]), expected, rel_tol=1e-5):
+                raise ValueError("energy_mev no coincide con la grilla declarada")
+        key = (species, phase, bin_index, float(row["offset_x_m"]), int(row.get("repeticion") or 0))
+        if key in counts and counts[key] != n:
+            raise ValueError(f"n_eventos inconsistente dentro de la corrida {key}")
+        counts[key] = n
+    if any(len(phases) > 1 for phases in phases_by_model.values()):
+        raise ValueError("Fases incompatibles del mismo modelo: agregar min y max en archivos/directorios separados")
+
+
+def uncertainty_available(model, bins_r1, bins_missing):
+    return not any(MODEL_OF[s] == model for s, _p, _b in bins_r1 + bins_missing)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--results", type=str, nargs="+", default=None,
@@ -274,9 +307,16 @@ def main():
                          help="Debe coincidir con /spacecraft/shipHalfLength usado (default 5.0)")
     parser.add_argument("--hull-thickness-cm", type=float, default=1.5,
                          help="Debe coincidir con /spacecraft/hullThickness usado (default 1.5)")
+    parser.add_argument("--source-sphere-radius-m", type=float, default=None,
+                         help="Radio de la esfera fuente si se corrio con /spacecraft/sourceSphereRadius "
+                              "(default: la formula historica a partir de la nave). Tiene que coincidir con "
+                              "la corrida: entra al cuadrado en el peso pi*R^2*flujo.")
     parser.add_argument("--out", type=Path, default=None,
                          help="CSV agregado de salida (default: junto a --results)")
     args = parser.parse_args()
+    if args.source_sphere_radius_m is not None and (
+            not math.isfinite(args.source_sphere_radius_m) or args.source_sphere_radius_m <= 0):
+        parser.error("--source-sphere-radius-m debe ser finito y positivo")
 
     project_root = Path(__file__).resolve().parent.parent
     build_dir = project_root / "build"
@@ -299,7 +339,9 @@ def main():
     # el barrido.
     ship_radius_cm = args.ship_radius_m * 100.0
     ship_half_length_cm = args.ship_half_length_m * 100.0
-    source_radius_cm = math.sqrt(ship_radius_cm**2 + ship_half_length_cm**2) + args.hull_thickness_cm + 20.0
+    source_radius_cm = (args.source_sphere_radius_m * 100.0 if args.source_sphere_radius_m
+                        else math.sqrt(ship_radius_cm**2 + ship_half_length_cm**2) + args.hull_thickness_cm + 20.0)
+    print(f"Radio de la esfera fuente usado en el peso: {source_radius_cm/100:.3f} m")
     area_cm2 = math.pi * source_radius_cm**2
 
     # weight_by_key[(especie, fase, bin_index)] = W[s,bin] -- mismos bins/rango
@@ -332,6 +374,10 @@ def main():
     n_bins = n_bins_seen.pop()
     print(f"Grilla de bins detectada en los resultados: n_bins={n_bins}")
     bins_by_key = energy_bins.build_bins(spectra_dir, n_bins=n_bins)
+    try:
+        validate_result_rows(iter_result_rows(results_paths), bins_by_key)
+    except ValueError as exc:
+        sys.exit(f"ERROR: {exc}")
     weight_by_key = {}
     print("Pesos fisicos W[s,bin] (primarios reales de esa franja de energia que cruzan la esfera fuente):")
     for (species, phase), bins in bins_by_key.items():
@@ -644,16 +690,10 @@ def main():
         # suma del denominador (no tiene s_b) -- ver limitacion mas abajo.
         # IC95% = D +- t(0.975, df_eff) * SE_D.
         #
-        # Limitacion explicita (ya senalada en el plan, no resuelta aqui):
-        # un bin con R_b=1 no tiene s_b (no hay forma de estimar su
-        # varianza con una sola repeticion) -- ese bin se excluye del
-        # calculo de Var(D)/df_eff (no aporta incertidumbre, aunque SI
-        # aporta su contribucion a la media D via combine_bins), y se
-        # reporta explicitamente en bins_sin_varianza para que quede claro
-        # que el IC resultante es una SUBESTIMACION de la incertidumbre
-        # real mientras ese bin no tenga R_b>=2. Con R_b=0 (bin ausente en
-        # todas las repeticiones vistas) el bin no aporta ni a la media ni
-        # a la varianza -- D queda incompleta, marcada aparte.
+        # R_b=1 no permite estimar varianza entre repeticiones. Se conserva
+        # su contribucion puntual, pero SE/df/IC del modelo afectado quedan
+        # vacios. Lo mismo ocurre con bins ausentes: la suma es parcial,
+        # nunca una dosis total con incertidumbre completa.
         by_bin_out_path = out_path.parent / "resultados_riesgo_estocastico_por_bin.csv"
         by_bin_fieldnames = ["categoria", "offset_x_m",
                               "D_equivalente_GCR_Sv_dia", "SE_D_equivalente_GCR_Sv_dia",
@@ -751,21 +791,25 @@ def main():
                         continue
                     (d_gcr, se_gcr, df_gcr, d_sep, se_sep, df_sep,
                      bins_r1, bins_ausentes) = combine_bins_by_bin(r_values_by_bin)
-                    t_gcr = t_critical_95(round(df_gcr)) if df_gcr and df_gcr == df_gcr else float("nan")
-                    t_sep = t_critical_95(round(df_sep)) if df_sep and df_sep == df_sep else float("nan")
+                    if not uncertainty_available("GCR", bins_r1, bins_ausentes):
+                        se_gcr = df_gcr = float("nan")
+                    if not uncertainty_available("SEP", bins_r1, bins_ausentes):
+                        se_sep = df_sep = float("nan")
+                    t_gcr = t_critical_95(math.floor(df_gcr)) if math.isfinite(df_gcr) else float("nan")
+                    t_sep = t_critical_95(math.floor(df_sep)) if math.isfinite(df_sep) else float("nan")
                     hw_gcr = t_gcr * se_gcr if t_gcr == t_gcr else float("nan")
                     hw_sep = t_sep * se_sep if t_sep == t_sep else float("nan")
                     writer.writerow({
                         "categoria": category, "offset_x_m": offset_x_m,
                         "D_equivalente_GCR_Sv_dia": d_gcr,
-                        "SE_D_equivalente_GCR_Sv_dia": se_gcr,
-                        "df_eff_GCR": df_gcr,
+                        "SE_D_equivalente_GCR_Sv_dia": se_gcr if math.isfinite(se_gcr) else "",
+                        "df_eff_GCR": df_gcr if math.isfinite(df_gcr) else "",
                         "ic95_low_GCR": (d_gcr - hw_gcr) if hw_gcr == hw_gcr else "",
                         "ic95_high_GCR": (d_gcr + hw_gcr) if hw_gcr == hw_gcr else "",
                         "ic95_half_width_pct_GCR": (hw_gcr / abs(d_gcr) * 100.0) if hw_gcr == hw_gcr and d_gcr else "",
                         "D_equivalente_SEP_Sv_evento": d_sep,
-                        "SE_D_equivalente_SEP_Sv_evento": se_sep,
-                        "df_eff_SEP": df_sep,
+                        "SE_D_equivalente_SEP_Sv_evento": se_sep if math.isfinite(se_sep) else "",
+                        "df_eff_SEP": df_sep if math.isfinite(df_sep) else "",
                         "ic95_low_SEP": (d_sep - hw_sep) if hw_sep == hw_sep else "",
                         "ic95_high_SEP": (d_sep + hw_sep) if hw_sep == hw_sep else "",
                         "ic95_half_width_pct_SEP": (hw_sep / abs(d_sep) * 100.0) if hw_sep == hw_sep and d_sep else "",

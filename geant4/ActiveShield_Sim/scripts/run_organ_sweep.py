@@ -79,11 +79,10 @@ Uso:
 
 Resume esta activado por defecto (mismo criterio que GCR_SEP_Sim/run_sweep.py):
 al relanzar el mismo comando se saltan los indices de corrida que ya tengan
-exit_code 0 en organ_sweep_manifest.csv. OJO: el manifiesto no registra si
---n-events cambio entre corridas -- si se corre primero un piloto con pocos
-eventos y despues se quiere la corrida completa, usar --no-resume para
-rehacer esos indices con el --n-events real (si no, quedarian con la
-estadistica del piloto mezclada con el resto).
+exit_code 0 en organ_sweep_manifest.csv. Resume rechaza cambios de grilla,
+modo angular o numero de eventos: usar un directorio separado para cada
+configuracion. --no-resume reemplaza los CSV de ese directorio. Aun falta
+validar hashes de campo/geometria/binario para una procedencia completa.
 """
 import argparse
 import csv
@@ -225,7 +224,7 @@ def build_combinations(spectra_dir, n_bins=None):
     return combos
 
 
-def validate_resume_grid(build_dir, n_bins):
+def validate_resume_grid(build_dir, n_bins, angular_distribution=None, n_events=None):
     """Never append a new CSV layout or grid to an existing run directory."""
     for filename in ("organ_sweep_manifest.csv", "resultados_organo_sweep.csv"):
         path = build_dir / filename
@@ -240,8 +239,14 @@ def validate_resume_grid(build_dir, n_bins):
                 required.add("angular_distribution")
             if not required.issubset(reader.fieldnames or []):
                 raise ValueError(f"{path}: esquema antiguo; conservarlo y usar otro directorio de build/salida")
-            if any(int(row["n_bins"]) != n_bins for row in reader):
-                raise ValueError(f"{path}: otra grilla n_bins; usar otro directorio de salida")
+            for row in reader:
+                if int(row["n_bins"]) != n_bins:
+                    raise ValueError(f"{path}: otra grilla n_bins; usar otro directorio de salida")
+                if filename.startswith("organ_sweep"):
+                    if angular_distribution is not None and row["angular_distribution"] != angular_distribution:
+                        raise ValueError(f"{path}: otro modo angular; usar otro directorio de salida")
+                    if n_events is not None and int(row.get("n_events", -1)) != n_events:
+                        raise ValueError(f"{path}: otro numero de eventos; usar otro directorio de salida")
 
 
 def parse_icrp110_out(out_path):
@@ -411,6 +416,10 @@ def main():
     args = parser.parse_args()
     if args.n_bins < 1:
         parser.error("--n-bins debe ser positivo")
+    if args.n_events < 1 or args.threads is None or args.threads < 1:
+        parser.error("--n-events y --threads deben ser positivos")
+    if args.limit is not None and args.limit < 1:
+        parser.error("--limit debe ser positivo")
     if args.print_progress_every < 1:
         parser.error("--print-progress-every debe ser positivo")
     if args.repetition_start < 0 or args.repeats < 1:
@@ -434,7 +443,7 @@ def main():
                   "(no es el comportamiento de produccion, ver AGENTS.md).")
 
     if args.resume:
-        validate_resume_grid(build_dir, args.n_bins)
+        validate_resume_grid(build_dir, args.n_bins, args.angular_distribution, args.n_events)
     generated_dir = build_dir / "macros" / "generated_organ"
     logs_dir = build_dir / "logs_organ"
     archive_dir = build_dir / "organ_out_archive"
@@ -468,6 +477,8 @@ def main():
         combos = [c for c in combos if c["phase"] in wanted_phases]
     if args.limit is not None:
         combos = combos[:args.limit]
+    if not combos:
+        sys.exit("ERROR: los filtros no seleccionan ninguna combinacion; revisar especie/fase/bin/posicion")
 
     manifest_path = build_dir / "organ_sweep_manifest.csv"
     manifest_fieldnames = ["index", "repeticion", "especie", "fase", "bin_index", "n_bins", "energy_mev",

@@ -1,5 +1,12 @@
 # Pilotos del plan estadístico (Fases 7-10)
 
+> **Estado 2026-10-01:** herramientas históricas, no implementación de los
+> pilotos P0–P6 actuales. Sus factores de corrección del SE por voxel y
+> gates automáticos no validan el scorer por evento ni autorizan producción.
+> Seguir [plan_piloto.md](../../../../docs/bitacora/plan_piloto.md) y confirmar
+> los requisitos técnicos antes de reutilizar estos scripts. Los resultados
+> previos con fuente radial quedaron invalidados para dosimetría física.
+
 Scripts para las corridas puntuales de validación previas a producción
 (ver `docs/bitacora/plan_estadistico.md`, sección "Secuencia de validación
 y calibración antes de producción"). **No pasan por el coordinator ni la

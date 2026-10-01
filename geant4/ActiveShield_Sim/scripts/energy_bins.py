@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Bins de energia monoenergeticos para el barrido de dosis por organo, con
+"""NOTA 2026-10-01: rangos historicos por fraccion de flujo, no validados por
+fraccion de dosis. Para nueva produccion, P4 debe comprobar las colas y la
+grilla segun docs/bitacora/plan_piloto.md. Este modulo no implementa aun
+la curva de respuesta comun de plan_barrido.md.
+
+Bins de energia monoenergeticos para el barrido de dosis por organo, con
 reponderacion por el flujo/fluencia real de OLTARIS -- sigue la decision de
 equipo registrada en AGENTS.md ("Bins de energia + reponderacion para
 produccion... No portar muestreo continuo como plan de produccion"), que el
@@ -89,6 +94,10 @@ def load_spectrum(csv_path):
             fluxes.append(float(f_str))
     if len(energies) < 2:
         raise ValueError(f"{csv_path}: muy pocos puntos validos")
+    if (any(not math.isfinite(e) or e <= 0 for e in energies)
+            or any(not math.isfinite(f) or f < 0 for f in fluxes)
+            or any(b <= a for a, b in zip(energies, energies[1:]))):
+        raise ValueError(f"{csv_path}: energias deben ser positivas y crecientes; flujo finito no negativo")
     return energies, fluxes
 
 
@@ -120,7 +129,13 @@ def integral_between(energies, fluxes, lo, hi):
 
 
 def log_bin_edges(lo, hi, n_bins):
-    return [lo * (hi / lo) ** (i / n_bins) for i in range(n_bins + 1)]
+    if not isinstance(n_bins, int) or n_bins < 1:
+        raise ValueError("n_bins debe ser un entero positivo")
+    if not math.isfinite(lo) or not math.isfinite(hi) or not 0 < lo < hi:
+        raise ValueError("Bordes de energia invalidos")
+    edges = [lo * (hi / lo) ** (i / n_bins) for i in range(n_bins + 1)]
+    edges[0], edges[-1] = lo, hi
+    return edges
 
 
 def bin_representative_energy(edge_lo, edge_hi):

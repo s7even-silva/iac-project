@@ -5,7 +5,7 @@ auditoría del 2026-09-30). **No empieza hasta cumplir la condición de
 `plan_piloto.md`.** Los valores marcados como *(P#)* o *(D#)* los fija ese
 piloto o esa decisión (sección 9).
 
-## 1. Configuración física congelada
+## 1. Configuración física a congelar después de los pilotos
 
 | Elemento | Valor | Fuente |
 |---|---|---|
@@ -20,7 +20,9 @@ piloto o esa decisión (sección 9).
 | Posiciones | *(D6)*; hoy 0–4 m sobre +x | |
 | Límite de longitud de traza | 3·2·R_esfera en `MagnetEnvelope`, con contador de trazas cortadas | R6 |
 
-Cualquier cambio de esta tabla después de empezar invalida el barrido.
+Cualquier cambio físico de esta tabla después de empezar define otra
+configuración: conservar sus datos separados y revalidar antes de combinarlos.
+El control magnético conserva nave y bobinas con `fieldScale=0`.
 
 ## 2. Muestreo de la fuente y normalización
 
@@ -76,9 +78,12 @@ D_s = Σ_j w_sj · R_j,     w_sj = πR² ∫ h_j(E) Φ_s(E) dE
   integrando numéricamente el producto h_j·Φ_s (Φ_s lineal a trozos entre
   los puntos de OLTARIS, como en `energy_bins.py`), con una subdivisión
   fina y verificada (sección 8, T7).
-- **Fuera de la grilla:** por debajo de E_1, R = 0, solo si P4 confirma que
-  E_1 está bajo el umbral de penetración. Por encima de E_n, R = R_n, y se
-  reporta la fracción del flujo afectada.
+- **Fuera de la grilla:** no extrapolar automáticamente ni imponer cero
+  por ausencia de depósitos. Validar las colas mediante transporte o una
+  cota de su contribución a la dosis contra D3. La fracción de flujo omitida
+  por sí sola no acota la dosis; si la cota no basta, ampliar la grilla.
+  El test T7 se aplica al intervalo cubierto por las funciones base; las
+  colas se contabilizan por separado.
 - **Esquema alternativo** (log-log, si P4 lo prefiere): no es lineal en
   R_j, así que su varianza se propaga por el método delta.
 - **Si un caso usa grilla propia** (bins constantes por tramos, salida
@@ -102,7 +107,8 @@ D_s = Σ_j w_sj · R_j,     w_sj = πR² ∫ h_j(E) Φ_s(E) dE
   aplicar otras funciones de calidad en el post-proceso.
 - **Dosis equivalente con w_R de ICRP 103** (por especie primaria): solo
   para comparar con el barrido viejo.
-- **Dosis efectiva** (si D5 incluye AF):
+- **Magnitud ponderada por tejidos con Q(L)** (dosis equivalente efectiva
+  en la terminología espacial; si D5 incluye AF):
   `E = Σ_T w_T · (H_T^AM + H_T^AF)/2`, con los w_T de ICRP 103:
   - 0.12: médula ósea roja, colon, pulmón, estómago, mama y restantes;
   - 0.08: gónadas;
@@ -119,6 +125,14 @@ D_s = Σ_j w_sj · R_j,     w_sj = πR² ∫ h_j(E) Φ_s(E) dE
   inferior; verificar los pesos exactos en ICRP 103 antes de implementar.
   Implementar la tabla en un módulo con tests contra la suma de w_T y la
   lista de órganos.
+
+  Etiquetar esta magnitud por su definición Q(L): no confundirla con la
+  dosis efectiva de ICRP 103 basada en w_R. ICRP 123 distingue el enfoque
+  espacial con Q del sistema general con w_R
+  ([fuente](https://www.icrp.org/publication.asp?id=ICRP+Publication+123)).
+  La aproximación de médula `Σ f_o e_o` supone igual dosis en los
+  componentes de espongiosa; no es dosimetría esquelética validada. P0 debe
+  comprobarla por separado antes de tratarla como referencia para médula.
 
 ## 5. Estimadores estadísticos
 
@@ -148,17 +162,35 @@ frente a máximo solar, Fase 15).
 **Escudo frente a control:** η = 1 − D₁/D₀, con
 
 ```
-Var(η) ≈ (D₁/D₀)² · [V₁/D₁² + V₀/D₀² − 2·C₀₁/(D₀·D₁)]
+Var(η) ≈ V₁/D₀² + D₁²·V₀/D₀⁴ − 2·D₁·C₀₁/D₀³
 ```
 
-Con CRN, el evento k usa la misma semilla en ambas configuraciones: en MT,
-Geant4 genera las semillas por evento desde la semilla maestra, así que el
-primario k es idéntico en las dos. C₀₁ se estima con los pares por evento.
+Esta forma evita dividir por D₁=0. Si D₀ no está separado de cero, el método
+delta no está justificado; usar un intervalo de razón apropiado (p. ej.
+Fieller) o declarar el contraste inconcluso, sin forzar un IC finito.
+
+Con CRN se exige identidad del primario por `event_id` (especie, energía,
+posición, dirección y peso), verificada en un test. Geant4 MT asigna semillas
+por evento, pero la misma semilla maestra no prueba por sí sola esa identidad
+para cualquier modo de ejecución, configuración del RNG o generador.
+C₀₁ se estima con pares alineados por ID, nunca por orden de escritura.
+Para N pares independientes en un punto, `Cov(R̂₀,R̂₁)=cov(x₀,x₁)/N`,
+donde x son las contribuciones de dosis por evento; luego se pondera por
+w_j² y se suma sobre puntos independientes.
 Para eso hace falta que el scorer guarde **los totales por evento de las
 categorías** (requisito adicional R12: un archivo de N × categorías).
+Referencia: [modelo MT de Geant4](https://geant4.web.cern.ch/documentation/pipelines/master/bftd_html/ForToolkitDeveloper/OOAnalysisDesign/Multithreading/mt.html).
 
 **Intervalos:** normal con 1.96·SE si P2 valida el estimador y N es
 grande; t de Student si la varianza viene de pocas repeticiones (Fase 14).
+M grande no basta con depósitos raros: exigir los diagnósticos de P3.
+La varianza del endpoint ponderado se calcula sobre el total por evento,
+o con toda la matriz de covarianzas entre órganos; sumar solo varianzas
+de órganos omite las correlaciones de una misma cascada. Para AM y AF
+independientes, `Var((H_AM+H_AF)/2)=(Var(H_AM)+Var(H_AF))/4`.
+No publicar IC total si falta un punto o una varianza; R=1 requiere un
+estimador por evento validado. Fijar tamaño y evaluaciones antes de la
+confirmación para evitar selección por parada opcional.
 
 **Equivalencia (P1, P4, P5):** se aprueba si el IC95 de la diferencia cae
 completo dentro de ±B (equivale a dos pruebas unilaterales con α = 2.5%
@@ -189,14 +221,16 @@ sexo, repetición)`. Requiere una tabla nueva en el coordinator; no se
 reutilizan `jobs` ni `jobs_v2`.
 
 **Semillas v2:**
-- seed1 = BASE_V2 + 2·k y seed2 = seed1 + 1, con k el índice del trabajo en
-  la enumeración determinista del conjunto completo (las posiciones
-  nuevas se agregan al final).
+- seed1 = BASE_V2 + 2·k y seed2 = seed1 + 1, con k asignado en un registro
+  versionado e inmutable de claves de trabajo. Nuevas claves reciben índices
+  al final del registro, sin reenumerar productos cartesianos: agregar una
+  posición a un bucle interno desplaza los trabajos siguientes.
 - BASE_V2 distinta de las bases históricas y de las de los pilotos.
 - En escudo y control, el mismo k para el mismo punto: así se implementa
   la CRN.
-- Un test verifica que todas las semillas sean únicas en el barrido y en
-  los pilotos.
+- Un test verifica unicidad entre trabajos independientes y pilotos,
+  rango permitido por el RNG y repetición intencional solo en parejas CRN
+  declaradas o retries del mismo trabajo (no nuevas réplicas).
 
 **Procedencia exigida** en la salida y en el manifiesto; el coordinator
 rechaza con 422 los resultados que no la traigan o que no coincidan:
@@ -214,7 +248,10 @@ nuevos).
 - un solo script versionado, con control de duplicados (ya implementado);
 - rechazo de mezclas de grilla o de procedencia;
 - salida con contribución de cada punto a la dosis y a la varianza
-  (Fase 13).
+  (Fase 13);
+- salida de R̂_j y Var(R̂_j) por punto, órgano o categoría, posición y
+  configuración, no solo de D_s: la necesita el post-proceso temporal
+  (sección 10) y cualquier otro espectro que se quiera aplicar después.
 
 ## 8. Verificaciones automáticas (tests)
 
@@ -229,8 +266,9 @@ nuevos).
 | T7 | Σ_j w_sj / (πR²) = ∫Φ_s en el rango, con error relativo menor que 1e-6 | Pesos espectrales |
 | T8 | Unicidad de semillas | Independencia |
 | T9 | El coordinator rechaza resultados sin procedencia válida | Mezcla de versiones |
-| T10 | Mismas semillas producen el mismo resultado bit a bit | Reproducibilidad |
+| T10 | Mismos primarios por event_id con CRN; reproducibilidad con binario/entorno/RNG fijados y tolerancia documentada para reducciones flotantes MT | Reproducibilidad |
 | T11 | Tabla de w_T: la suma da 1 y los órganos coinciden con la lista de ICRP 103 | Dosis efectiva |
+| T12 | Perfil temporal de SEP: Σ_k Φ(E, t_k)·Δt reproduce la fluencia del evento usada en la sección 2, y la dosis acumulada final iguala a D_s del evento completo | Post-proceso temporal (sección 10) |
 
 ## 9. Parámetros pendientes
 
@@ -247,6 +285,73 @@ nuevos).
 | Endpoint primario y δ_η | D2 |
 | AF | D5 |
 | Posiciones | D6 |
+| Fuente del perfil temporal de cada SEP y modelo de espectro por intervalo | D8 |
 
 **Estimación de costo:** Σ_trabajos (c_j·M_j + ~45 s de inicialización),
 con c_j de P3. No se da un número antes de P3.
+
+## 10. Post-proceso temporal de SEP (tasa de dosis)
+
+La sección 2 da la dosis SEP del evento completo. Para obtener la tasa de
+dosis, su pico, la dosis acumulada en el tiempo o la peor ventana de 24 h,
+no hace falta simular de nuevo: R̂_j no depende del espectro, así que basta
+con cambiar los pesos.
+
+**Cálculo:** con el espectro omnidireccional Φ(E, t_k) del intervalo k
+(partículas/(MeV/n·cm²·s)) y duración Δt_k,
+
+```
+w_j(t_k) = πR² ∫ h_j(E) Φ(E, t_k) dE
+Ḋ(t_k)   = Σ_j w_j(t_k) · R̂_j                 (Gy/s en el intervalo k)
+D(t)     = Σ_{k: t_k ≤ t} Ḋ(t_k) · Δt_k        (dosis acumulada)
+```
+
+La dosis por día de un SEP se reporta como esta curva (o su máximo en una
+ventana de 24 h). La dosis total dividida por la duración del evento no
+se usa: esconde el pico.
+
+**Incertidumbre:** todos los intervalos usan las mismas R̂_j, así que sus
+errores están correlacionados y no se suman en cuadratura por intervalo:
+
+```
+Cov(Ḋ_k, Ḋ_l) = Σ_j w_j(t_k) · w_j(t_l) · Var(R̂_j)
+Var(D(t))     = Σ_j [Σ_{k: t_k ≤ t} w_j(t_k)·Δt_k]² · Var(R̂_j)
+```
+
+A esto se suma la incertidumbre del propio perfil temporal (calibración del
+instrumento y ajuste del espectro), que no es Monte Carlo y se reporta por
+separado.
+
+**Espectro por intervalo** (D8):
+
+- **Forma variable (preferida):** ajustar un espectro en cada intervalo a
+  los canales de energía disponibles. Un SEP real cambia de forma durante
+  el evento (en general se endurece al inicio y se ablanda al final).
+- **Forma constante (aproximación):** escalar el espectro OLTARIS del
+  evento con un solo canal integral, Φ(E, t) = f(t)·Φ_OLTARIS(E). Si se usa,
+  se reporta como aproximación.
+- En ambos casos, la fluencia integrada en el tiempo tiene que reproducir
+  la fluencia del evento usada en la sección 2 (test T12), o se documenta
+  la diferencia y su causa.
+
+**Datos a verificar antes de implementar** (D8):
+
+- **Octubre de 1989:** flujos de protones de GOES. Confirmar qué satélites,
+  canales (integrales o diferenciales), cadencia y calibración existen para
+  esa fecha.
+- **Febrero de 1956:** anterior a los satélites. Solo hay monitores de
+  neutrones en tierra, así que su perfil temporal no puede salir de GOES.
+  Decidir si ese caso se queda solo con la dosis del evento completo.
+- **Unidades:** GOES reporta intensidad por estereorradián. El paso a flujo
+  omnidireccional supone isotropía y hay que comprobarlo contra la
+  definición de cada canal, igual que en la sección 2.
+- **Órbita:** GOES está en órbita geoestacionaria, dentro de la
+  magnetosfera. Evaluar si el blindaje geomagnético afecta a los canales de
+  menor energía antes de usarlos como flujo interplanetario.
+
+**Requisitos:**
+
+- el agregador guarda R̂_j y Var(R̂_j) por punto (sección 7);
+- la grilla de protones tiene que estar validada también para los
+  espectros extremos del evento (criterio adicional de P4 en
+  `plan_piloto.md`).

@@ -6,6 +6,18 @@ Este archivo documenta el proyecto para quien colabore en él (compañeros de eq
 
 Simulación GEANT4 (curso IAC 2026) de dosis de radiación espacial sobre un astronauta, usando eventos de rayos cósmicos galácticos (GCR) y de partículas solares (SEP). Ver `README.md` para el setup del entorno (conda, GEANT4 11.4.2) y compilación.
 
+## Revisión local del 2026-10-01
+
+Auditoría y validación de código/documentos en
+[`docs/bitacora/revision_2026-10-01.md`](docs/bitacora/revision_2026-10-01.md).
+Los planes vigentes son P0–P6 (`plan_piloto.md`) y `plan_barrido.md`;
+`plan_estadistico.md` conserva el historial y abre con las correcciones
+que prevalecen sobre decisiones anteriores. Las afirmaciones históricas
+«529 corridas válidas» se referían a índices/semillas: **no acreditan su
+validez dosimétrica** después de la auditoría de fuente radial/malla.
+Coordinator sin actualizar e imagen Docker nueva pendiente; ambos pasos
+quedan expresamente para después, no se ejecutan en esta revisión.
+
 ## Bitácora histórica del piloto GCR_SEP_Sim (2026-09-05)
 
 **Antes:** el estudio comparaba 4 escenarios fijos de **blindaje pasivo** (capas de aluminio + polietileno alrededor del astronauta) combinados on/off con un campo magnético placeholder, sin variar su intensidad.
@@ -63,7 +75,7 @@ enlaces:
   descarta una repetición entera por un solo bin faltante). **Nada de
   esto desplegado en la VM de producción todavía, y el equipo no decidió
   aún si expandir a los 6 casos especie/fase (hoy solo 3)** — ver "Decisión
-  recomendada hoy" y el checklist de despliegue (Fase 20) en ese documento.
+  recomendada hoy" y el checklist de despliegue (Fase 21) en ese documento.
 - **[`docs/bitacora/auditoria_2026-09-30.md`](docs/bitacora/auditoria_2026-09-30.md)**
   (2026-09-30) — auditoría de bugs (malla de scoring, apuntado radial, vista
   por órgano ×N, agregador, semillas, procedencia) y requisitos del scorer
@@ -73,7 +85,7 @@ enlaces:
   corregido. Incluye:
   - las verificaciones ya hechas (normalización de la fuente verificada en
     un Monte Carlo independiente y dentro de Geant4: 1.010 ± 0.020);
-  - las decisiones bloqueantes D1–D7;
+  - las decisiones bloqueantes D1–D8;
   - para cada piloto, su referencia, su criterio fijado de antemano, el
     resultado esperado y qué bloquea;
   - la condición para empezar el barrido.
@@ -82,7 +94,8 @@ enlaces:
   configuración congelada, normalización, integración espectral con la
   curva de respuesta, Q(L) y dosis efectiva, estimadores y covarianzas
   (incluida CRN para η), asignación de eventos, semillas v2, procedencia,
-  tests T1–T11 y parámetros pendientes de cada piloto.
+  tests T1–T12, post-proceso temporal de SEP (tasa de dosis) y
+  parámetros pendientes de cada piloto.
 - **[`infra/README.md`](infra/README.md)**, **[`infra/deploy/README.md`](infra/deploy/README.md)**,
   **[`infra/GUIA_VOLUNTARIOS.md`](infra/GUIA_VOLUNTARIOS.md)**,
   **[`infra/GUIA_WORKER_LOCAL.md`](infra/GUIA_WORKER_LOCAL.md)** —
@@ -461,9 +474,10 @@ coordinación operativa, no más desarrollo.
   es la **dosis aguda del evento completo** (Oct 1989), sin factor de tiempo.
   `pi * R^2` es el área de sección transversal de la esfera fuente (radio =
   casco + 20 cm) — la relación estándar entre flujo omnidireccional y tasa
-  de partículas reales que cruzan una superficie convexa, independiente de
-  si el muestreo interno de direcciones es radial (como hoy) o con ley de
-  coseno. `aggregate_results.py` ya agrega esta columna (media/std/IC95%)
+  de partículas reales que cruzan una superficie convexa, válida para la
+  fuente isótropa con ley coseno. El apuntado radial histórico no
+  reproduce esa fluencia y no permite interpretar estos valores como
+  dosis absoluta física. `aggregate_results.py` ya agrega esta columna (media/std/IC95%)
   junto a `dosis_Gy`; degrada con aviso, no falla, si algún CSV viene de
   antes de este cambio y no la trae. **Limitaciones que siguen igual:**
   muestreo angular de entrada radial (no ley de coseno, simplificación del

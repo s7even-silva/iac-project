@@ -4,7 +4,34 @@ Simulación Geant4 para estudiar blindaje magnético espacial con fantoma
 ICRP110 y dosis por órgano. Base: ejemplo oficial `ICRP110_HumanPhantoms`,
 conservado en `README_ICRP110_original.md`; datos descargados durante CMake.
 
-## Estado actual y decisiones (2026-09-08)
+## Estado de revisión (2026-10-01)
+
+La especificación vigente está en [plan_piloto.md](../../docs/bitacora/plan_piloto.md)
+y [plan_barrido.md](../../docs/bitacora/plan_barrido.md). CREW HaT usa nave
+de radio 4.5 m y mapa Elmer versionado; la sección de septiembre siguiente
+describe la geometría inicial. Las dosis históricas radiales y pilotos
+Fases 7–10 no acreditan la nueva producción con ley coseno.
+
+Correcciones de esta revisión local:
+
+- `run_organ_sweep.py` rechaza resume con distinto modo angular, eventos o
+  grilla y filtros sin coincidencias. Usar salidas separadas para distintas
+  configuraciones; `--no-resume` reemplaza los CSV existentes.
+- El agregador rechaza fases distintas dentro de GCR o de SEP, números de
+  eventos inconsistentes dentro de una corrida, valores no finitos y
+  energías incompatibles con su grilla. Procesar min/max en entradas y
+  directorios separados; GCR/min junto a SEP/max sigue admitido.
+- La vista por bin deja SE/df/IC vacíos si el modelo tiene bins ausentes o
+  R=1; los indicadores de datos faltantes acompañan a la suma parcial.
+- Radio explícito de agregación: debe ser finito y positivo y coincidir con
+  la simulación. Los espectros deben tener energía positiva creciente y
+  flujos finitos no negativos.
+
+Estas comprobaciones no sustituyen R1 (scorer por evento), Q(L), procedencia
+completa ni los pilotos P0–P6. Coordinator y nueva imagen Docker pendientes
+para una etapa posterior; esta revisión no los despliega ni construye.
+
+## Geometría inicial y decisiones históricas (2026-09-08)
 
 - Geometría del hábitat: cilindro cerrado, diámetro exterior **5.6 m**, largo
   exterior **10 m**, eje Z. Casco de **G4_Al, 1.5 cm**, tapas planas del mismo
@@ -114,8 +141,17 @@ de sus propios comandos `/vis/...`. Ver
 /spacecraft/phantomPositionCm 0
 /spacecraft/phantomOffsetX 0 m
 /spacecraft/phantomOffsetY 0 m
+/spacecraft/sourceSphereRadius 0 m
 ```
 
+- `sourceSphereRadius` (2026-10-01): radio de la esfera donde nacen los
+  primarios. Con 0 (default) se usa la fórmula histórica: semidiagonal de
+  la nave + casco + 20 cm (6.94 m en producción), que corta el arreglo de
+  bobinas (radio 5.67–10.34 m). Si el radio no cabe en `MagnetEnvelope`, la
+  construcción aborta. El límite de longitud de traza (3·2R) escala solo.
+  El agregador usa el radio en el peso `π R² Φ`: pasarle el mismo valor
+  con `aggregate_organ_doses.py --source-sphere-radius-m`. Lo
+  necesita el piloto P1 de `docs/bitacora/plan_piloto.md`.
 - `hullThickness`: positivo y menor de 100 cm, dimensiones exteriores fijas.
 - `shipRadius`/`shipHalfLength`: radio y semilongitud del cilindro de la
   nave (por defecto 2,8m/5m, tamaño de Geom14/ARSSEM). CREW HaT usa

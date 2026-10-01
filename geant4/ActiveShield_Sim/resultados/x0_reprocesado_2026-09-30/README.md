@@ -53,6 +53,10 @@ corrija los resultados en post-proceso: hay que volver a simular. Ver
 
 Además, las incertidumbres de SEP son enormes (H% del 67% al 430%) y
 GCR_H bins 6–7 tienen una sola repetición (`bins_R1_sin_varianza`).
+Desde la revisión del 2026-10-01 el agregador deja vacíos SE/df/IC de GCR
+en `resultados_riesgo_estocastico_por_bin_x0.csv` por esos bins: antes
+publicaba un IC que omitía su varianza. Ese CSV se regeneró con el mismo
+comando; las dosis puntuales y las otras tres salidas no cambiaron.
 
 ## Para qué sirve
 

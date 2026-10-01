@@ -277,6 +277,11 @@ de GOES (cada 5 min) del evento de octubre de 1989 para escalar el espectro
 OLTARIS en el tiempo. Supone que la forma del espectro es constante, así que
 hay que reportarlo como aproximación. Resultado: tasa de dosis (pico y
 media) y dosis acumulada en función del tiempo.
+**Especificado (2026-10-01)** en `docs/bitacora/plan_barrido.md`, sección 10:
+forma variable por intervalo como opción preferida, incertidumbre
+correlacionada entre intervalos, test T12 y decisión D8. La cadencia y los
+canales de GOES para 1989 están por verificar; feb. 1956 no tiene datos
+satelitales.
 
 **4. Biot-Savart vs Elmer: volver a medir antes de citar.** Comparación de los
 dos mapas de producción (`field/production/*.map`): dentro de la nave,

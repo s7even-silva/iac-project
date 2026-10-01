@@ -129,12 +129,20 @@ ICRP110PhantomConstruction::ICRP110PhantomConstruction():
   auto& offY = fSpacecraftMessenger->DeclarePropertyWithUnit("phantomOffsetY", "m", fPhantomOffsetY);
   offY.SetParameterName("y", false);
   offY.SetStates(G4State_PreInit);
+  // Sin este comando el radio sale de la nave (ver GetSourceSphereRadius). PreInit:
+  // el limite de longitud de traza de MagnetEnvelope se calcula con este radio.
+  auto& srcR = fSpacecraftMessenger->DeclarePropertyWithUnit("sourceSphereRadius", "m", fSourceSphereRadius);
+  srcR.SetGuidance("Radio de la esfera fuente de primarios; 0 (default) = diagonal de la nave + casco + 20 cm.");
+  srcR.SetParameterName("radius", false);
+  srcR.SetRange("radius>=0");
+  srcR.SetStates(G4State_PreInit);
   // Register field accuracy commands before /run/initialize; setup is thread local.
   G4FieldBuilder::Instance();
 }
 
 G4double ICRP110PhantomConstruction::GetSourceSphereRadius() const
 {
+  if (fSourceSphereRadius > 0.) return fSourceSphereRadius;
   const G4double shipHalfDiagonal = std::sqrt(fShipRadius*fShipRadius + fShipHalfLength*fShipHalfLength);
   return shipHalfDiagonal + fHullThickness + 20.*cm; // same 20 cm margin as GCR_SEP_Sim
 }
@@ -329,6 +337,10 @@ G4VPhysicalVolume* ICRP110PhantomConstruction::Construct()
   } else {
     G4cout << "No field map supplied: magnetic field OFF." << G4endl;
   }
+
+  if (GetSourceSphereRadius() >= std::min({worldHalf.x(), worldHalf.y(), worldHalf.z()}) - 0.5*m)
+    G4Exception("ICRP110PhantomConstruction::Construct", "SourceOutsideEnvelope", FatalException,
+                "Source sphere does not fit in MagnetEnvelope; increase /spacecraft/worldHalfSize");
 
   auto* world = new G4Box("world", worldHalf.x(), worldHalf.y(), worldHalf.z());
   auto* logicWorld = new G4LogicalVolume(world, matVacuum, "logicalWorld");

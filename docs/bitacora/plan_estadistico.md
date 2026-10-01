@@ -8,8 +8,53 @@
 > conclusiones numéricas de las Fases 7 y 8
 > de este documento se obtuvieron con apuntado radial y deben revalidarse.
 
-**Estado:** actualizado con el trabajo realizado hoy  
+**Estado:** revisión metodológica 2026-10-01; implementación parcial local, sin despliegue nuevo ni imagen Docker nueva.
 **Objetivo:** documentar el flujo completo desde el estado actual del barrido hasta el análisis final publicable, incluyendo decisiones estadísticas, alternativas más robustas, limitaciones y criterios de aceptación.
+
+## Lectura vigente después de la auditoría (2026-10-01)
+
+La secuencia operativa vigente es **P0–P6 de [plan_piloto.md](plan_piloto.md)**
+y la especificación es [plan_barrido.md](plan_barrido.md). Las Fases 0–22
+de abajo conservan decisiones y resultados históricos: «cerrado», «válido»,
+«reutilizable» o «recomendado» en esas entradas no aprueba la nueva producción.
+
+Correcciones que prevalecen sobre esas entradas:
+
+- No reutilizar las dosis radiales ni las calibraciones numéricas de Fases
+  7–10 para acreditar ley coseno. Los datos históricos sirven para diagnóstico
+  del algoritmo anterior, no para validar el scorer nuevo.
+- Retirar del protocolo nuevo los factores empíricos 1/0.08 y 1/0.48:
+  inflar una varianza por voxel no recupera la covarianza entre voxels ni
+  entre órganos. R1 requiere acumulación por evento, incluidos ceros.
+- P2 compara incertidumbres en la misma escala y para el mismo M. La
+  varianza entre cinco semillas también es incierta; no basta exigir que
+  un cociente puntual esté cerca de 1. Un estimador insesgado no garantiza
+  cobertura normal con depósitos raros (P3).
+- El refinamiento y la asignación de eventos usan datos exploratorios;
+  confirmar con tamaño fijo y semillas independientes. No detener una
+  sucesión de IC95 convencionales cuando por primera vez apruebe.
+- La grilla común propuesta ahora comparte respuestas entre espectros:
+  aplicar las covarianzas de la sección 5 del plan de barrido, en lugar
+  del supuesto histórico de independencia de la Fase 15. La varianza de
+  un endpoint multiorgánico también necesita covarianzas por evento.
+- La vista histórica del agregador mezcla especies dentro de GCR, pero no
+  representa dos fases de un mismo modelo. Ahora rechaza esa mezcla;
+  analizar entradas min/max separadas hasta implementar la salida por caso.
+  GCR/min y SEP/max juntos siguen siendo compatibles (columnas distintas).
+- En la vista por bin, si falta un bin o tiene R_b=1, SE/df/IC del modelo
+  afectado quedan vacíos; la suma parcial se conserva con sus indicadores.
+  No es una dosis completa ni un IC total. El formato histórico aún no
+  verifica toda la procedencia ni garantiza detectar un órgano ausente.
+- El esquema de semillas histórico permite hasta 500 combinaciones por
+  repetición; no extenderlo sin versionar. La nueva enumeración debe ser
+  inmutable; CRN y retries son excepciones declaradas a la unicidad.
+- El coordinator y Docker se actualizarán después. La revisión local y
+  los pilotos locales no requieren desplegar. El checklist operativo es
+  la **Fase 21**; la Fase 20 trata reproducibilidad.
+
+El detalle de criterios corregidos y fuentes consultadas está en los dos
+planes enlazados; los umbrales D2–D7 siguen pendientes de decisión y no se
+dan por aprobados en esta revisión.
 
 ---
 
@@ -1823,7 +1868,7 @@ Debe declararse explícitamente.
 
 ---
 
-# Decisión recomendada hoy
+# Decisión histórica anterior a la auditoría (sustituida por P0–P6)
 
 1. **No lanzar todavía el barrido completo de los tres casos nuevos.**
 2. Consolidar los resultados históricos y fijar `delta_eta`/endpoint primario.
