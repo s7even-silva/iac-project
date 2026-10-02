@@ -211,7 +211,7 @@ alterado. 17 escenarios de ciclo de vida pasan en total (antes 16).
 ya visto varias veces en esta sección — `$InstallScriptCommit` quedó
 desactualizado otra vez, en el propio commit que lo introducía la vez
 anterior.** El commit que aplicó el fix de `Test-DockerEngineRunning`
-(ver arriba) dejó el pin apuntando todavía a `38e5ee6` — una versión
+(ver arriba) dejó el pin apuntando todavía a `bfe0593` — una versión
 **anterior** de 874 líneas, sin `Test-DockerEngineRunning` (confirmado
 leyendo ese commit exacto). El riesgo es el mismo que motivó el pin en
 primer lugar, pero en sentido inverso: un voluntario que corra el script
@@ -2358,7 +2358,7 @@ reintento normal, pero sin avanzar nunca.
 **Por qué no se había detectado antes:** el endpoint v1 usa este mismo
 patrón desde que existe, pero casi siempre hay algún job `pending` en
 producción real, así que el camino "cola vacía" rara vez se ejercitaba.
-El endpoint v2 se agregó en `5541a04` y nunca se había desplegado contra
+El endpoint v2 se agregó en `a7510ec` y nunca se había desplegado contra
 un coordinator real hasta hoy — el bug estaba latente desde su creación,
 sin ningún test que lo cubriera (los tests existentes llaman
 `db.claim_next_job()` directo, nunca pasan por la capa HTTP/middleware

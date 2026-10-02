@@ -23,10 +23,10 @@ El 2026-10-01 el proyecto se reordenó:
   origen, apuntado radial de los primarios, esfera fuente que corta las
   bobinas, vista por órgano inflada ×N). Nada se produce antes de aprobar
   los pilotos P0–P6.
-- **v1:** tag `v1.0-piloto` (commit `0134c5c`, 2026-09-28) y rama `v1`.
+- **v1:** tag `v1.0-piloto` (commit `82fadd8`, 2026-09-28) y rama `v1`.
   Incluye el piloto esférico `GCR_SEP_Sim`, el barrido de 600 corridas, los
   pilotos Fases 7–10 y la bitácora completa de esa etapa.
-- **`v1-archivo`** (tag en `3b2c315`): `main` justo antes de la limpieza.
+- **`v1-archivo`** (tag en `707d762`): `main` justo antes de la limpieza.
   Tiene la versión más reciente (ya corregida por la auditoría) de todo lo
   que salió de `main`: `plan_estadistico.md`, `validez_estadistica_runs.md`,
   `scripts/pilots/`, resultados v1, scripts de siembra del coordinator,
@@ -38,8 +38,15 @@ El 2026-10-01 el proyecto se reordenó:
   clona al arrancar (`infra/deploy/cloud-init-coordinator.yaml`). No
   borrarla ni convertirla en tag.
 
-Los hashes de commit citados como procedencia (por ejemplo `57fa5d1` en el
-método de autodiagnóstico) siguen válidos: la historia no se reescribió.
+El 2026-10-02 la historia se reescribió para quitar las líneas
+`Co-Authored-By`/`Claude-Session` que 7 commits tenían contra la regla de
+abajo. El contenido de cada rama y tag quedó idéntico, pero cambiaron los
+hashes de casi todos los commits: los citados en los documentos vigentes se
+actualizaron (por ejemplo `57fa5d1` → `3535d62` en el método de
+autodiagnóstico). Un hash viejo que aparezca en la bitácora de la v1 ya no
+existe en el repo. Quien tenga un clon anterior debe hacer
+`git fetch --force --tags` y `git reset --hard origin/<rama>` (o clonar de
+nuevo).
 
 ## Estado del plan piloto (2026-10-01)
 
