@@ -1,0 +1,718 @@
+{
+  "generator_sha256": "7d9f998072930d0f5f58b0b51544ff3329c7165a949b1413b8650c0743d0ac71",
+  "array_report_sha256": "f5bbacb5137f40dde37437fadfee949deae332d69ec5d74f4d9f5337ee52bd92",
+  "r_material_max_m": 10.473761543394987,
+  "bounds_m": [
+    -8.335065317410535,
+    -10.335342940329493,
+    -4.335065317399397,
+    8.335065317414296,
+    10.335342940329623,
+    4.335335809234193
+  ],
+  "self_checks": {
+    "vectorized_vs_field_at_max_rel": 5.510861812230435e-14,
+    "map_check_points": 300,
+    "map_max_rel": 4.0268168842975315e-13
+  },
+  "args": {
+    "array_report": "/tmp/claude-1000/-home-s7even-Documents-iac-project/3612b100-e14d-4dad-b237-07e3ec25e1c9/scratchpad/crewhat_arr/array_current_paths.json",
+    "output": "/tmp/claude-1000/-home-s7even-Documents-iac-project/3612b100-e14d-4dad-b237-07e3ec25e1c9/scratchpad/presel_p1.json",
+    "radii": "[6.94, 11.0, 12.0, 14.0, 16.0, 20.0]",
+    "rigidities_gv": "[0.15, 0.25, 0.36, 0.71, 1.5]",
+    "n_tail": "1000",
+    "n_track": "1000",
+    "r_escape": "100.0",
+    "seed": "20261001",
+    "processes": "6",
+    "check_map": "production/crewhat_niac_max.map"
+  },
+  "python": "3.13.5",
+  "numpy": "2.3.3",
+  "results": [
+    {
+      "kind": "tail",
+      "radius_m": 6.94,
+      "n": 1000,
+      "seconds": 459.5111367702484,
+      "net_Tm_quantiles": {
+        "0.5": 1.5744928487970147,
+        "0.9": 6.68231527331223,
+        "0.99": 10.5770667709242,
+        "1.0": 16.86688216766964
+      },
+      "abs_Tm_quantiles": {
+        "0.5": 2.544760557606877,
+        "0.9": 10.161586012903419,
+        "0.99": 17.44335654178893,
+        "1.0": 29.09522773601016
+      },
+      "net_Tm_mean": 2.7762538298487263
+    },
+    {
+      "kind": "track",
+      "radius_m": 6.94,
+      "rigidity_GV": 1.5,
+      "proton_T_MeV": 831.0087425572686,
+      "n": 1000,
+      "counts": {
+        "escape": 953,
+        "reenter": 47,
+        "trapped": 0
+      },
+      "bad_fraction": 0.047,
+      "bad_ci95": [
+        0.035527105028067545,
+        0.06193993821433128
+      ],
+      "median_path_m": 96.39169196211267,
+      "seconds": 616.2296507358551
+    },
+    {
+      "kind": "track",
+      "radius_m": 6.94,
+      "rigidity_GV": 0.71,
+      "proton_T_MeV": 238.35638057901713,
+      "n": 1000,
+      "counts": {
+        "escape": 812,
+        "reenter": 188,
+        "trapped": 0
+      },
+      "bad_fraction": 0.188,
+      "bad_ci95": [
+        0.16499470971191899,
+        0.21339318762059412
+      ],
+      "median_path_m": 96.31011911061489,
+      "seconds": 619.3432071208954
+    },
+    {
+      "kind": "track",
+      "radius_m": 6.94,
+      "rigidity_GV": 0.36,
+      "proton_T_MeV": 66.69284813350566,
+      "n": 1000,
+      "counts": {
+        "escape": 669,
+        "reenter": 331,
+        "trapped": 0
+      },
+      "bad_fraction": 0.331,
+      "bad_ci95": [
+        0.30252951361928415,
+        0.36076393076916036
+      ],
+      "median_path_m": 95.9167297703884,
+      "seconds": 777.5231156349182
+    },
+    {
+      "kind": "tail",
+      "radius_m": 11.0,
+      "n": 1000,
+      "seconds": 373.39307260513306,
+      "net_Tm_quantiles": {
+        "0.5": 0.33343394092620615,
+        "0.9": 0.8144064784127301,
+        "0.99": 1.3416348373871512,
+        "1.0": 1.895849386462622
+      },
+      "abs_Tm_quantiles": {
+        "0.5": 0.4015469712366017,
+        "0.9": 0.9247834391903432,
+        "0.99": 1.493907646975037,
+        "1.0": 2.5158399366599125
+      },
+      "net_Tm_mean": 0.41115756513071877
+    },
+    {
+      "kind": "track",
+      "radius_m": 6.94,
+      "rigidity_GV": 0.25,
+      "proton_T_MeV": 32.73487226404325,
+      "n": 1000,
+      "counts": {
+        "escape": 550,
+        "reenter": 450,
+        "trapped": 0
+      },
+      "bad_fraction": 0.45,
+      "bad_ci95": [
+        0.4194153838354665,
+        0.4809672920191028
+      ],
+      "median_path_m": 95.02550159156331,
+      "seconds": 849.7743301391602
+    },
+    {
+      "kind": "track",
+      "radius_m": 11.0,
+      "rigidity_GV": 0.15,
+      "proton_T_MeV": 11.914479583876187,
+      "n": 1000,
+      "counts": {
+        "escape": 903,
+        "reenter": 97,
+        "trapped": 0
+      },
+      "bad_fraction": 0.097,
+      "bad_ci95": [
+        0.08016916166917241,
+        0.116915205718657
+      ],
+      "median_path_m": 93.15138555665621,
+      "seconds": 296.44075989723206
+    },
+    {
+      "kind": "track",
+      "radius_m": 11.0,
+      "rigidity_GV": 0.25,
+      "proton_T_MeV": 32.73487226404325,
+      "n": 1000,
+      "counts": {
+        "escape": 971,
+        "reenter": 29,
+        "trapped": 0
+      },
+      "bad_fraction": 0.029,
+      "bad_ci95": [
+        0.020266448099813112,
+        0.041338358450230706
+      ],
+      "median_path_m": 92.87590281190825,
+      "seconds": 312.1613070964813
+    },
+    {
+      "kind": "track",
+      "radius_m": 6.94,
+      "rigidity_GV": 0.15,
+      "proton_T_MeV": 11.914479583876187,
+      "n": 1000,
+      "counts": {
+        "escape": 436,
+        "reenter": 559,
+        "trapped": 5
+      },
+      "bad_fraction": 0.564,
+      "bad_ci95": [
+        0.5330781381983665,
+        0.5944320367077847
+      ],
+      "median_path_m": 17.3186444887286,
+      "seconds": 1042.3047637939453
+    },
+    {
+      "kind": "track",
+      "radius_m": 11.0,
+      "rigidity_GV": 0.36,
+      "proton_T_MeV": 66.69284813350566,
+      "n": 1000,
+      "counts": {
+        "escape": 983,
+        "reenter": 17,
+        "trapped": 0
+      },
+      "bad_fraction": 0.017,
+      "bad_ci95": [
+        0.010640689818099769,
+        0.0270559589370407
+      ],
+      "median_path_m": 92.9727744232318,
+      "seconds": 268.44987320899963
+    },
+    {
+      "kind": "track",
+      "radius_m": 11.0,
+      "rigidity_GV": 0.71,
+      "proton_T_MeV": 238.35638057901713,
+      "n": 1000,
+      "counts": {
+        "escape": 999,
+        "reenter": 1,
+        "trapped": 0
+      },
+      "bad_fraction": 0.001,
+      "bad_ci95": [
+        0.00017654636867653686,
+        0.005642558659926143
+      ],
+      "median_path_m": 93.04646058276182,
+      "seconds": 260.95697593688965
+    },
+    {
+      "kind": "track",
+      "radius_m": 11.0,
+      "rigidity_GV": 1.5,
+      "proton_T_MeV": 831.0087425572686,
+      "n": 1000,
+      "counts": {
+        "escape": 1000,
+        "reenter": 0,
+        "trapped": 0
+      },
+      "bad_fraction": 0.0,
+      "bad_ci95": [
+        2.168404344971009e-19,
+        0.0038267585456940676
+      ],
+      "median_path_m": 92.89200247976497,
+      "seconds": 261.92175221443176
+    },
+    {
+      "kind": "tail",
+      "radius_m": 12.0,
+      "n": 1000,
+      "seconds": 219.79006934165955,
+      "net_Tm_quantiles": {
+        "0.5": 0.21122763831205565,
+        "0.9": 0.4518305432869101,
+        "0.99": 0.727346406508835,
+        "1.0": 0.9097186694626586
+      },
+      "abs_Tm_quantiles": {
+        "0.5": 0.24670383236611135,
+        "0.9": 0.5054047415628812,
+        "0.99": 0.8373405797383956,
+        "1.0": 1.0056412436645548
+      },
+      "net_Tm_mean": 0.2456972369839413
+    },
+    {
+      "kind": "track",
+      "radius_m": 12.0,
+      "rigidity_GV": 0.15,
+      "proton_T_MeV": 11.914479583876187,
+      "n": 1000,
+      "counts": {
+        "escape": 981,
+        "reenter": 19,
+        "trapped": 0
+      },
+      "bad_fraction": 0.019,
+      "bad_ci95": [
+        0.012196885708717629,
+        0.029484456012240062
+      ],
+      "median_path_m": 92.60850060489952,
+      "seconds": 251.26063513755798
+    },
+    {
+      "kind": "track",
+      "radius_m": 12.0,
+      "rigidity_GV": 0.36,
+      "proton_T_MeV": 66.69284813350566,
+      "n": 1000,
+      "counts": {
+        "escape": 999,
+        "reenter": 1,
+        "trapped": 0
+      },
+      "bad_fraction": 0.001,
+      "bad_ci95": [
+        0.00017654636867653686,
+        0.005642558659926143
+      ],
+      "median_path_m": 92.22330636162137,
+      "seconds": 240.99406099319458
+    },
+    {
+      "kind": "track",
+      "radius_m": 12.0,
+      "rigidity_GV": 0.25,
+      "proton_T_MeV": 32.73487226404325,
+      "n": 1000,
+      "counts": {
+        "escape": 995,
+        "reenter": 5,
+        "trapped": 0
+      },
+      "bad_fraction": 0.005,
+      "bad_ci95": [
+        0.002137535513789148,
+        0.01165095544644798
+      ],
+      "median_path_m": 92.12549017323353,
+      "seconds": 255.9175775051117
+    },
+    {
+      "kind": "track",
+      "radius_m": 12.0,
+      "rigidity_GV": 0.71,
+      "proton_T_MeV": 238.35638057901713,
+      "n": 1000,
+      "counts": {
+        "escape": 1000,
+        "reenter": 0,
+        "trapped": 0
+      },
+      "bad_fraction": 0.0,
+      "bad_ci95": [
+        2.168404344971009e-19,
+        0.0038267585456940676
+      ],
+      "median_path_m": 92.17616919259936,
+      "seconds": 256.43997836112976
+    },
+    {
+      "kind": "tail",
+      "radius_m": 14.0,
+      "n": 1000,
+      "seconds": 238.51670598983765,
+      "net_Tm_quantiles": {
+        "0.5": 0.09783633791626764,
+        "0.9": 0.1831768091066103,
+        "0.99": 0.2662157618562315,
+        "1.0": 0.3158372372872721
+      },
+      "abs_Tm_quantiles": {
+        "0.5": 0.10821587490362948,
+        "0.9": 0.19583186364005195,
+        "0.99": 0.2851861189087618,
+        "1.0": 0.3359660914953484
+      },
+      "net_Tm_mean": 0.1050565754746751
+    },
+    {
+      "kind": "track",
+      "radius_m": 12.0,
+      "rigidity_GV": 1.5,
+      "proton_T_MeV": 831.0087425572686,
+      "n": 1000,
+      "counts": {
+        "escape": 1000,
+        "reenter": 0,
+        "trapped": 0
+      },
+      "bad_fraction": 0.0,
+      "bad_ci95": [
+        2.168404344971009e-19,
+        0.0038267585456940676
+      ],
+      "median_path_m": 92.1973079433422,
+      "seconds": 264.87226581573486
+    },
+    {
+      "kind": "track",
+      "radius_m": 14.0,
+      "rigidity_GV": 0.15,
+      "proton_T_MeV": 11.914479583876187,
+      "n": 1000,
+      "counts": {
+        "escape": 999,
+        "reenter": 1,
+        "trapped": 0
+      },
+      "bad_fraction": 0.001,
+      "bad_ci95": [
+        0.00017654636867653686,
+        0.005642558659926143
+      ],
+      "median_path_m": 90.64854715775152,
+      "seconds": 253.79394125938416
+    },
+    {
+      "kind": "track",
+      "radius_m": 14.0,
+      "rigidity_GV": 0.25,
+      "proton_T_MeV": 32.73487226404325,
+      "n": 1000,
+      "counts": {
+        "escape": 1000,
+        "reenter": 0,
+        "trapped": 0
+      },
+      "bad_fraction": 0.0,
+      "bad_ci95": [
+        2.168404344971009e-19,
+        0.0038267585456940676
+      ],
+      "median_path_m": 90.72227667019631,
+      "seconds": 234.98041892051697
+    },
+    {
+      "kind": "track",
+      "radius_m": 14.0,
+      "rigidity_GV": 0.36,
+      "proton_T_MeV": 66.69284813350566,
+      "n": 1000,
+      "counts": {
+        "escape": 1000,
+        "reenter": 0,
+        "trapped": 0
+      },
+      "bad_fraction": 0.0,
+      "bad_ci95": [
+        2.168404344971009e-19,
+        0.0038267585456940676
+      ],
+      "median_path_m": 90.66703686572608,
+      "seconds": 234.85051274299622
+    },
+    {
+      "kind": "track",
+      "radius_m": 14.0,
+      "rigidity_GV": 0.71,
+      "proton_T_MeV": 238.35638057901713,
+      "n": 1000,
+      "counts": {
+        "escape": 1000,
+        "reenter": 0,
+        "trapped": 0
+      },
+      "bad_fraction": 0.0,
+      "bad_ci95": [
+        2.168404344971009e-19,
+        0.0038267585456940676
+      ],
+      "median_path_m": 90.5333852692028,
+      "seconds": 237.07248401641846
+    },
+    {
+      "kind": "tail",
+      "radius_m": 16.0,
+      "n": 1000,
+      "seconds": 227.687331199646,
+      "net_Tm_quantiles": {
+        "0.5": 0.05242626243530926,
+        "0.9": 0.09215306542151115,
+        "0.99": 0.12712113514361406,
+        "1.0": 0.16188072831736686
+      },
+      "abs_Tm_quantiles": {
+        "0.5": 0.056961063850135885,
+        "0.9": 0.09890020602018465,
+        "0.99": 0.14647038032960938,
+        "1.0": 0.17925496606676117
+      },
+      "net_Tm_mean": 0.05448352727727124
+    },
+    {
+      "kind": "track",
+      "radius_m": 14.0,
+      "rigidity_GV": 1.5,
+      "proton_T_MeV": 831.0087425572686,
+      "n": 1000,
+      "counts": {
+        "escape": 1000,
+        "reenter": 0,
+        "trapped": 0
+      },
+      "bad_fraction": 0.0,
+      "bad_ci95": [
+        2.168404344971009e-19,
+        0.0038267585456940676
+      ],
+      "median_path_m": 90.62914389009629,
+      "seconds": 238.343745470047
+    },
+    {
+      "kind": "track",
+      "radius_m": 16.0,
+      "rigidity_GV": 0.15,
+      "proton_T_MeV": 11.914479583876187,
+      "n": 1000,
+      "counts": {
+        "escape": 1000,
+        "reenter": 0,
+        "trapped": 0
+      },
+      "bad_fraction": 0.0,
+      "bad_ci95": [
+        2.168404344971009e-19,
+        0.0038267585456940676
+      ],
+      "median_path_m": 89.28521852142967,
+      "seconds": 229.56995630264282
+    },
+    {
+      "kind": "track",
+      "radius_m": 16.0,
+      "rigidity_GV": 0.25,
+      "proton_T_MeV": 32.73487226404325,
+      "n": 1000,
+      "counts": {
+        "escape": 1000,
+        "reenter": 0,
+        "trapped": 0
+      },
+      "bad_fraction": 0.0,
+      "bad_ci95": [
+        2.168404344971009e-19,
+        0.0038267585456940676
+      ],
+      "median_path_m": 88.93461530006473,
+      "seconds": 230.0154778957367
+    },
+    {
+      "kind": "track",
+      "radius_m": 16.0,
+      "rigidity_GV": 0.36,
+      "proton_T_MeV": 66.69284813350566,
+      "n": 1000,
+      "counts": {
+        "escape": 1000,
+        "reenter": 0,
+        "trapped": 0
+      },
+      "bad_fraction": 0.0,
+      "bad_ci95": [
+        2.168404344971009e-19,
+        0.0038267585456940676
+      ],
+      "median_path_m": 89.1055678319499,
+      "seconds": 235.34293603897095
+    },
+    {
+      "kind": "track",
+      "radius_m": 16.0,
+      "rigidity_GV": 0.71,
+      "proton_T_MeV": 238.35638057901713,
+      "n": 1000,
+      "counts": {
+        "escape": 1000,
+        "reenter": 0,
+        "trapped": 0
+      },
+      "bad_fraction": 0.0,
+      "bad_ci95": [
+        2.168404344971009e-19,
+        0.0038267585456940676
+      ],
+      "median_path_m": 88.92301644538458,
+      "seconds": 222.4768307209015
+    },
+    {
+      "kind": "track",
+      "radius_m": 16.0,
+      "rigidity_GV": 1.5,
+      "proton_T_MeV": 831.0087425572686,
+      "n": 1000,
+      "counts": {
+        "escape": 1000,
+        "reenter": 0,
+        "trapped": 0
+      },
+      "bad_fraction": 0.0,
+      "bad_ci95": [
+        2.168404344971009e-19,
+        0.0038267585456940676
+      ],
+      "median_path_m": 89.16990877104325,
+      "seconds": 219.8227355480194
+    },
+    {
+      "kind": "tail",
+      "radius_m": 20.0,
+      "n": 1000,
+      "seconds": 225.36133480072021,
+      "net_Tm_quantiles": {
+        "0.5": 0.019526084232561365,
+        "0.9": 0.033287826685855386,
+        "0.99": 0.050647075347831805,
+        "1.0": 0.0702571286826409
+      },
+      "abs_Tm_quantiles": {
+        "0.5": 0.02150000208313404,
+        "0.9": 0.03547444574374297,
+        "0.99": 0.05478203619132079,
+        "1.0": 0.07044768911908537
+      },
+      "net_Tm_mean": 0.020043803349470528
+    },
+    {
+      "kind": "track",
+      "radius_m": 20.0,
+      "rigidity_GV": 0.15,
+      "proton_T_MeV": 11.914479583876187,
+      "n": 1000,
+      "counts": {
+        "escape": 1000,
+        "reenter": 0,
+        "trapped": 0
+      },
+      "bad_fraction": 0.0,
+      "bad_ci95": [
+        2.168404344971009e-19,
+        0.0038267585456940676
+      ],
+      "median_path_m": 85.79476794921119,
+      "seconds": 186.03658747673035
+    },
+    {
+      "kind": "track",
+      "radius_m": 20.0,
+      "rigidity_GV": 0.25,
+      "proton_T_MeV": 32.73487226404325,
+      "n": 1000,
+      "counts": {
+        "escape": 1000,
+        "reenter": 0,
+        "trapped": 0
+      },
+      "bad_fraction": 0.0,
+      "bad_ci95": [
+        2.168404344971009e-19,
+        0.0038267585456940676
+      ],
+      "median_path_m": 85.78795547711232,
+      "seconds": 160.40027904510498
+    },
+    {
+      "kind": "track",
+      "radius_m": 20.0,
+      "rigidity_GV": 0.36,
+      "proton_T_MeV": 66.69284813350566,
+      "n": 1000,
+      "counts": {
+        "escape": 1000,
+        "reenter": 0,
+        "trapped": 0
+      },
+      "bad_fraction": 0.0,
+      "bad_ci95": [
+        2.168404344971009e-19,
+        0.0038267585456940676
+      ],
+      "median_path_m": 85.46543977024935,
+      "seconds": 150.97079014778137
+    },
+    {
+      "kind": "track",
+      "radius_m": 20.0,
+      "rigidity_GV": 0.71,
+      "proton_T_MeV": 238.35638057901713,
+      "n": 1000,
+      "counts": {
+        "escape": 1000,
+        "reenter": 0,
+        "trapped": 0
+      },
+      "bad_fraction": 0.0,
+      "bad_ci95": [
+        2.168404344971009e-19,
+        0.0038267585456940676
+      ],
+      "median_path_m": 86.09344451316488,
+      "seconds": 127.15918517112732
+    },
+    {
+      "kind": "track",
+      "radius_m": 20.0,
+      "rigidity_GV": 1.5,
+      "proton_T_MeV": 831.0087425572686,
+      "n": 1000,
+      "counts": {
+        "escape": 1000,
+        "reenter": 0,
+        "trapped": 0
+      },
+      "bad_fraction": 0.0,
+      "bad_ci95": [
+        2.168404344971009e-19,
+        0.0038267585456940676
+      ],
+      "median_path_m": 86.14667311592216,
+      "seconds": 119.40439081192017
+    }
+  ]
+}

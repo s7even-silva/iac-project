@@ -363,6 +363,28 @@ no cabe, aumentar `worldHalfSize` o corregir su posición/dimensiones; no se
 recorta para ocultar el problema. Si hay mapa, debe cubrir también las piezas.
 Se imprimen material, densidad y masa por componente para contrastar el manifiesto.
 
+## Preselección del radio de la esfera fuente (P1, paso 1)
+
+`preselect_source_radius.py` evalúa el campo Biot-Savart del arreglo de forma
+analítica, sin dominio finito. Para cada radio candidato traza hacia atrás
+protones de varias rigideces desde la esfera fuente (ley coseno) y mide la
+fracción de direcciones que vuelven a cruzar la esfera o quedan atrapadas:
+esa fracción es el error de la fuente isótropa, por el teorema de Liouville.
+También reporta la cola ∫B⊥·dl. Las trayectorias de corriente salen de
+`generate_ellipse_array.py` sobre `production/crewhat_corc_array_config.json`;
+`--check-map production/crewhat_niac_max.map` verifica que reproducen el
+mapa versionado.
+
+```bash
+.venv/bin/python generate_ellipse_array.py production/crewhat_corc_array_config.json /tmp/crewhat_arr
+.venv/bin/python preselect_source_radius.py /tmp/crewhat_arr/array_current_paths.json studies/salida.json \
+    --radii 6.94 11 12 14 16 20 --rigidities-gv 0.15 0.25 0.36 0.71 1.5 \
+    --n-tail 1000 --n-track 1000 --processes 6 --check-map production/crewhat_niac_max.map
+```
+
+Resultado del 2026-10-01: `studies/p1_preseleccion_radio_2026-10-01.json`.
+La lectura está en `docs/bitacora/plan_piloto.md` (P1).
+
 ## Validación y próximos pasos
 
 Verificado en Linux x86_64, Python 3.13.5, Gmsh 4.15.2, NumPy 2.3.3 y Geant4 11.4.2:
