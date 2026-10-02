@@ -18,6 +18,31 @@ validez dosimétrica** después de la auditoría de fuente radial/malla.
 Coordinator sin actualizar e imagen Docker nueva pendiente; ambos pasos
 quedan expresamente para después, no se ejecutan en esta revisión.
 
+**Avance del plan piloto (2026-10-01, misma fecha):**
+
+- **Camino crítico corregido en `plan_piloto.md`.** El mapa Elmer final es
+  bloqueante de P3–P6 y del barrido. Requiere una máquina con más RAM que
+  la de desarrollo (~5 GB).
+- **P1, paso 1 hecho** (`field/preselect_source_radius.py`):
+  - con 6.94 m, un tercio de las direcciones a 67 MeV está mal
+    representado;
+  - los candidatos para Elmer son **12, 14 y 16 m**;
+  - el mapa tendrá que cubrir ±14–17 m en z (hoy ±7.6 m).
+- **Scorer por evento (R1/R12/R6)** con `/eventStats/*`
+  (`EventStatsRunAction.cc`). Sus tests:
+  - ctest `event_stats` (T4/T5);
+  - `tests/python` (T6/T7).
+- **Prueba exploratoria del atajo intra-run:** los IC de ρ contienen 1 con
+  el scorer nuevo. El Camino B histórico subestima entre 2 y 9 veces.
+- **Fix T5:** `ICRP110UserScoreWriter` ya no divide por `joule` las
+  magnitudes que no son energía.
+
+**Integrado en `run_organ_sweep.py --event-stats`** (opcional, salida en
+`resultados_eventstats.csv`). **Todavía no en el coordinator/workers.**
+Método y validación, con VOV < 0.1 de MCNP como autodiagnóstico:
+`docs/bitacora/metodo_autodiagnostico_incertidumbre.md`.
+Detalle en `plan_piloto.md` (P1, P2, estado de los requisitos).
+
 ## Bitácora histórica del piloto GCR_SEP_Sim (2026-09-05)
 
 **Antes:** el estudio comparaba 4 escenarios fijos de **blindaje pasivo** (capas de aluminio + polietileno alrededor del astronauta) combinados on/off con un campo magnético placeholder, sin variar su intensidad.
@@ -96,6 +121,10 @@ enlaces:
   (incluida CRN para η), asignación de eventos, semillas v2, procedencia,
   tests T1–T12, post-proceso temporal de SEP (tasa de dosis) y
   parámetros pendientes de cada piloto.
+- **[`docs/bitacora/metodo_autodiagnostico_incertidumbre.md`](docs/bitacora/metodo_autodiagnostico_incertidumbre.md)**
+  (2026-10-01) — estimador de incertidumbre de una sola corrida (scorer por
+  evento, `/eventStats/*`) y su autodiagnóstico (VOV < 0.1 de MCNP +
+  eventos con depósito), con la validación y un borrador para el paper.
 - **[`infra/README.md`](infra/README.md)**, **[`infra/deploy/README.md`](infra/deploy/README.md)**,
   **[`infra/GUIA_VOLUNTARIOS.md`](infra/GUIA_VOLUNTARIOS.md)**,
   **[`infra/GUIA_WORKER_LOCAL.md`](infra/GUIA_WORKER_LOCAL.md)** —

@@ -28,6 +28,7 @@
 //
 #include "ICRP110PhantomActionInitialization.hh"
 #include "ICRP110PhantomPrimaryGeneratorAction.hh"
+#include "EventStatsRunAction.hh"
 
 #include "G4UserEventAction.hh"
 #include "G4Event.hh"
@@ -73,10 +74,14 @@ ICRP110PhantomActionInitialization::~ICRP110PhantomActionInitialization()
 {}
 
 void ICRP110PhantomActionInitialization::BuildForMaster() const
-{}
+{
+SetUserAction(new EventStatsRunAction);
+}
 
 void ICRP110PhantomActionInitialization::Build() const
 {   
 SetUserAction(new ICRP110PhantomPrimaryGeneratorAction);
 SetUserAction(new DiagnosticEventAction);
+SetUserAction(new EventStatsRunAction);
+SetUserAction(new EventStatsSteppingAction);
 }  

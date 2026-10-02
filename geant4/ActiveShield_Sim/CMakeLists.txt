@@ -49,6 +49,14 @@ if(BUILD_TESTING)
     WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
     PASS_REGULAR_EXPRESSION "Passive layer 1: G4_POLYETHYLENE; thickness \\[cm\\]=2"
     FAIL_REGULAR_EXPRESSION "Overlap is detected;G4Exception;COMMAND NOT FOUND")
+  # T4/T5 de plan_barrido.md: scorer por evento y unidades del volcado (~1-2 min).
+  find_package(Python3 COMPONENTS Interpreter)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME event_stats
+      COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tests/scorer_por_evento/test_t4_t5.py
+              --build-dir ${PROJECT_BINARY_DIR})
+    set_tests_properties(event_stats PROPERTIES PASS_REGULAR_EXPRESSION "OK T4/T5" TIMEOUT 900)
+  endif()
 endif()
 
 # Depend on data for runtime

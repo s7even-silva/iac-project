@@ -193,10 +193,63 @@ MACRO_TEMPLATE = """\
 /score/quantity/energyDeposit energyDeposit
 /score/close
 
-/run/beamOn {n_events}
+{event_stats_block}/run/beamOn {n_events}
 
 /score/dumpQuantityToFile PhantomMesh energyDeposit PhantomMesh_Edep.txt
 """
+
+# Scorer por evento (R1, docs/bitacora/metodo_autodiagnostico_incertidumbre.md).
+# Solo con --event-stats: un binario anterior al 2026-10-01 no conoce estos
+# comandos, y los workers del coordinator todavia corren ese binario.
+EVENT_STATS_BLOCK = """\
+/eventStats/enable true
+/eventStats/phantomSex male
+/eventStats/phantomSection full
+/eventStats/categoryFile {category_file}
+/eventStats/output EventStats.tsv
+{optional_lines}"""
+
+EVENT_STATS_FIELDNAMES = [
+    "especie", "fase", "bin_index", "n_bins", "energy_mev", "offset_x_m", "repeticion",
+    "checkpoint", "M", "tipo", "id", "masa_kg", "S1_J", "S2_J2", "S3_J3", "S4_J4", "n_nonzero",
+    "max_J", "max_event_id", "mean_J", "se_mean_J", "vov", "dosis_gy_por_primario",
+    "se_dosis_gy_por_primario", "truncated_tracks", "truncated_primaries"]
+
+
+def parse_event_stats(path, category_masses_kg, organ_masses_kg):
+    """EventStats.tsv -> lista de filas (dicts) con la dosis por primario de
+    cada organo y categoria en cada checkpoint (-1 = corrida completa), mas el
+    contador de trazas cortadas del encabezado. Falla si el archivo esta
+    incompleto: una corrida con --event-stats sin este archivo no es valida."""
+    truncated = {"truncated_tracks": "", "truncated_primaries": ""}
+    data_lines = []
+    with open(path) as f:
+        for line in f:
+            if line.startswith("# truncated_tracks"):
+                parts = line.split()
+                truncated = {"truncated_tracks": parts[2], "truncated_primaries": parts[4]}
+            elif not line.startswith("#"):
+                data_lines.append(line)
+    rows = []
+    for r in csv.DictReader(data_lines, delimiter="\t"):
+        if r["kind"] == "category":
+            mass = category_masses_kg.get(r["id"])
+        else:
+            mass = organ_masses_kg.get(int(r["id"]))
+        dose = se_dose = ""
+        if mass:
+            dose = float(r["mean_J"]) / mass
+            se_dose = float(r["se_mean_J"]) / mass
+        rows.append({
+            "checkpoint": r["checkpoint"], "M": r["M"], "tipo": r["kind"], "id": r["id"],
+            "masa_kg": mass if mass else "", "S1_J": r["S1_J"], "S2_J2": r["S2_J2"],
+            "S3_J3": r["S3_J3"], "S4_J4": r["S4_J4"], "n_nonzero": r["n_nonzero"],
+            "max_J": r["max_J"], "max_event_id": r["max_event_id"], "mean_J": r["mean_J"],
+            "se_mean_J": r["se_mean_J"], "vov": r["vov"], "dosis_gy_por_primario": dose,
+            "se_dosis_gy_por_primario": se_dose, **truncated})
+    if not rows:
+        raise ValueError(f"{path}: sin filas de EventStats")
+    return rows
 
 
 def build_combinations(spectra_dir, n_bins=None):
@@ -411,6 +464,17 @@ def main():
                               "multiplica el total de corridas por N (ej. 120 combos x 5 = 600).")
     parser.add_argument("--no-resume", dest="resume", action="store_false", default=True,
                          help="Rehacer desde cero incluso las corridas ya exitosas (exit_code 0)")
+    parser.add_argument("--event-stats", action="store_true",
+                        help="Activa el scorer por evento (/eventStats): error estandar y VOV de cada "
+                             "corrida, por organo y categoria, en resultados_eventstats.csv. Requiere un "
+                             "binario del 2026-10-01 o posterior. Ver "
+                             "docs/bitacora/metodo_autodiagnostico_incertidumbre.md.")
+    parser.add_argument("--checkpoints", type=str, default="",
+                        help="Con --event-stats: M acumulados separados por comas (ej. 2500,5000,10000) "
+                             "para seguir la convergencia dentro de la corrida.")
+    parser.add_argument("--per-event", action="store_true",
+                        help="Con --event-stats: guarda tambien los totales por evento de cada categoria "
+                             "(para covarianzas escudo/control con semillas comunes).")
     parser.add_argument("--repetition-start", type=int, default=0,
                         help="Indice inicial de repeticion (default 0); con --repeats 1 ejecuta solo ese indice.")
     args = parser.parse_args()
@@ -424,6 +488,15 @@ def main():
         parser.error("--print-progress-every debe ser positivo")
     if args.repetition_start < 0 or args.repeats < 1:
         parser.error("Require repetition-start >= 0 and repeats >= 1")
+    if (args.checkpoints or args.per_event) and not args.event_stats:
+        parser.error("--checkpoints y --per-event requieren --event-stats")
+    if args.checkpoints:
+        try:
+            checkpoints = [int(x) for x in args.checkpoints.split(",")]
+        except ValueError:
+            parser.error("--checkpoints: enteros separados por comas")
+        if any(c <= 0 or c >= args.n_events for c in checkpoints):
+            parser.error("--checkpoints: cada valor debe estar entre 1 y n_events-1")
 
     project_root = Path(__file__).resolve().parent.parent
     build_dir = (args.build_dir or (project_root / "build")).resolve()
@@ -516,6 +589,25 @@ def main():
         results_writer.writeheader()
         results_file.flush()
 
+    event_stats_block = ""
+    if args.event_stats:
+        import write_event_categories
+        category_file = build_dir / "event_categories.txt"
+        rows_w, category_masses_kg = write_event_categories.category_weights(build_dir / "ICRPdata")
+        with open(category_file, "w") as f:
+            f.write("# categoria organ_id peso -- generado por run_organ_sweep.py --event-stats\n")
+            for category, oid, weight in rows_w:
+                f.write(f"{category} {oid} {weight!r}\n")
+        import aggregate_organ_doses
+        organ_masses_kg = aggregate_organ_doses.load_organ_masses_kg(build_dir / "ICRPdata")
+        event_stats_path = build_dir / "resultados_eventstats.csv"
+        es_mode = "a" if (args.resume and event_stats_path.is_file()) else "w"
+        event_stats_file = open(event_stats_path, es_mode, newline="")
+        event_stats_writer = csv.DictWriter(event_stats_file, fieldnames=EVENT_STATS_FIELDNAMES)
+        if es_mode == "w":
+            event_stats_writer.writeheader()
+            event_stats_file.flush()
+
     total_runs = len(combos) * args.repeats
     print(f"Corriendo {len(combos)} combinacion(es) x {args.repeats} repeticion(es) = {total_runs} corridas "
           f"(n_events={args.n_events}, campo={field_map.name}) con {binary_path.name} en {build_dir}")
@@ -545,7 +637,16 @@ def main():
             # Cada evento por defecto reduce intervalos silenciosos. Un evento
             # individual aun puede durar mucho; esto no certifica ausencia de cuelgues.
             print_progress_every = args.print_progress_every
+            if args.event_stats:
+                optional_lines = ""
+                if args.checkpoints:
+                    optional_lines += f"/eventStats/checkpoints {args.checkpoints}\n"
+                if args.per_event:
+                    optional_lines += "/eventStats/perEventFile EventCategories.tsv\n"
+                event_stats_block = EVENT_STATS_BLOCK.format(category_file=category_file,
+                                                             optional_lines=optional_lines)
             macro_path.write_text(MACRO_TEMPLATE.format(
+                event_stats_block=event_stats_block,
                 ship_radius_m=SHIP_RADIUS_M, ship_half_length_m=SHIP_HALF_LENGTH_M,
                 world_half_size_m=WORLD_HALF_SIZE_M, coil_geometry_line=coil_geometry_line,
                 field_map=field_map, offset_x_m=f"{combo['offset_x_m']:.3f}",
@@ -565,6 +666,10 @@ def main():
 
             out_path = build_dir / "ICRP110.out"
             out_path.unlink(missing_ok=True)  # nombre fijo, ver docstring del modulo
+            es_out = build_dir / "EventStats.tsv"
+            per_event_out = build_dir / "EventCategories.tsv"
+            es_out.unlink(missing_ok=True)
+            per_event_out.unlink(missing_ok=True)
 
             start = time.monotonic()
             with open(log_path, "w") as logfile:
@@ -604,6 +709,21 @@ def main():
                                        se_run_total_j=stats["se_run_total_j"])
                         results_writer.writerow(row)
                     results_file.flush()
+                    if args.event_stats:
+                        stem = f"organ_run_{combo['index']:03d}_r{rep:02d}"
+                        if not es_out.is_file():
+                            raise ValueError("--event-stats activo pero la corrida no escribio EventStats.tsv")
+                        es_archive = archive_dir / f"{stem}.eventstats.tsv"
+                        es_out.rename(es_archive)
+                        if args.per_event:
+                            per_event_out.rename(archive_dir / f"{stem}.eventcategories.tsv")
+                        base = {"especie": combo["species"], "fase": combo["phase"],
+                                "bin_index": combo["bin_index"], "n_bins": combo["n_bins"],
+                                "energy_mev": combo["energy_mev"], "offset_x_m": combo["offset_x_m"],
+                                "repeticion": rep}
+                        for es_row in parse_event_stats(es_archive, category_masses_kg, organ_masses_kg):
+                            event_stats_writer.writerow({**base, **es_row})
+                        event_stats_file.flush()
                     parsed_ok = True
                 except ValueError as exc:
                     print(f"\n  ADVERTENCIA: no se pudo parsear {archive_path}: {exc}")
@@ -628,6 +748,9 @@ def main():
 
     manifest_file.close()
     results_file.close()
+    if args.event_stats:
+        event_stats_file.close()
+        print(f"Scorer por evento: {event_stats_path}")
 
     print(f"\nListo: {total_runs - n_skipped} corrida(s) nueva(s), {n_failed} fallida(s), "
           f"{n_skipped} ya completada(s) (saltadas).")

@@ -146,8 +146,17 @@ s_j²  = (S2 − S1²/N_j) / (N_j − 1)
 Var(R̂_j) = s_j² / (m² · N_j)
 ```
 
-El scorer de hoy cuenta en N solo los eventos con depósito y acumula por
-voxel. El nuevo tiene que contar todos los primarios (R1).
+El scorer de `ICRP110.out` cuenta en N solo los eventos con depósito y
+acumula por voxel. **Scorer nuevo implementado (2026-10-01):** comandos
+`/eventStats/*` (`EventStatsRunAction.cc`). Suma el depósito de cada evento
+por órgano y por categoría antes de acumular S1/S2, cuenta en M todos los
+primarios y escribe, por checkpoint, S1–S4, eventos con depósito, mayor
+contribución de un solo evento y la VOV de MCNP (autodiagnóstico del SE; ver
+`metodo_autodiagnostico_incertidumbre.md`). Opcionalmente escribe los totales por evento
+de las categorías (R12) y cuenta las trazas cortadas por el límite de
+longitud (R6). Las categorías salen de `scripts/write_event_categories.py`,
+la misma definición que usa el agregador. Aún no se usa en
+`run_organ_sweep.py` ni en los pilotos históricos.
 
 **Por caso** (puntos con semillas distintas, independientes):
 
@@ -260,10 +269,10 @@ nuevos).
 | T1 | Distribución de cosα de los primarios = 2cosα (prueba KS con un macro de geantinos) | Muestreo angular |
 | T2 | Caja de prueba: cruces / esperado dentro de 3σ (hoy 1.010 ± 0.020) | Normalización πR² |
 | T3 | Sin campo: dosis en x=1 m equivalente a x=0 | Alineación de la malla |
-| T4 | Scorer por evento: S1 igual a la edep total; N igual a los primarios; varianza igual a la de lotes | Estimador R1 |
-| T5 | Magnitudes nuevas volcadas por `ICRP110UserScoreWriter`: corregir su división por `joule` (hoy la aplica a toda magnitud volcada) | Unidades |
-| T6 | Agregador: dosis por primario (sin factor N), duplicados, bins o puntos ausentes, grillas mezcladas | Ya corregido; añadir tests |
-| T7 | Σ_j w_sj / (πR²) = ∫Φ_s en el rango, con error relativo menor que 1e-6 | Pesos espectrales |
+| T4 | Scorer por evento: S1 igual a la edep total; N igual a los primarios; S1/S2 de categoría iguales a los del archivo por evento; checkpoints acumulados | Estimador R1. **Implementado:** `tests/scorer_por_evento/test_t4_t5.py` (ctest `event_stats`). La comparación de la varianza con la dispersión entre semillas es la prueba exploratoria de P2, no un test |
+| T5 | `ICRP110UserScoreWriter` divide por `joule` y agrega por órgano solo los depósitos de energía; otras magnitudes se vuelcan en su unidad | Unidades. **Implementado** (mismo test que T4) |
+| T6 | Agregador: dosis por primario (sin factor N), duplicados, energía fuera de grilla, N inconsistente, grillas mezcladas | **Implementado:** `tests/python/test_agregador_y_pesos.py`. Falta el caso de bins o puntos ausentes |
+| T7 | Σ_j w_sj / (πR²) = ∫Φ_s en el rango, con error relativo menor que 1e-6 | Pesos espectrales. **Implementado** para la grilla actual de bins (mismo archivo que T6); repetir con las funciones base de la curva de respuesta cuando existan |
 | T8 | Unicidad de semillas | Independencia |
 | T9 | El coordinator rechaza resultados sin procedencia válida | Mezcla de versiones |
 | T10 | Mismos primarios por event_id con CRN; reproducibilidad con binario/entorno/RNG fijados y tolerancia documentada para reducciones flotantes MT | Reproducibilidad |

@@ -23,6 +23,16 @@ Correcciones de esta revisión local:
   directorios separados; GCR/min junto a SEP/max sigue admitido.
 - La vista por bin deja SE/df/IC vacíos si el modelo tiene bins ausentes o
   R=1; los indicadores de datos faltantes acompañan a la suma parcial.
+- **Scorer por evento (2026-10-01).** Se activa con `run_organ_sweep.py
+  --event-stats [--checkpoints 2500,5000] [--per-event]`. Cada corrida
+  escribe en `resultados_eventstats.csv` su dosis por primario, su error
+  estándar y su VOV por órgano y categoría. Archiva
+  `organ_run_*.eventstats.tsv` junto al `.out`. El SE de una categoría se
+  usa solo si cumple el autodiagnóstico: VOV < 0.1 y suficientes eventos
+  con depósito, según
+  [metodo_autodiagnostico_incertidumbre.md](../../docs/bitacora/metodo_autodiagnostico_incertidumbre.md).
+  Requiere el binario actual. No es el default, porque los workers del
+  coordinator todavía corren el anterior.
 - Radio explícito de agregación: debe ser finito y positivo y coincidir con
   la simulación. Los espectros deben tener energía positiva creciente y
   flujos finitos no negativos.

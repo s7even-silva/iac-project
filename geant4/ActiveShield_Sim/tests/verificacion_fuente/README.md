@@ -17,9 +17,11 @@ actual y se sobrescriben entre corridas.
 | `dosis_fantoma_desnudo.mac` + `comparar_dosis_analitica.py` | Misma configuración, 4·10⁴ primarios; dosis de cuerpo entero frente a Φ·S/ρ (Bethe). Pasar N como segundo argumento. | 1.83 veces la pura ionización. La corrida de 10⁶ de la fila anterior da 1.72. |
 | `comparacion_mallas_y_mapas.py`, `correr_comparacion.sh`, `analizar_comparacion.py` | T1: malla de scoring (x=0 frente a x=1 m, sin campo, 1778 MeV, 30k). T2: dosis con el mapa Biot-Savart frente a Elmer (562 MeV, x=0, 3 semillas por mapa, ley coseno; control con apuntado radial). Salidas en `build/verificacion_fuente/`. | T1: 0.91. T2: Biot-Savart/Elmer = 0.93 ± 0.08 (ley coseno) y 1.03 (radial). ~1 h 10 min en total. |
 
-Nota: `ICRP110UserScoreWriter` divide por `joule` cualquier magnitud que
-vuelca, así que `comparar_normalizacion.py` multiplica por 6.2415e12 para
-recuperar la cuenta y los mm.
+Nota: hasta el 2026-10-01 `ICRP110UserScoreWriter` dividía por `joule`
+cualquier magnitud que volcaba, y `comparar_normalizacion.py` multiplicaba
+por 6.2415e12. Desde el arreglo T5, las magnitudes que no son depósito de
+energía se vuelcan en su propia unidad (mm, cuentas) y el script las lee tal
+cual. Los resultados de la tabla se obtuvieron antes del cambio.
 
 Uso:
 

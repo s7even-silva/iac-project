@@ -38,6 +38,7 @@
 #include "G4SDParticleFilter.hh"
 #include "G4VPrimitiveScorer.hh"
 #include "G4VScoringMesh.hh"
+#include "G4PSEnergyDeposit.hh"
 
 ICRP110UserScoreWriter::ICRP110UserScoreWriter():
 G4VScoreWriter() 
@@ -97,6 +98,27 @@ if(msMapItr == fSMap.end())
   }
 
 std::map<G4int, G4StatDouble*> * score = msMapItr -> second-> GetMap();
+
+// T5 (plan_barrido.md): todo lo de abajo divide por joule y luego por la
+// masa del organo, asi que solo tiene sentido para un deposito de energia.
+// Antes se aplicaba a cualquier magnitud volcada (longitud de traza,
+// corriente...), que salia dividida por joule. Ahora las demas se vuelcan en
+// su propia unidad (/score/quantity/... <unidad>, por defecto mm, cuentas...)
+// y no se agregan por organo ni se toca ICRP110.out.
+if (dynamic_cast<G4PSEnergyDeposit*>(fScoringMesh -> GetPrimitiveScorer(psName)) == nullptr)
+  {
+   const G4double unitValue = fScoringMesh -> GetPSUnitValue(psName);
+   ofile << "# unit: " << fScoringMesh -> GetPSUnit(psName) << " (sin agregacion por organo)" << G4endl;
+   ofile << std::setprecision(16);
+   for (const auto& [idx, value] : *score)
+     {
+      G4int nz = fNMeshSegments[2], ny = fNMeshSegments[1];
+      ofile << idx / (ny * nz) << '\t' << (idx / nz) % ny << '\t' << idx % nz << '\t'
+            << value->sum_wx() / unitValue << '\t' << value->sum_wx2() / (unitValue * unitValue)
+            << '\t' << value->n() << G4endl;
+     }
+   return;
+  }
 
 ofile << "# primitive scorer name: " << msMapItr -> first << G4endl;
 
