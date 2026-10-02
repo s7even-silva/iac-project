@@ -1309,7 +1309,7 @@ barrido normal en `main`.
   desde esta rama** — coincidencia real de trabajo paralelo (mismo patrón
   ya documentado más arriba para "Segundo grupo de datos"): esta rama
   necesitaba exactamente ese filtro para el worker, y Bryam lo agregó en
-  `main` el mismo día (commit `13b31f9`, motivado por su propio hallazgo —
+  `main` el mismo día (commit `97fb8ea`, motivado por su propio hallazgo —
   `--skip-bins 7` saltaba el bin7 de las 3 especies, no solo de GCR_He) con
   `--only-bins` además, más directo que construir el complemento con
   `--skip-bins` como se había planeado aquí originalmente. Al detectarlo
@@ -1640,7 +1640,7 @@ tener un único ejemplo de prueba local contra `127.0.0.1`.
 **Cuarta ronda de revisión externa de `install-worker.ps1` (2026-09-13),
 4 puntos, todos bugs/gaps reales:**
 
-- **`$InstallScriptCommit` seguía apuntando a `5abd0fc`** pese a que el
+- **`$InstallScriptCommit` seguía apuntando a `cd5d651`** pese a que el
   script cambió sustancialmente en la tercera ronda — si alguien lo
   corría vía `irm ... | iex` y necesitaba reiniciar por WSL2, `Save-
   SelfCopy` habría descargado esa versión vieja para continuar tras el
@@ -1985,7 +1985,7 @@ inspect`, `linux/amd64`) antes de actualizar el pin:
 decidió (una sola publicación coordinada, no dos separadas).
 
 **Migración aplicada en producción (2026-09-13).** Repo actualizado en
-la VM (`git fetch`+`reset --hard` a `2a8a8db`), backup de
+la VM (`git fetch`+`reset --hard` a `e5a1ae4`), backup de
 `coordinator.db` tomado antes por precaución
 (`coordinator.db.backup-pre-cpuscore`), y `systemctl restart
 geant4-coordinator` corrido — confirmado con `GET /api/v1/workers`
@@ -2444,7 +2444,7 @@ segunda ronda se habían quedado a medias, más 3 bugs nuevos reales:**
   de fallar rápido con un mensaje claro al principio.
 - **`$InstallScriptCommit` verificado y corregido — apuntaba a una
   versión desactualizada del propio script.** El hash fijo para el
-  auto-resume post-reinicio (`5abd0fc`, del commit anterior a *todos*
+  auto-resume post-reinicio (`cd5d651`, del commit anterior a *todos*
   los fixes de robustez de esta sesión) habría hecho que cualquiera que
   necesitara reiniciar continuara la instalación con una versión rota
   del script — exactamente el escenario que ese pin pretendía evitar.
@@ -2769,7 +2769,7 @@ alterado. 17 escenarios de ciclo de vida pasan en total (antes 16).
 ya visto varias veces en esta sección — `$InstallScriptCommit` quedó
 desactualizado otra vez, en el propio commit que lo introducía la vez
 anterior.** El commit que aplicó el fix de `Test-DockerEngineRunning`
-(ver arriba) dejó el pin apuntando todavía a `38e5ee6` — una versión
+(ver arriba) dejó el pin apuntando todavía a `bfe0593` — una versión
 **anterior** de 874 líneas, sin `Test-DockerEngineRunning` (confirmado
 leyendo ese commit exacto). El riesgo es el mismo que motivó el pin en
 primer lugar, pero en sentido inverso: un voluntario que corra el script
