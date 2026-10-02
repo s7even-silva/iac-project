@@ -1,5 +1,11 @@
 # Ficha de la bobina CREW HaT: implementación vs. fuente verificada
 
+> **Nota (2026-10-01, inicio de la v2):** los archivos de la v1 que este
+> documento cita y ya no están en `main` (GCR_SEP_Sim, `useful-examples/`,
+> `scripts/pilots/`, resultados del barrido de 600, `plan_estadistico.md`,
+> scripts de siembra del coordinator, etc.) se conservan en el tag
+> [`v1-archivo`](https://github.com/s7even-silva/iac-project/tree/v1-archivo).
+
 Actualizado 2026-09-10. Igual que `GEOM14_STATUS.md` para Geom14: este
 documento distingue datos verificados en el reporte NIAC Phase I completo
 (D'Onghia, NTRS 20250002403) y la tesis de maestría 2024 (Ziyang Hang,

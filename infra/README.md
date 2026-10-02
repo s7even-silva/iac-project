@@ -9,9 +9,9 @@ posterior; este worker ejecuta únicamente el lanzador Geant4 existente.
 
 - **Coordinator:** `https://coordinator.vlaboratory.org` (VM `e2-micro` en
   GCP, Always Free Tier, `us-central1-a` — ver `infra/deploy/`. Azure
-  quedó bloqueado por una restricción de plataforma en la suscripción
-  del usuario, no algo resoluble desde este repo; el script de Azure
-  sigue listo para cuando eso se resuelva).
+  quedó bloqueado por una restricción de la suscripción; su script de
+  aprovisionamiento y `setup_https.sh` (Caddy) quedaron en el tag
+  `v1-archivo`).
 - **La VM ya NO tiene IP pública (desde 2026-09-27)**, para eliminar el
   cargo fijo de la IPv4 externa (~$2-4/mes; no afecta el egreso de red,
   que ya se redujo antes con gzip). El acceso es:

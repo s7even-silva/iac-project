@@ -25,7 +25,7 @@ barra de error salía de la dispersión entre repeticiones. Eso tenía tres
 problemas:
 - cuesta 5 inicializaciones;
 - con 5 valores, la desviación estándar es muy incierta;
-- no había justificación formal para elegir 5 (`validez_estadistica_runs.md`).
+- no había justificación formal para elegir 5 ([`validez_estadistica_runs.md`](https://github.com/s7even-silva/iac-project/blob/v1-archivo/docs/bitacora/validez_estadistica_runs.md), v1).
 
 El primer intento de obtener el error desde una sola corrida fue el
 «Camino B» (Fase 7). Sumaba por órgano las varianzas de cada vóxel, y así

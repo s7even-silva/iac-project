@@ -1,5 +1,11 @@
 # Auditoría de bugs y requisitos para la próxima producción (2026-09-30)
 
+> **Nota (2026-10-01, inicio de la v2):** los archivos de la v1 que este
+> documento cita y ya no están en `main` (GCR_SEP_Sim, `useful-examples/`,
+> `scripts/pilots/`, resultados del barrido de 600, `plan_estadistico.md`,
+> scripts de siembra del coordinator, etc.) se conservan en el tag
+> [`v1-archivo`](https://github.com/s7even-silva/iac-project/tree/v1-archivo).
+
 Revisión completa de `ActiveShield_Sim` (C++ y Python), los pilotos
 estadísticos, el coordinator y el worker. Se revisaron todos los archivos
 que el proyecto modificó respecto del ejemplo oficial ICRP110

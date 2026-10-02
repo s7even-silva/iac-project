@@ -1,8 +1,14 @@
 # Registro de operaciones e incidentes del coordinator/worker
 
+> **Nota (2026-10-01, inicio de la v2):** los archivos de la v1 que este
+> documento cita y ya no están en `main` (GCR_SEP_Sim, `useful-examples/`,
+> `scripts/pilots/`, resultados del barrido de 600, `plan_estadistico.md`,
+> scripts de siembra del coordinator, etc.) se conservan en el tag
+> [`v1-archivo`](https://github.com/s7even-silva/iac-project/tree/v1-archivo).
+
 > Bitácora histórica extraída de `AGENTS.md` el 2026-09-16 (reorganización
 > para reducir el tamaño de ese archivo). Es la continuación cronológica de
-> [`infra/DISTRIBUTED_SWEEP_HISTORY.md`](DISTRIBUTED_SWEEP_HISTORY.md) —
+> [`infra/DISTRIBUTED_SWEEP_HISTORY.md`](https://github.com/s7even-silva/iac-project/blob/v1-archivo/infra/DISTRIBUTED_SWEEP_HISTORY.md) —
 > bugs reales de producción, rondas de revisión del instalador de Windows,
 > cambios de esquema/criterio de asignación de jobs, incidentes de cómputo
 > perdido, y sus fixes, del 2026-09-12 en adelante. Útil como referencia
@@ -22,7 +28,7 @@ que un worker reasignado no sobrescriba resultados aceptados. Los timeouts
 alcanzan `failed` cuando agotan los intentos. Las pruebas aisladas usan
 `COORDINATOR_DB`, `STALE_JOB_TIMEOUT_S` y `REQUEUE_SWEEP_INTERVAL_S`; no se
 reduce el timeout de seis horas por defecto. Flujo y límites en
-[infra/README.md](infra/README.md). Elmer, nube y publicación GHCR quedan fuera
+[infra/README.md](README.md). Elmer, nube y publicación GHCR quedan fuera
 del primer corte local acordado.
 
 ### Revisión del ciclo de vida del worker (2026-09-13)
@@ -35,7 +41,7 @@ aceptar borrar datos y WSL no desregistra distribuciones. La migración antigua
 ahora respalda/restaura TODO `/var/lib/geant4-worker`, no solo `worker_id`.
 Corregidos errores de primera instalación, preservación de configuración,
 autocopia, pausa/reanudación y provisionadores Bash. Instrucciones, recuperación,
-fuentes y límites de validación en [infra/deploy/README.md](infra/deploy/README.md).
+fuentes y límites de validación en [infra/deploy/README.md](deploy/README.md).
 No se cambió la lógica de resultados pendientes de `worker.py`. Las pruebas de
 retirada son con mocks, sin validación real en Windows ni despliegue de nube.
 
@@ -71,7 +77,7 @@ Corregido sirviendo la página desde el propio coordinator (mismo origen
 que la API, sin CORS ni CSP cross-origin de por medio) — el
 `CORSMiddleware` ya no cumple ningún propósito así que se quitó (menos
 superficie expuesta, dado el riesgo ya aceptado de "sin autenticación de
-workers"). Detalle completo en [infra/DASHBOARD_PLAN.md](infra/DASHBOARD_PLAN.md).
+workers"). Detalle completo en [infra/DASHBOARD_PLAN.md](https://github.com/s7even-silva/iac-project/blob/v1-archivo/infra/DASHBOARD_PLAN.md).
 
 ### Bug real corregido: repeticiones corriendo en paralelo, no en serie (2026-09-14)
 

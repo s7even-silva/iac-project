@@ -21,7 +21,7 @@ case "$*" in
   'compute firewall-rules create '*) exit "${FAIL_FIREWALL:-0}" ;;
 esac
 '''
-            for name in ('az', 'gcloud'):
+            for name in ('gcloud',):
                 path = root / name
                 path.write_text(cli)
                 path.chmod(0o755)
@@ -31,18 +31,6 @@ esac
             result = subprocess.run(['bash', str(DEPLOY / script), *args], env=env,
                                     text=True, capture_output=True, timeout=10)
             return result, log.read_text() if log.exists() else ''
-
-    def test_azure_documented_arguments(self):
-        result, calls = self.run_script('provision_azure_coordinator.sh',
-                                       ['--location', 'westus', '--vm-size', 'Standard_B2s'])
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('--location westus', calls)
-        self.assertIn('--size Standard_B2s', calls)
-
-    def test_azure_missing_value(self):
-        result, calls = self.run_script('provision_azure_coordinator.sh', ['--location'])
-        self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(calls, '')
 
     def test_firewall_failure_stops_vm_creation(self):
         result, calls = self.run_script('provision_gcp_coordinator.sh', fail_firewall=True)

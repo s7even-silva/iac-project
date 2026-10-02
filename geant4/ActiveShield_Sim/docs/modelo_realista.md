@@ -1,5 +1,11 @@
 # Decisiones del modelo realista — actualizado 2026-09-08
 
+> **Nota (2026-10-01, inicio de la v2):** los archivos de la v1 que este
+> documento cita y ya no están en `main` (GCR_SEP_Sim, `useful-examples/`,
+> `scripts/pilots/`, resultados del barrido de 600, `plan_estadistico.md`,
+> scripts de siembra del coordinator, etc.) se conservan en el tag
+> [`v1-archivo`](https://github.com/s7even-silva/iac-project/tree/v1-archivo).
+
 Este documento distingue decisiones acordadas, cambios implementados y propuestas.
 El devanado real y el mapa físico validado siguen pendientes. La conversión
 geométrica y la importación de componentes de prueba ya están implementadas.
@@ -267,7 +273,7 @@ organ ID ya está en el voxel del fantoma) y, en `EndOfEventAction`, llenar
 S1/S2/N del órgano con el total del evento. Esto da el error estándar
 correcto por órgano y categoría. El costo es una suma extra por paso más un
 volcado por evento de ~140 órganos: pequeño frente al transporte. El
-`FASE7_SE_CORRECTION_FACTOR` (ver `docs/bitacora/plan_estadistico.md`) es un
+`FASE7_SE_CORRECTION_FACTOR` (ver [`plan_estadistico.md`](https://github.com/s7even-silva/iac-project/blob/v1-archivo/docs/bitacora/plan_estadistico.md), v1) es un
 parche conservador hasta implementar esto.
 
 **3. Perfil temporal de SEP (GOES).** La respuesta R[o,s,bin] ya es por

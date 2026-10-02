@@ -1,3 +1,9 @@
+> **Nota (2026-10-01, inicio de la v2):** los archivos de la v1 que este
+> documento cita y ya no están en `main` (GCR_SEP_Sim, `useful-examples/`,
+> `scripts/pilots/`, resultados del barrido de 600, `plan_estadistico.md`,
+> scripts de siembra del coordinator, etc.) se conservan en el tag
+> [`v1-archivo`](https://github.com/s7even-silva/iac-project/tree/v1-archivo).
+
 > Bitácora histórica extraída de `AGENTS.md` el 2026-09-16 (reorganización
 > para reducir el tamaño de ese archivo). Cubre el diseño y evolución de
 > `ActiveShield_Sim`: física/geometría, CREW HaT (bobinas Halbach), campo
@@ -6,16 +12,16 @@
 > [`geant4/ActiveShield_Sim/docs/modelo_realista.md`](../../geant4/ActiveShield_Sim/docs/modelo_realista.md)
 > y [`geant4/ActiveShield_Sim/README.md`](../../geant4/ActiveShield_Sim/README.md).
 > Para la infraestructura de cómputo distribuido (coordinator/worker) que
-> ejecuta este barrido, ver [`infra/DISTRIBUTED_SWEEP_HISTORY.md`](../../infra/DISTRIBUTED_SWEEP_HISTORY.md)
+> ejecuta este barrido, ver [`infra/DISTRIBUTED_SWEEP_HISTORY.md`](https://github.com/s7even-silva/iac-project/blob/v1-archivo/infra/DISTRIBUTED_SWEEP_HISTORY.md)
 > y [`infra/OPERATIONS_LOG.md`](../../infra/OPERATIONS_LOG.md).
 
 # Estado vigente de ActiveShield_Sim (2026-09-08)
 
 La implementación parte del ejemplo oficial ICRP110; `GCR_SEP_Sim` sigue
 como piloto de referencia. Instrucciones técnicas en
-[README de ActiveShield_Sim](geant4/ActiveShield_Sim/README.md) y justificación,
+[README de ActiveShield_Sim](../../geant4/ActiveShield_Sim/README.md) y justificación,
 fuentes y pendientes en
-[decisiones del modelo](geant4/ActiveShield_Sim/docs/modelo_realista.md).
+[decisiones del modelo](../../geant4/ActiveShield_Sim/docs/modelo_realista.md).
 
 **Implementado:**
 - **Elmer (2026-09-09), actualización que sustituye las limitaciones históricas
@@ -32,28 +38,28 @@ fuentes y pendientes en
   `compare_elmer.py` audita puntos exteriores al hilo, con distancia explícita
   y sensibilidad a regularización. Regenerar mallas de `mesh_swept_air.py`
   anteriores al fix de IDs globalmente únicos. Instrucciones/evidencia en
-  [validación Elmer](field/ELMER_VALIDATION.md).
+  [validación Elmer](../../field/ELMER_VALIDATION.md).
 
 - Piloto `field/generate_dh.py`: Double Helix cerrado y paramétrico, CAD y
   recorrido de corriente común; cobre circular de ensayo, no cinta YBCO/Geom14.
   `compute_field.py` genera una referencia Biot–Savart regularizada, no FEM ni
   campo válido dentro del devanado. `prepare_domain_sweep.py` prepara 2A/4A/8A
-  con costes y macros PreInit. Alcance y criterios en [field/DOMAINS.md](field/DOMAINS.md).
+  con costes y macros PreInit. Alcance y criterios en [field/DOMAINS.md](../../field/DOMAINS.md).
 - `field/generate_array.py`, `compute_field_array.py`, `audit_array.py`:
   ensamblan varias bobinas DH (barrel + endcaps) en un solo GDML/mapa de
   campo por superposición, reutilizando `generate_dh.py`/`compute_field.py`
   sin modificarlos. Material del conductor HTS homogeneizado y trazable
   (`field/examples/hts_tape_materials.json`) en vez de cobre puro. Detalle,
   dimensiones tomadas de ARSSEM y qué es extrapolación propia en
-  [field/GEOM14_STATUS.md](field/GEOM14_STATUS.md).
+  [field/GEOM14_STATUS.md](../../field/GEOM14_STATUS.md).
 - `field/mesh_swept.py`: mallado directo de tetraedros estructurados a lo
   largo de la curva espinal (sin pasar por triangulación 2D de
   OpenCASCADE/Gmsh), único método que completa el mallado del arreglo real
   de Geom14 (60 vueltas) — `generate_mesh.py`/HXT nunca terminaba en esa
   geometría (se atasca en la etapa 2D, confirmado con timing por etapa).
   6,24M tetraedros del arreglo completo en 62,5s, ~2,6% de error de volumen.
-  Detalle en [field/README.md](field/README.md) y
-  [field/GEOM14_STATUS.md](field/GEOM14_STATUS.md).
+  Detalle en [field/README.md](../../field/README.md) y
+  [field/GEOM14_STATUS.md](../../field/GEOM14_STATUS.md).
 - Sección transversal rectangular real de la cinta HTS (brecha 2,
   implementado 2026-09-09): `tape_width_m`/`tape_thickness_m` opcionales en
   el JSON de una bobina activan un rectángulo orientado radialmente en vez
@@ -68,7 +74,7 @@ fuentes y pendientes en
   la separación radial actual del piloto (20mm) — redimensionarla es
   trabajo de la brecha 1 (coordinar los ~10 parámetros del devanado), no
   algo que se resuelve solo en el generador. Detalle completo en
-  [field/GEOM14_STATUS.md](field/GEOM14_STATUS.md), brecha 2.
+  [field/GEOM14_STATUS.md](../../field/GEOM14_STATUS.md), brecha 2.
 - **Fix (2026-09-09):** `scripts/install.sh --with-elmer` invocaba `cmake`
   para compilar Elmer sin activar `geant4_env` primero — `cmake` viene de
   `environment.yml` (conda-forge), no se instala aparte en el sistema, así
@@ -266,7 +272,7 @@ fuentes y pendientes en
   Python 3.13 (validado 3.13.5), Gmsh 4.15.2 y NumPy 2.3.3 fijados.
   No instalar esas dependencias en `geant4_env`. Entorno y `field/generated/`
   excluidos de Git; versionar fuentes, materiales y scripts. Manifiestos
-  con hashes/versiones junto a salidas. Ver [guía](field/README.md).
+  con hashes/versiones junto a salidas. Ver [guía](../../field/README.md).
 - Exterior en vacío `G4_Galactic`; aire de cabina y tejidos ICRP110 conservados.
 - Cilindro de dimensiones exteriores 5.6 × 10 m, casco `G4_Al` de **1.5 cm**
   (sustituye 5 cm), tapas planas. Referencia radiológica de Al, no casco de
@@ -431,7 +437,7 @@ fuentes y pendientes en
   es una referencia dosimétrica/geométrica, no equivalente al riesgo
   epidemiológico de cáncer de mama documentado en mujeres. Detalle de
   comandos y scripts en
-  [README de ActiveShield_Sim](geant4/ActiveShield_Sim/README.md).
+  [README de ActiveShield_Sim](../../geant4/ActiveShield_Sim/README.md).
 
 **Propuestas y pendientes (no decisiones finales):**
 - El usuario indica un plan previo de 12 bobinas. Geom14 de ARSSEM es la
@@ -651,13 +657,13 @@ fuentes y pendientes en
   conjunta de las 8 bobinas). Esta configuración es la más fina que se
   puede correr con margen de seguridad real en esta VM. Elmer **todavía
   no probado** para CORC en solitario — ver
-  [`field/CREWHAT_STATUS.md`](field/CREWHAT_STATUS.md) para el detalle
+  [`field/CREWHAT_STATUS.md`](../../field/CREWHAT_STATUS.md) para el detalle
   completo de brechas y las decisiones de modelado propias marcadas
   explícitamente (sección cuadrada sin segunda dimensión de la fuente,
   radio de regularización de Biot-Savart sin validar, margen de curvatura
   de la elipse). Cifras exactas con cita de página en
-  [`field/ELMER_VALIDATION.md`](field/ELMER_VALIDATION.md) y comparación
-  con Geom14 en [`field/GEOM14_STATUS.md`](field/GEOM14_STATUS.md).
+  [`field/ELMER_VALIDATION.md`](../../field/ELMER_VALIDATION.md) y comparación
+  con Geom14 en [`field/GEOM14_STATUS.md`](../../field/GEOM14_STATUS.md).
 
   **Dos pendientes chicos resueltos el mismo día (2026-09-10):**
   - **Ubicación bobina-nave verificada a escala real**: se corrió el

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Puebla jobs_v2 (ver db_v2.py) con combinaciones del barrido de
-ActiveShield_Sim -- version 2026-09-20 de seed_full_sweep.py, con
+ActiveShield_Sim -- version 2026-09-20 de seed_full_sweep.py (v1, quedo en
+el tag v1-archivo), con
 --n-bins como argumento EXPLICITO (a diferencia de seed_full_sweep.py,
 que copia N_BINS_PER_SPECIES=8 fijo) -- justo el parametro que motivo
 crear jobs_v2: poder sembrar la grilla de energia definitiva que el

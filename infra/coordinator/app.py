@@ -107,7 +107,7 @@ def dashboard():
     # Servido desde el mismo origen a proposito: un Artifact de Claude no
     # puede hacer fetch() cross-origin hacia este dominio (la CSP del
     # sandbox solo admite un allowlist fijo de CDNs, ver
-    # infra/DASHBOARD_PLAN.md) -- este endpoint reemplaza ese enfoque
+    # infra/DASHBOARD_PLAN.md en el tag v1-archivo) -- este endpoint reemplaza ese enfoque
     # sirviendo la misma pagina desde aqui, donde /api/v1/* es same-origin
     # sin necesitar CORS.
     return FileResponse(DASHBOARD_PATH, media_type="text/html")

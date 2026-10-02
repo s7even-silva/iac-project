@@ -7,7 +7,7 @@ dependencies:
   - gcc_linux-64=15.2.0
   - gxx_linux-64=15.2.0
   # gfortran_linux-64 was missing: without a conda-forge Fortran compiler
-  # in PATH, CMake (both for GCR_SEP_Sim/ActiveShield_Sim's own build and
+  # in PATH, CMake (both for ActiveShield_Sim's own build and
   # for scripts/install.sh --with-elmer, which compiles Elmer -- a mostly
   # Fortran codebase) falls back to the SYSTEM /usr/bin/f95, while C/C++
   # still resolve to the conda-forge compilers above. That mixes two

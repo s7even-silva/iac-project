@@ -36,7 +36,7 @@ RUN printf 'remote_max_retries: 10\nremote_read_timeout_secs: 120.0\nremote_conn
 COPY . /opt/iac-project
 WORKDIR /opt/iac-project
 
-# Instala Miniconda + geant4_env_headless y compila GCR_SEP_Sim/ActiveShield_Sim
+# Instala Miniconda + geant4_env_headless y compila ActiveShield_Sim
 # con ctest como gate -- si algo no compila, el build de Docker falla aqui,
 # no en produccion. --skip-system porque las dependencias de sistema (arriba)
 # ya se instalaron en esta capa (el script asume `sudo`, innecesario como root).

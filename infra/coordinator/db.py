@@ -253,7 +253,8 @@ _MIGRATIONS = [
 # este cambio (SPECIES_PHASE en run_organ_sweep.py era 1:1 species->phase
 # hasta 2026-09-16) -- usado SOLO para el backfill de _migrate_jobs_add_phase(),
 # nunca para decidir que fase corre un job nuevo (eso ya lo controla
-# run_organ_sweep.py/seed_full_sweep.py). Copiado aqui (no importado) por
+# run_organ_sweep.py/seed_full_sweep.py; este ultimo quedo en el tag
+# v1-archivo). Copiado aqui (no importado) por
 # el mismo motivo que seed_full_sweep.py ya copia SPECIES/OFFSET_X_VALUES_M:
 # ese script vive en un proyecto Geant4 que no es un paquete Python
 # instalable desde infra/.
@@ -777,7 +778,7 @@ def touch_heartbeat_in_conn(conn, worker_id: str) -> None:
 def force_claim_job(job_id: int, worker_id: str) -> bool:
     """Asigna un job_id ESPECIFICO a un worker, saltandose la seleccion por
     prioridad de claim_next_job(). Solo para uso administrativo (ver
-    import_local_results.py) -- registrar trabajo ya hecho localmente,
+    import_local_results.py, en el tag v1-archivo) -- registrar trabajo ya hecho localmente,
     donde se conoce exactamente que job corresponde, no "el siguiente
     pendiente". Solo funciona si el job sigue 'pending'; no le quita un
     job a un worker real que ya lo tenga en 'claimed'/'running'."""

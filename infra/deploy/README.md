@@ -161,6 +161,10 @@ Referencia de los campos y operaciones:
 
 ## Errores corregidos en esta revisión
 
+(Las correcciones de `provision_azure_coordinator.sh` y `setup_https.sh` quedaron
+con esos scripts en el tag `v1-archivo`: Azure se bloqueó y Caddy se deshabilitó
+al pasar a Cloudflare Tunnel.)
+
 - Primera instalación: consultar configuración ya no invoca Docker si falta el CLI.
 - Actualización: conserva URL, token, hilos, límite `--cpus` y memoria cuando no
   se pasan explícitamente; evita copiar el instalador sobre sí mismo. Los scripts
@@ -168,14 +172,8 @@ Referencia de los campos y operaciones:
 - Virtualización: un hipervisor ya presente no se interpreta como BIOS desactivado.
 - Pausa: `pause-worker.ps1` sin argumentos pausa; un fallo de Docker se comunica.
   Al reanudar, no se borra la marca hasta que `docker start` tenga éxito.
-- Azure: acepta `--location valor` y `--vm-size valor` como en su ejemplo; se quitó
-  una instrucción inválida (`az vm open-port --source-address-prefixes`).
 - GCP: rechaza proyecto `(unset)`; los fallos al crear reglas de firewall abortan
   antes de crear la VM, en lugar de ocultarse con `|| true`.
-- HTTPS: valida dominio/root, consulta IPv4 con timeout y HTTP con errores,
-  acepta cualquiera de los registros A del dominio, permite repetir la importación
-  de la clave GPG sin prompt y valida Caddy antes de reiniciarlo. Un fallo del
-  firewall GCP tampoco se oculta.
 
 ## Límites de la revisión
 
@@ -206,7 +204,7 @@ for script in infra/deploy/*.sh; do bash -n "$script"; done
 
 Los mocks prueban ausencia de efectos con `-WhatIf`, validación de flags,
 conservación/borrado explícito de datos, fallo del daemon y del respaldo,
-autocopia, argumentos Azure y fallos GCP. No sustituyen una prueba Windows real.
+autocopia y fallos GCP. No sustituyen una prueba Windows real.
 
 Las pruebas normales incluyen un servidor HTTP sobre socket Unix temporal (sin
 Docker real) y bloqueo entre procesos. Requieren permiso para crear sockets

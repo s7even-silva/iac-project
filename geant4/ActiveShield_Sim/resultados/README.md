@@ -1,25 +1,20 @@
 # Resultados de `ActiveShield_Sim`
 
-Reorganizado el 2026-09-30 tras la auditoría
-[`docs/bitacora/auditoria_2026-09-30.md`](../../../docs/bitacora/auditoria_2026-09-30.md).
-**Todavía no hay ninguna dosis físicamente válida en este directorio.**
-Las dosis correctas requieren el barrido corregido, planificado en
+Aquí van los CSV del barrido corregido (v2). **Todavía no hay ninguno:**
+el barrido empieza cuando se aprueben los pilotos P0–P6 de
 [`docs/bitacora/plan_piloto.md`](../../../docs/bitacora/plan_piloto.md).
 
-| Carpeta | Contenido | Estado |
+Los resultados de la v1 salieron de `main` el 2026-10-01 y están en el tag
+[`v1-archivo`](https://github.com/s7even-silva/iac-project/tree/v1-archivo/geant4/ActiveShield_Sim/resultados):
+
+| Carpeta (en `v1-archivo`) | Contenido | Por qué no sirve como dosis |
 |---|---|---|
-| [`historico_barrido600_radial/`](historico_barrido600_radial/) | CSV crudos y manifiestos del barrido de 600 por contribuidor (bryam, eddy, joel), su README original, `LIMITACIONES_BARRIDO_600.md` e `INTERPRETACION_PROTECCION_RADIOLOGICA.md`. | Histórico. Las filas con offset ≥1 m miden aire (malla de scoring fija en el origen) y todas las dosis están infladas por el apuntado radial. |
-| [`fase8_binning/`](fase8_binning/) | Datos de convergencia del binning (360 corridas en x=0, 8 a 128 bins), `epsilon_binning_fase8_*` y la propuesta de binning híbrido para SEP_p. | Histórico. Se corrió con apuntado radial: las conclusiones deben revalidarse. |
-| [`x0_reprocesado_2026-09-30/`](x0_reprocesado_2026-09-30/) | Las filas x=0 del barrido de 600 agregadas con el agregador corregido. | Solo referencia interna: siguen infladas por el apuntado radial. |
-| `coordinator_raw/` (no versionado) | Resultados descargados del coordinator (323 trabajos). | Crudo local. |
+| `historico_barrido600_radial/` | CSV crudos y manifiestos del barrido de 600 por contribuidor, con sus notas de limitaciones e interpretación. | Las filas con offset ≥1 m miden aire (malla de scoring fija en el origen) y todas las dosis están infladas por el apuntado radial. |
+| `fase8_binning/` | Convergencia del binning (360 corridas en x=0, 8 a 128 bins) y la propuesta de binning híbrido para SEP_p. | Se corrió con apuntado radial; las conclusiones se revalidan en P3. |
+| `x0_reprocesado_2026-09-30/` | Filas x=0 del barrido de 600 con el agregador corregido. | Siguen infladas por el apuntado radial. |
 
-Los CSV agregados anteriores (`resultados_organo_agregados_*`,
-`resultados_riesgo_estocastico_*`) se eliminaron: estaban mal (la vista por
-órgano inflada por N, las filas de offset ≥1 m eran aire) y se pueden
-regenerar desde los crudos con `scripts/aggregate_organ_doses.py`. Siguen
-disponibles en el historial de git (commit anterior a esta reorganización).
+`coordinator_raw/` (no versionado) guarda localmente los resultados
+descargados del coordinator en la v1.
 
-Los documentos históricos (`infra/OPERATIONS_LOG.md`,
-`infra/DISTRIBUTED_SWEEP_HISTORY.md`, `infra/coordinator/import_local_results.py`)
-mencionan rutas como `resultados/organ_sweep_manifest_bryam.csv`: esos
-archivos ahora están en `resultados/historico_barrido600_radial/`.
+Detalle de los bugs en
+[`docs/bitacora/auditoria_2026-09-30.md`](../../../docs/bitacora/auditoria_2026-09-30.md).

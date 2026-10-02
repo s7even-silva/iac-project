@@ -20,7 +20,7 @@ Los detalles técnicos y de cálculo del barrido están en
    cobertura controlada. Repetir IC95 hasta que uno apruebe no conserva 95%.
 4. Las corridas de un piloto se pueden reutilizar en el barrido solo si se
    hicieron con la configuración ya congelada (regla de la Fase 10 de
-   `plan_estadistico.md`).
+   [`plan_estadistico.md`](https://github.com/s7even-silva/iac-project/blob/v1-archivo/docs/bitacora/plan_estadistico.md), v1).
 
 ## Verificaciones ya hechas (2026-09-30 y 2026-10-01)
 
@@ -58,7 +58,7 @@ efectividad escudo/control que el estudio tiene que poder resolver.
 δ_η = 10 pp equivale a una diferencia de dosis igual al 10% de la dosis
 sin escudo.
 
-- **D3 puede derivarse de D2,** como en `plan_estadistico.md`:
+- **D3 puede derivarse de D2,** como en [`plan_estadistico.md`](https://github.com/s7even-silva/iac-project/blob/v1-archivo/docs/bitacora/plan_estadistico.md) (v1):
   B = δ_η/4, es decir 2.5 pp con δ_η = 10 pp. Fijar D2 desbloquea
   entonces D3 y con eso P1, P4 y P5.
 - **D7 es otra cosa.** Mide la exactitud de la dosis absoluta frente a una

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Instalador MINIMO para un nodo de computo que solo va a CORRER las
 # simulaciones ya existentes (ej. geant4/ActiveShield_Sim/scripts/
-# run_organ_sweep.py, geant4/GCR_SEP_Sim/scripts/run_sweep.py) -- no
+# run_organ_sweep.py) -- no
 # regenerar geometria/campo. No instala: Qt6 (usa un build "noqt" de
 # Geant4, ver environment.headless.yml -- misma fisica/GDML/datos,
 # verificado 2026-09-12 comparando Geant4Config.cmake de ambas
@@ -153,14 +153,6 @@ GEANT4_ENV_PREFIX="$MINICONDA_DIR/envs/$GEANT4_ENV_NAME"
 set +u
 conda activate "$GEANT4_ENV_NAME"
 set -u
-
-log "Compilando GCR_SEP_Sim (headless)"
-(
-  cd "$REPO_ROOT/geant4/GCR_SEP_Sim"
-  cmake -S . -B build -DCMAKE_CXX_COMPILER=g++ -DCMAKE_PREFIX_PATH="$GEANT4_ENV_PREFIX" -DWITH_GEANT4_UIVIS=OFF >/dev/null
-  cmake --build build -j"$(nproc)" >/dev/null
-)
-ok "GCR_SEP_Sim compila"
 
 log "Compilando ActiveShield_Sim (headless)"
 (

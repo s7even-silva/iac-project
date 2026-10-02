@@ -2,8 +2,7 @@
 # Crea una VM e2-micro en GCP para hostear el coordinator 24/7, dentro del
 # Always Free Tier (1 e2-micro/mes gratis en us-west1/us-central1/us-east1 --
 # ver https://cloud.google.com/free/docs/free-cloud-features#compute).
-# Usa el mismo cloud-init-coordinator.yaml que el script de Azure (formato
-# estandar, funciona igual en ambos proveedores).
+# Usa cloud-init-coordinator.yaml (formato estandar de cloud-init).
 #
 # Requiere: gcloud CLI instalado y logueado (gcloud auth login), un proyecto
 # con facturacion activa ya configurado como default (gcloud config set

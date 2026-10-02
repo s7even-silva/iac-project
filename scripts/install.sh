@@ -344,11 +344,11 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 6. Verificación final: compila ambos proyectos Geant4 y corre los tests
+# 6. Verificación final: compila ActiveShield_Sim y corre los tests
 #    Python de field/, igual que se validó manualmente en sesiones previas
 #    (ver AGENTS.md, "Verificación de este cambio").
 #
-#    Fix (2026-09-10): estos dos `cmake` usaban GXX_BIN (el compilador
+#    Fix (2026-09-10): el `cmake` usaba GXX_BIN (el compilador
 #    largo de conda-forge), no system g++ como recomiendan las instrucciones
 #    manuales de AGENTS.md/README.md -- eso compilaba binarios exigiendo
 #    ISA x86-64-v3 (mismo bug ya diagnosticado para Elmer, ver más arriba)
@@ -357,13 +357,14 @@ fi
 #    paso de verificación nunca detectaba porque solo compila, no corre
 #    los binarios. A diferencia de Elmer (que compila su propio C/C++/
 #    Fortran desde cero y sí necesita un triplete de compiladores
-#    consistente), estos dos proyectos solo compilan un puñado de .cc
+#    consistente), el proyecto solo compila un puñado de .cc
 #    propios que enlazan contra las bibliotecas .so ya compiladas de
 #    Geant4/CLHEP -- confirmado que system g++ las enlaza y ejecuta sin
 #    problema, igual que ya documentaban (sin verificar hasta ahora) los
-#    comandos manuales. Corregido a system g++ en los dos `cmake` de abajo.
+#    comandos manuales. Corregido a system g++ en el `cmake` de abajo. (Hasta la v1
+#    también compilaba GCR_SEP_Sim, ver tag v1-archivo.)
 # ---------------------------------------------------------------------------
-log "Verificando: compilando GCR_SEP_Sim"
+log "Verificando: compilando ActiveShield_Sim"
 # Los scripts de activación de conda-forge para los datasets de Geant4
 # (G4ABLADATA y similares) referencian variables sin valor por defecto
 # (p. ej. "$G4ABLADATA" en vez de "${G4ABLADATA:-}"), lo que rompe bajo
@@ -372,14 +373,6 @@ log "Verificando: compilando GCR_SEP_Sim"
 set +u
 conda activate "$GEANT4_ENV_NAME"
 set -u
-(
-  cd "$REPO_ROOT/geant4/GCR_SEP_Sim"
-  cmake -S . -B build -DCMAKE_CXX_COMPILER=g++ -DCMAKE_PREFIX_PATH="$GEANT4_ENV_PREFIX" >/dev/null
-  cmake --build build -j"$(nproc)" >/dev/null
-)
-ok "GCR_SEP_Sim compila"
-
-log "Verificando: compilando ActiveShield_Sim"
 (
   cd "$REPO_ROOT/geant4/ActiveShield_Sim"
   cmake -S . -B build -DCMAKE_CXX_COMPILER=g++ -DCMAKE_PREFIX_PATH="$GEANT4_ENV_PREFIX" >/dev/null
@@ -400,10 +393,10 @@ $(printf '\033[1;32m%s\033[0m' 'Instalación completa.')
 
 Para trabajar en cada parte del proyecto:
 
-  Geant4 (compilar/correr GCR_SEP_Sim o ActiveShield_Sim):
+  Geant4 (compilar/correr ActiveShield_Sim):
     source $MINICONDA_DIR/etc/profile.d/conda.sh
     conda activate $GEANT4_ENV_NAME
-    cd geant4/<proyecto>/build && ./gcrsim ...   (o ./ICRP110phantoms ...)
+    cd geant4/ActiveShield_Sim/build && ./ICRP110phantoms ...
 
   Pipeline de mallado/campo (field/):
     field/.venv/bin/python field/generate_dh.py ...
