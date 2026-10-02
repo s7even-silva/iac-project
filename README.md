@@ -1,68 +1,49 @@
 # IAC 2026
 
+Simulación Geant4 de la dosis por órgano de un astronauta (fantoma ICRP110)
+dentro de una nave con blindaje magnético activo CREW HaT, frente a rayos
+cósmicos galácticos (GCR) y partículas solares (SEP).
+
 Las instrucciones y decisiones del proyecto se mantienen en [AGENTS.md](AGENTS.md).
 `CLAUDE.md` importa ese archivo mediante `@AGENTS.md` para que Claude Code
 cargue las mismas instrucciones sin duplicar su contenido.
 
-## Estado de producción
+## Versiones del proyecto
 
-`geant4/ActiveShield_Sim` es el proyecto del modelo realista: exterior en vacío,
-casco de referencia Al de 1.5 cm, envolvente para bobinas externas y lector de
-campo global. Existe un [piloto Double Helix y campo de referencia](field/README.md);
-el ensamblaje Geom14 y su mapa físico validado aún faltan. **CREW HaT** (8 bobinas
-Halbach elípticas, **variante CORC — no la cinta 12mm, ver corrección abajo**)
-avanza en paralelo a Geom14 y es la geometría de producción: geometría,
-mallado, GDML, importación, campo Biot-Savart y campo Elmer FEM a escala
-real de nave, todos validados de punta a punta, con un ablation del
-patrón angular. **Campo de producción: Elmer FEM, no Biot-Savart** (decisión
-2026-09-11) — Biot-Savart sobreestima la dosis 36-48% en esta geometría porque
-trata cada bobina como un filamento delgado, no como el winding pack real (ver
-AGENTS.md, "Error de campo vs. error de dosis en Elmer"). La sección cuadrada
-del conductor y el radio de regularización de Biot-Savart siguen siendo
-supuestos propios aceptados por el equipo sin más validación posible (sin dato
-externo con el que contrastarlos, ver `field/CREWHAT_STATUS.md`) — no bloquean
-producción, quedan documentados como limitación.
+- **v2 (esta rama, `main`, desde 2026-10-01):** barrido corregido después de
+  la [auditoría del 2026-09-30](docs/bitacora/auditoria_2026-09-30.md). Antes
+  de producir dosis hay que aprobar los pilotos P0–P6 de
+  [`plan_piloto.md`](docs/bitacora/plan_piloto.md); la especificación del
+  barrido está en [`plan_barrido.md`](docs/bitacora/plan_barrido.md).
+- **v1:** piloto esférico `GCR_SEP_Sim`, barrido de 600 corridas con apuntado
+  radial y pilotos estadísticos Fases 7–10. Está en el tag `v1.0-piloto`
+  (y la rama `v1`); la versión más reciente de cada archivo que salió de
+  `main` está en el tag `v1-archivo`. **Sus dosis no son válidas** como
+  resultado físico: ver la auditoría.
 
-**Corrección (2026-09-12):** el equipo había decidido construir y comparar
-dos conductores (cinta 12mm, CORC) — eso se siguió para los pilotos de una
-sola bobina, pero **el arreglo completo de 8 bobinas siempre se ensambló
-con CORC (winding pack 0,67m), nunca con la cinta 12mm (1,43m)**,
-descubierto solo ahora al preparar los archivos para `field/production/`.
-Ningún resultado del arreglo (Biot-Savart, Elmer, ablation, ni la
-comparación de dosis) es de la cinta 12mm. Detalle en AGENTS.md; generar
-el arreglo con la cinta sigue pendiente si el paper lo necesita.
+## Estructura
 
-Ya existe un lanzador de producción para el segundo grupo de datos del
-equipo: `geant4/ActiveShield_Sim/scripts/run_organ_sweep.py`, 120 corridas
-(3 especies × 8 bins de energía × 5 posiciones radiales del fantoma) ×
-repeticiones (`--repeats`, orden repetición-mayor por defecto), con el
-campo Elmer FEM real del arreglo de 8 bobinas de CREW HaT a su corriente
-de diseño máxima, la masa/material real de las bobinas
-(`/spacecraft/coilGeometry`, por defecto), y dosis equivalente (Sv) en los
-6 tejidos de mayor riesgo estocástico (ICRP 103), con media/std/IC95% entre
-repeticiones. Reparto de equipo vía `--only-positions` +
-`aggregate_organ_doses.py --results a.csv b.csv` (varios archivos).
-**El costo por corrida no es uniforme**: medido de 21,6s (bin de menor
-energía) a 730,4s (un bin intermedio de 8), con los dos bins de mayor
-energía probablemente más caros aún — cualquier presupuesto de tiempo
-debe usar esa curva real, no un promedio. Detalle en la sección ["Dosis
-por órgano y
-equivalente"](geant4/ActiveShield_Sim/README.md#dosis-por-órgano-y-equivalente-2026-09-10-campo-real-y-bins-desde-2026-09-11)
-de ese README. Physics list de producción: `Shielding` (decidido,
-2026-09-11, mismo que el piloto).
+| Carpeta | Contenido |
+|---|---|
+| [`geant4/ActiveShield_Sim/`](geant4/ActiveShield_Sim/README.md) | Simulación Geant4 (fantoma ICRP110, nave, bobinas, mapa de campo), lanzador del barrido, agregador y tests. |
+| [`field/`](field/README.md) | Pipeline de geometría y campo de las bobinas (Gmsh + Elmer + Python). `field/production/` trae el mapa y el GDML de producción versionados. |
+| [`infra/`](infra/README.md) | Coordinator y workers para repartir el barrido entre máquinas. |
+| [`docs/bitacora/`](docs/bitacora/) | Planes vigentes, auditoría, método de incertidumbre y referencias del paper. |
+| `docker/`, `scripts/` | Imagen del worker e instaladores. |
 
-Véanse [estado e interfaces](geant4/ActiveShield_Sim/README.md)
-y [decisiones y justificación](geant4/ActiveShield_Sim/docs/modelo_realista.md).
+## Estado
 
-La generación de mallas y conversión de componentes con materiales a GDML
-ya dispone de un entorno Python aislado y una prueba de importación en Geant4.
-Desde la raíz: `python3 field/bootstrap.py` (Python 3.13, validado con 3.13.5).
-El entorno se crea en `field/.venv`, excluido de Git. Procedimiento completo,
-dependencias fijadas y ejemplos en [field/README.md](field/README.md).
-La conversión está preparada; el devanado real y el cálculo FEM siguen pendientes.
-
-El barrido de 140 combinaciones y las instrucciones de reparto que siguen
-corresponden únicamente a `GCR_SEP_Sim`, conservado como piloto de referencia.
+- **Geometría y campo:** CREW HaT, 8 bobinas Halbach elípticas con conductor
+  CORC homogeneizado, nave de 4.5 m de radio, campo Elmer FEM a escala real
+  (`field/production/crewhat_elmer_fullscale.map`). Biot-Savart se conserva
+  solo para comparación; la cifra histórica "Biot-Savart da 36–48% más dosis"
+  no se reprodujo (0.93 ± 0.08 a 562 MeV). Ver
+  [`modelo_realista.md`](geant4/ActiveShield_Sim/docs/modelo_realista.md).
+- **Bloqueante:** regenerar el mapa Elmer con la esfera fuente que fije P1
+  (12–16 m). Necesita una máquina con más RAM que la de desarrollo.
+- **Physics list:** `Shielding`.
+- **Incertidumbre:** scorer por evento con autodiagnóstico VOV (ver
+  [`metodo_autodiagnostico_incertidumbre.md`](docs/bitacora/metodo_autodiagnostico_incertidumbre.md)).
 
 ## Entorno de simulación
 
@@ -79,44 +60,37 @@ conda-forge, vía `environment.yml`), un entorno conda auxiliar
 en cualquier distro sin depender de qué versión traiga cada gestor de
 paquetes en sus repos), y `field/.venv` (Gmsh + NumPy, aislado de conda —
 ver [field/README.md](field/README.md) sobre por qué). Al final compila
-`GCR_SEP_Sim` y `ActiveShield_Sim`, y corre los tests de `field/` para
-confirmar que todo quedó operativo.
+`ActiveShield_Sim` y corre los tests de `field/` para confirmar que todo
+quedó operativo.
 
 Es idempotente: se puede volver a correr sin romper una instalación ya
 hecha (cada paso comprueba si su resultado ya existe). Usar
 `bash scripts/install.sh --skip-system` para omitir el paso que pide sudo
 (útil si las dependencias de sistema ya están instaladas, o si se corre en
-un entorno sin acceso a sudo). No instala Elmer — el solver FEM del campo
-magnético todavía no está integrado al flujo del proyecto (ver `AGENTS.md`
-y `field/GEOM14_STATUS.md`).
+un entorno sin acceso a sudo). Elmer no se instala por defecto: agregar
+`--with-elmer` (compila Elmer FEM, ~15–30 min).
 
-**Nodo de cómputo (voluntarios/CI, 2026-09-12):** si la máquina solo va a
-**correr** los barridos ya existentes, no a regenerar geometría/campo,
-usa `bash scripts/install_compute_node.sh` en vez del de arriba — Geant4
-sin Qt6 (build `noqt`, misma física/resultado, verificado bit a bit
-idéntico), sin `field/.venv` ni Elmer, ~400MB menos de instalación.
-`field/production/` ya trae lo necesario para correr sin regenerar
-nada. Detalle en `AGENTS.md`, sección "Instalación mínima para nodos de
-cómputo".
+**Nodo de cómputo (voluntarios/CI):** si la máquina solo va a **correr**
+simulaciones, no a regenerar geometría/campo, usa
+`bash scripts/install_compute_node.sh` — Geant4 sin Qt6 (build `noqt`,
+misma física, verificado bit a bit idéntico), sin `field/.venv` ni Elmer,
+~400MB menos de instalación. `field/production/` ya trae lo necesario.
 
-**Cómputo distribuido (rama `infra/distributed-sweep`, en curso):**
-coordinator FastAPI + workers en Docker para repartir el barrido de
-`ActiveShield_Sim` entre varias máquinas/VMs (incluida la nube, vía
-GitHub Education u otro crédito), sin reparto manual por `--only-positions`.
-Detalle completo — diseño, riesgos aceptados, cómo desplegarlo — en
-`AGENTS.md`, sección "Cómputo distribuido para el barrido de
-ActiveShield_Sim".
+**Cómputo distribuido:** coordinator FastAPI + workers en Docker. Ver
+[`infra/README.md`](infra/README.md) y la sección correspondiente de
+`AGENTS.md`.
 
-### Instalación manual
+### Compilación manual
+
+En `geant4_env` la variable `$CXX` está vacía y `cmake` se resuelve al del
+sistema, así que hay que pasar el compilador y el prefijo explícitamente:
 
     conda env create -f environment.yml
     conda activate geant4_env
-
-Compilación (fuera de fuente, con el toolchain de conda):
-
-    rm -rf build && mkdir build && cd build
-    cmake -DCMAKE_CXX_COMPILER=$CXX ..
-    make -j$(nproc)
+    cd geant4/ActiveShield_Sim
+    cmake -S . -B build -DCMAKE_CXX_COMPILER=g++ -DCMAKE_PREFIX_PATH="$CONDA_PREFIX"
+    cmake --build build -j$(nproc)
+    ctest --test-dir build --output-on-failure
 
 ### Versiones
 
@@ -131,7 +105,7 @@ Compilación (fuera de fuente, con el toolchain de conda):
 | Dataset | Versión | Relevancia |
 |---|---|---|
 | G4EMLOW | 8.8 | Procesos EM de baja energía, poder de frenado |
-| G4NDL | 4.7.1 | Transporte de neutrones (HP) — crítico con polietileno |
+| G4NDL | 4.7.1 | Transporte de neutrones (HP) |
 | G4PARTICLEXS | 4.2 | Secciones eficaces hadrónicas |
 | G4ABLA | 3.3 | Desexcitación nuclear — fragmentos secundarios |
 | G4INCL | 1.3 | Cascada intranuclear |
@@ -143,146 +117,20 @@ Compilación (fuera de fuente, con el toolchain de conda):
 | RealSurface | 2.2 | |
 | G4CHANNELING | 2.0 | |
 
-### Parámetros de simulación
+## Espectros de entrada (OLTARIS)
 
-- Physics list: `Shielding` (ambos proyectos, GCR_SEP_Sim y ActiveShield_Sim)
-- Stepper de campo: (por definir)
-- Cortes de producción: (por definir)
-- Semillas: registradas por corrida en `output/`
+Seis espectros reales en `geant4/ActiveShield_Sim/data/sources/oltaris/`
+(procedencia y exportaciones crudas en esa carpeta y en
+[`checklist_espectros_reales.md`](geant4/ActiveShield_Sim/docs/checklist_espectros_reales.md)):
 
-## División del trabajo del equipo (barrido de simulaciones)
-
-El barrido de `geant4/GCR_SEP_Sim/` tiene 140 combinaciones (GCR/SEP × fase solar max/min × 7 valores de campo × 5 posiciones del astronauta). **Los 6 espectros reales de OLTARIS ya están completos** (2026-09-10, ver [`docs/checklist_espectros_reales.md`](geant4/GCR_SEP_Sim/docs/checklist_espectros_reales.md)), así que ya se corre el barrido completo — `--priority-only` sigue existiendo en `run_sweep.py` por si alguna vez hace falta priorizar de nuevo, pero ya no es necesario.
-
-Para el artículo necesitamos, por cada combinación, **media, desviación estándar e intervalo de confianza 95%** — eso requiere correr cada combinación varias veces (repeticiones con semillas distintas), no una sola vez. Ya se acordó: **5 repeticiones por combinación** (140 × 5 = 700 corridas en total).
-
-Para terminar a tiempo entre los dos, el trabajo se reparte así:
-
-- **Persona A** corre **todo GCR** (mín + máx × 7 campos × 5 posiciones = 70 combinaciones × 5 repeticiones = 350 corridas).
-- **Persona B** corre **todo SEP** (mín + máx × 7 campos × 5 posiciones = 70 combinaciones × 5 repeticiones = 350 corridas).
-
-Se reparte por tipo de evento porque GCR y SEP son ejes físicamente independientes (no hay interacción entre ellos), así que no hay riesgo de inconsistencia al juntar los resultados de cada quien al final — simplemente se concatenan.
-
-### 0. Antes de repartir: verificar que están sincronizados
-
-Ambos deben partir exactamente del mismo código:
-
-    git pull
-    git log -1 --oneline   # confirmar que las dos personas ven el mismo commit
-
-Y compilar con el mismo comando (ver nota en `AGENTS.md` sobre el workaround de compilador — `$CXX` no sirve en `geant4_env`, hay que usar `g++` + `CMAKE_PREFIX_PATH`).
-
-Medido en esta máquina: una corrida de GCR (10000 eventos) tarda **~8-11 s**, una de SEP **~2 s** (el campo suele desviar/frenar más partículas antes de que depositen energía). Con eso, los 350 corridas de GCR toman **~50 min** y las 350 de SEP **~12 min** — sobra tiempo dentro de una ventana de 4 días incluso con poder de cómputo bajo, así que **no hace falta bajar `--n-events`**. Si en su hardware resulta mucho más lento, midan con un piloto chico antes de lanzar todo:
-
-    cd geant4/GCR_SEP_Sim/build
-    python3 ../scripts/run_sweep.py --only-model GCR --n-events 10000 --limit 3
-
-### Si el barrido se corta a la mitad (Ctrl+C, corte de luz, se cierra la sesión SSH sin `tmux`/`screen`)
-
-No hace falta empezar de cero. El binario `gcrsim` va agregando (append) una fila a `resultados_dosis_sweep.csv` por cada corrida que termina, y `run_sweep.py` hace lo mismo con `sweep_manifest.csv` — ninguno de los dos se sobrescribe de golpe al final, así que lo ya corrido antes del corte queda guardado. **Resume está activado por defecto:** basta con relanzar exactamente el mismo comando que se cortó:
-
-    python3 ../scripts/run_sweep.py --only-model GCR --repeats 5 --n-events 10000
-
-El script lee `sweep_manifest.csv` y salta automáticamente toda combinación `(índice, repetición)` que ya haya terminado con éxito (`exit_code 0`); las que fallaron se vuelven a intentar. Si en cambio se quiere rehacer el barrido desde cero a propósito (por ejemplo, tras cambiar algún parámetro que invalida las corridas previas), agregar `--no-resume` — de lo contrario esas corridas viejas quedarían duplicadas en el CSV de resultados.
-
-Si van a dejar el barrido corriendo desatendido en una máquina remota (por ejemplo las de la universidad por SSH), lanzarlo dentro de `tmux` o `screen` para que sobreviva un corte de la conexión:
-
-    tmux new -s sweep
-    python3 ../scripts/run_sweep.py --only-model GCR --repeats 5 --n-events 10000
-    # Ctrl+B, D para desconectar sin matar el proceso; tmux attach -t sweep para volver a verlo
-
-### 0.5. Fechas de referencia para la fase solar (GCR y SEP)
-
-`/gun/phase max|min` representa la **fase real del ciclo solar**, no "el peor caso de esa especie" — y GCR y SEP reaccionan al revés uno del otro ante esa fase:
-
-- **GCR**: el flujo es **más alto en mínimo solar** (menos viento solar blindeando la heliosfera) y más bajo en máximo solar.
-- **SEP**: los eventos grandes son **más frecuentes/severos en máximo solar**, casi no ocurren en mínimo.
-
-**GCR y SEP usan criterios de selección distintos — no hace falta (ni tiene sentido) que compartan fecha de calendario:**
-
-| Fase | GCR: condición del ciclo solar | SEP: severidad del evento histórico |
+| Fase | GCR (Badhwar-O'Neill 2020, fecha) | SEP (evento histórico) |
 |---|---|---|
-| `min` | Mínimo solar real, dic 2019 – ene 2020 (oficial NASA/NOAA, ciclo 24→25) | **Febrero 1956, ajuste LaRC** — el más pequeño de los eventos catalogados en OLTARIS con dato comparable |
-| `max` | 14-15/01/2023 — **no** el pico real del ciclo 25 (ver nota) | **Octubre 1989** — peor caso estándar en el rango 5-100 MeV |
+| `min` | Mínimo solar, 31/12/2019–01/01/2020 | Febrero 1956, ajuste LaRC |
+| `max` | 14–15/01/2023 (no el pico del ciclo 25: BON2020 en OLTARIS no acepta fechas posteriores) | Octubre 1989 |
 
-**Nota sobre la fecha de GCR máximo:** originalmente se planeó usar la ventana ene 2024 – jul 2025 (el máximo real del ciclo 25 según NOAA/SWPC), pero **BON2020 en OLTARIS no acepta fechas más allá de enero de 2023** (confirmado al intentarlo). Se usó entonces la fecha más tardía disponible dentro de ese límite (14-15/01/2023) como la mejor aproximación posible al máximo solar — no es el pico real, es una limitación de la herramienta. Dejar esto explícito en Métodos. Detalle completo en [`docs/checklist_espectros_reales.md`](geant4/GCR_SEP_Sim/docs/checklist_espectros_reales.md).
-
-Para GCR importa **la fecha real** (se pregunta "¿cómo es el flujo típico en esa fase del ciclo solar?"), aunque para el máximo la fecha usada quedó acotada por la herramienta, no por elección. Para SEP importa **la magnitud del evento**, no cuándo ocurrió — por eso los eventos elegidos caen en años completamente distintos (1989, 1956) sin relación con las fechas de GCR.
-
-Con esto, el resultado esperado es que **la dosis de GCR salga mayor en `min` que en `max`, y la dosis de SEP salga mayor en `max` que en `min`** — es física real del ciclo solar/severidad de evento, no un error si se da así; coméntenlo en la Discusión del artículo.
-
-Aplicación (**ambos modelos vía OLTARIS** desde 2026-09-08, al aprobarse el acceso — reemplaza el plan intermedio con SPENVIS, que queda como plan B):
-- **Badhwar-O'Neill 2020 (GCR)**: usar "Defined by: **Date**", no "Historical Solar Min/Max" — esa lista de años fijos solo llega hasta 2010, no cubre el ciclo solar actual. "Date" sí acepta las fechas 2019-2020/2024 sin problema.
-- **Historical SPE (SEP)**: catálogo de eventos puntuales con checkbox + factor de multiplicación (dejar en 1.0) — no un modelo probabilístico como ESP-PSYCHIC. Paso crítico: el toggle "Save external differential flux for space environment?" debe estar en "Sí" (ver [`docs/checklist_espectros_reales.md`](geant4/GCR_SEP_Sim/docs/checklist_espectros_reales.md) para el detalle completo y por qué se descartó usar "sin evento" para el mínimo).
-
-### 0.6. Cambiar de fuente de espectros (OLTARIS ↔ SPENVIS, u otra)
-
-El cambio de SPENVIS a OLTARIS del 2026-09-08 ya se hizo (ver arriba); esta
-sección documenta el mecanismo general por si hace falta volver a cambiar
-de fuente más adelante. El cambio es barato porque el pipeline ya está
-separado en capas:
-
-- `SpectrumSampler` (el código C++ que lee el CSV y muestrea energías) es
-  **agnóstico a la fuente** — solo espera dos columnas (energía, flujo), sin
-  importar si vinieron de SPENVIS, OLTARIS, o cualquier otra herramienta.
-  No hay que tocar ni una línea de `SpectrumSampler.cc`/`.hh` ni de
-  `PrimaryGeneratorAction.cc` para cambiar de fuente.
-- Cada fuente vive en su propia carpeta bajo
-  `geant4/GCR_SEP_Sim/data/sources/<fuente>/` (hoy: `oltaris/`, activa desde
-  2026-09-08, **completa desde 2026-09-10** — los 6 archivos son datos
-  reales, ver checklist; `spenvis/` conservada como plan B).
-  `data/*.csv` (sin la subcarpeta `sources/`) es solo el **destino activo**
-  — no se versiona en git (ver `.gitignore`), se regenera con:
-
-      cd geant4/GCR_SEP_Sim
-      python3 scripts/select_spectrum_source.py oltaris   # fuente activa hoy, los 6 completos
-      python3 scripts/select_spectrum_source.py spenvis   # plan B
-
-  (`--only <archivo...>` si alguna vez se necesita mezclar fuentes por
-  especie/fase — usar con cuidado, revisar bien Métodos si se hace).
-- Después de cambiar de fuente hay que volver a correr `cmake ..` dentro de
-  `build/` (no basta con `make -j`) para que el build recoja los CSV
-  nuevos — `CMakeLists.txt` copia `data/` a `build/data/` en la fase de
-  configuración de CMake, no en cada compilación.
-- Lo único que no es "gratis" al cambiar de fuente: la normalización de
-  dosis absoluta en `RunAction.cc` (implementada, ver `AGENTS.md` sección
-  "Dosis absoluta") usa el flujo/fluencia integrado de cada CSV, así que
-  cambiar de fuente cambia el número final de dosis, no solo la forma del
-  espectro muestreado — y el párrafo de Métodos del artículo, que sí cambia
-  de contenido según la fuente (aunque la fórmula conceptual para SEP
-  —fluencia de un evento puntual, sin factor de tiempo— es la misma para
-  cualquier evento histórico).
-
-### 1. Correr el barrido asignado
-
-Persona A (GCR):
-
-    python3 ../scripts/run_sweep.py --only-model GCR --repeats 5 --n-events 10000
-
-Persona B (SEP):
-
-    python3 ../scripts/run_sweep.py --only-model SEP --repeats 5 --n-events 10000
-
-Esto genera `build/resultados_dosis_sweep.csv` (una fila por corrida/repetición) y `build/sweep_manifest.csv` (semillas, tiempos, logs de cada corrida — útil para depurar si algo falla).
-
-### 2. Juntar resultados y calcular estadística
-
-Al terminar, cada quien renombra su CSV y lo coloca en `geant4/GCR_SEP_Sim/resultados/` (carpeta versionada en git — son los datos del artículo):
-
-    mkdir -p ../resultados
-    cp resultados_dosis_sweep.csv ../resultados/resultados_dosis_sweep_GCR.csv   # (o _SEP.csv, según corresponda)
-
-Con los dos archivos ya en `resultados/`, cualquiera de los dos corre la agregación:
-
-    cd geant4/GCR_SEP_Sim
-    python3 scripts/aggregate_results.py resultados/resultados_dosis_sweep_*.csv -o resultados/resultados_agregados.csv
-
-`aggregate_results.py` agrupa por (modelo, fase, campo, posición) y calcula, sin depender de librerías nuevas (solo Python estándar):
-
-| Columna | Significado |
-|---|---|
-| `n` | repeticiones encontradas para esa combinación (debería ser 5 — el script avisa si no) |
-| `dosis_media_Gy`, `dosis_std_Gy`, `dosis_sem_Gy`, `ic95_low_Gy`/`ic95_high_Gy`, `cv_pct` | estadística de `dosis_Gy` (dosis cruda de la corrida, sin ponderar por flujo real — solo para QA, no citar en el artículo) |
-| `dosis_absoluta_media_Gy`, `dosis_absoluta_std_Gy`, `dosis_absoluta_sem_Gy`, `ic95_absoluta_low_Gy`/`ic95_absoluta_high_Gy`, `cv_absoluta_pct` | estadística de `dosis_absoluta_Gy` — **esta es la que va al artículo**: Gy/día para GCR, Gy del evento completo para SEP (ver "Dosis absoluta" en `AGENTS.md`) |
-
-`resultados_agregados.csv` es directamente lo que va a la **tabla de resultados del artículo** (usando las columnas `dosis_absoluta_*`), y la fuente de datos para la **gráfica** (dosis vs. intensidad de campo, una curva por posición/evento, con barras de error = IC95%) y para lo que se comente en Resultados y Discusión.
+`/gun/phase max|min` representa la fase real del ciclo solar, no "el peor
+caso": el flujo GCR es mayor en mínimo solar y los SEP grandes son más
+frecuentes en máximo. Los CSV de GCR vienen en partículas/(día·cm²) y los
+de SEP en partículas/cm² (fluencia del evento completo), así que las dosis
+de GCR son por día y las de SEP por evento; no se suman. La limitación de
+fecha de GCR máximo debe quedar explícita en Métodos.
