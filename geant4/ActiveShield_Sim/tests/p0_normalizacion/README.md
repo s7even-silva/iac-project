@@ -18,3 +18,15 @@ Usa el scorer por evento (`/eventStats/*`).
 python3 p0_icrp116.py run --out-dir DIR --events 20000 --seeds 1 --threads 4
 python3 p0_icrp116.py analyze --out-dir DIR --reference icrp116_iso_am.csv
 ```
+
+**Nota: qué se compara.** Órganos individuales que ICRP 116 tabula
+(pulmones, colon, pared del estómago, médula roja, hígado; mama como
+descriptivo). No se comparan las categorías propias `remainder_tissues` ni
+`total_body`. Ver P0 en `docs/bitacora/plan_piloto.md`.
+
+**Referencias en `referencias/`:**
+- `icrp116_efectiva_protones.csv` (Tabla A.6) e `icrp116_efectiva_helio.csv`
+  (Tabla A.11): dosis efectiva, transcritas de la versión impresa. Sirven
+  como control secundario, porque necesitan el fantoma AF.
+- Falta el CSV por órgano. Esos coeficientes vienen solo en el material
+  suplementario (CD) de la publicación en Sage.

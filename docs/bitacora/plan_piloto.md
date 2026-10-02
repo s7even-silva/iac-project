@@ -50,8 +50,22 @@ otro sistema y exige un contraste separado.
 | D4 | Umbrales de los diagnósticos de convergencia (fracción máxima de un solo evento, mínimo de eventos con depósito, rango aceptable de SE_within/s_between) | P2, P3 |
 | D5 | Fantoma AF sí o no (dosis efectiva completa) | Diseño del barrido |
 | D6 | Posiciones (las 5 actuales u otra elección) | P1, P6, barrido |
-| D7 | Tolerancia con ICRP 116 para P0 | P0 |
+| D7 | Tolerancia con ICRP 116 para P0. **Propuesta con fuentes (2026-10-01): ±10% en órganos grandes y ±15% en mama y tiroides, a ≥100 MeV/n.** Ver «Base de la tolerancia D7» en P0 | P0 |
 | D8 | Perfil temporal de SEP: fuente de datos de cada evento (GOES para oct. 1989; feb. 1956 no tiene datos satelitales), forma del espectro variable o constante, y qué casos lo llevan (`plan_barrido.md`, sección 10) | Criterio temporal de P4 y tasa de dosis SEP; no bloquea la dosis del evento completo |
+
+**Relación entre D2, D3 y D7.** δ_η (D2) es la diferencia mínima de
+efectividad escudo/control que el estudio tiene que poder resolver.
+δ_η = 10 pp equivale a una diferencia de dosis igual al 10% de la dosis
+sin escudo.
+
+- **D3 puede derivarse de D2,** como en `plan_estadistico.md`:
+  B = δ_η/4, es decir 2.5 pp con δ_η = 10 pp. Fijar D2 desbloquea
+  entonces D3 y con eso P1, P4 y P5.
+- **D7 es otra cosa.** Mide la exactitud de la dosis absoluta frente a una
+  referencia externa. En η = 1 − D₁/D₀ un error de normalización común a
+  escudo y control se cancela, así que D7 afecta sobre todo a los
+  resultados absolutos (Gy/día, Sv, riesgo). Afecta a η solo si el error
+  depende de la energía y el escudo cambia el espectro.
 
 ## Requisitos técnicos bloqueantes
 
@@ -113,6 +127,83 @@ Pendientes:
   tabla ISO/AM exacta y sus unidades (dosis absorbida, no efectiva).
   ICRP 116 se calculó con otros
   códigos y physics lists; diferencias de este orden no implican error.
+- **Base de la tolerancia D7 (propuesta, 2026-10-01; falta que el equipo la
+  apruebe):**
+  - **Incertidumbre de la propia referencia (ICRP 116):** según §4.4.2 y
+    §4.7.2, el error estadístico relativo de los coeficientes es menor
+    que 5% en la mayoría de los órganos, y llega a 15% en órganos chicos
+    como la tiroides. Esto vale para protones y helio, con PHITS como
+    código primario. La validación con GEANT4 tuvo menos de 4% sobre
+    20 MeV.
+  - **Diferencias entre códigos:** según §4.4.3, en casi todos los casos
+    fueron mucho menores que esa incertidumbre estadística, con muy buen
+    acuerdo sobre 10 MeV. Para helio (§4.7.3), PHITS y FLUKA dan un
+    acuerdo «satisfactorio». Los valores de referencia son el promedio
+    de los códigos, después suavizado.
+  - **Geant4 independiente:** con Geant4 10.04 (QGSP_BIC_HP) y fantomas
+    mesh, el cociente frente a ICRP 116 en geometría ISO queda «mayormente
+    entre 0.9 y 1.1» sobre 100 MeV/u, para protones y helio. Ese cociente
+    incluye además la diferencia de anatomía entre fantomas (Yeom et al.
+    2019, *Nucl. Eng. Technol.* 52(7):1545,
+    [PMC11210835](https://pmc.ncbi.nlm.nih.gov/articles/PMC11210835/)).
+  - **Propuesta:** a ≥100 MeV/n, el IC95 del cociente dentro de
+    [0.90, 1.10] para los órganos grandes: pulmón, colon, pared del
+    estómago, médula roja e hígado. Hay dos razones independientes que
+    llevan al mismo número:
+    - es aproximadamente 2σ del error de la propia referencia (≤5% en
+      órganos grandes);
+    - coincide con la banda 0.9–1.1 que obtuvo otro grupo con Geant4.
+  - **Órganos chicos (mama y tiroides): ±15%,** a pedido del equipo, para
+    tener un criterio numérico también en ellos. Hay que saber que este
+    número es más exigente que el ruido de la propia referencia:
+    - el error estadístico de PHITS por punto llegaba a 15% (1σ) en
+      órganos chicos, aunque el promediado entre códigos y el suavizado
+      lo reducen;
+    - por eso, que un órgano chico quede fuera se registra y se investiga,
+      pero por sí solo no hace fallar P0. P0 falla solo si fallan órganos
+      grandes.
+    - **Costo:** para que el IC95 quepa en ±15% hace falta un error
+      relativo de ~4% en órganos de 20–25 g. Eso pide ~4–6·10⁶ eventos por
+      energía, frente a ~3·10⁶ para los grandes, y duplica el tiempo de
+      P0 (sección «Costo» más abajo).
+  - Los demás órganos de `organos_p0.py` son descriptivos.
+  - Entre el corte del casco y 100 MeV/n, todo es descriptivo.
+
+> **Nota: qué se compara en P0.** Se comparan órganos individuales que
+> ICRP 116 tabula, cada uno con su definición: pulmones, colon, pared del
+> estómago, mama, médula roja, hígado, etc. **No** se usa la categoría
+> `remainder_tissues` de `write_event_categories.py`. Esa categoría es una
+> agregación por masa propia de este proyecto, y ICRP calcula sus
+> «tejidos restantes» de otra forma (media aritmética de los órganos).
+> Tampoco se usa `total_body`. Diferencias que hay que respetar
+> (`tests/p0_normalizacion/organos_p0.py`):
+> - **Colon:** en ICRP 116 incluye la pared del recto (RC + LC + RSig). La
+>   categoría `colon` del proyecto no la incluye.
+> - **Médula roja:** verificado en ICRP 116 (§3.4 y párrafo 116). Se toma
+>   como la dosis en la esponjosa de cada hueso, promediada con peso igual
+>   a la masa de médula activa. Es lo mismo que pesar con la fracción de
+>   médula roja, así que se puede comparar directamente.
+
+  - **Tabla de referencia, lista (2026-10-01):**
+    `tests/p0_normalizacion/referencias/icrp116_organos_iso_am.csv`.
+    Contiene 28 órganos, protones y helio, ISO, fantoma masculino, en
+    pGy·cm². Se extrajo del material suplementario v2 de ICRP 116
+    (`p116jaicrp_40_2_5_conversion_coefficients_suppl_data_ver2.zip`, que
+    no se versiona por derechos de autor). Se verificó contra la Tabla
+    impresa: pulmones a 1 GeV, 579 pGy·cm².
+  - **Dosis efectiva** (Tablas A.6 y A.11): transcrita como control
+    secundario. Necesita el fantoma AF (D5).
+  - **Costo estimado de P0** (8 energías, esta máquina de 8 núcleos):
+    - ~4–5 h si solo se exige a los órganos grandes;
+    - ~9–10 h para que mama y tiroides también alcancen la precisión de
+      ±15%.
+
+    Achicar la esfera fuente alrededor del fantoma desnudo reduce el costo
+    cerca de la mitad.
+  - **Tabla de referencia:** en
+    [ICRP 116](https://www.icrp.org/publication.asp?id=icrp+publication+116),
+    anexos de coeficientes ISO para AM. Hay que transcribirla a un CSV
+    versionado con fuente y unidades (pGy·cm²).
 - **Resultado esperado:** acuerdo dentro de la tolerancia. La atribución
   del factor ~1.8 a interacciones nucleares es una hipótesis: requiere
   diagnóstico de procesos o una comparación física controlada y no es
@@ -236,6 +327,27 @@ Repite la Fase 7 con el scorer nuevo.
   no hace exacta la varianza estimada ni valida automáticamente un IC normal.
 - **Bloquea:** usar R=1. Si falla, investigar el scorer y las colas antes
   de elegir más repeticiones; no extrapolar el factor histórico 0.08/0.48.
+
+#### Costo estimado de P2 con cuerpo entero (2026-10-01)
+
+Medido con sondas de 3000 eventos en la geometría de producción actual
+(mapa Elmer, bobinas, esfera de 6.94 m, x=0, 8 hilos), con ~20 s de
+inicialización descontados. Es un orden de magnitud: la esfera de P1 (12–16 m)
+bajará la fracción de eventos con depósito entre 3 y 5 veces.
+
+| Caso | Costo por evento (s·núcleo) | Eventos con depósito en cuerpo entero | Eventos por lote de ~200 depósitos | K=40 lotes (h, 8 núcleos) | K=20 lotes (h) |
+|---|---|---|---|---|---|
+| SEP_p 300 MeV | ~0.02 | 0.6% | 33 000 | ~1 | ~0.5 |
+| GCR_H 1 GeV | 0.16 | 0.5% | 40 000 | ~9 | ~4.5 |
+| GCR_He 1 GeV/n | 0.73 | 1.4% | 14 000 | ~14.5 | ~7 |
+| GCR_H 10 GeV | 1.5 | 2.5% | 8 000 | ~16.5 | ~8 |
+
+- **Los 4 casos con K=40:** ~40 h, unos 1.7 días de esta máquina.
+- **Con K=20:** ~20 h. Equivale a un IC de ρ de ±30% en vez de ±22%.
+- **Médula roja:** cuesta unas 2–4 veces más.
+- **Observación del contador R6:** en SEP_p de 300 MeV, el 1.9% de los
+  primarios se corta por el límite de longitud de traza (partículas
+  atrapadas en el campo). Hay que revisarlo en P1.
 
 #### Prueba inicial del atajo intra-run (2026-10-01, exploratoria, no es P2)
 

@@ -54,6 +54,10 @@ CASES = {
     # Réplica con otra semilla (agregada después de ver h10000_casco, que dio
     # rho < 1 en lotes contiguos): confirma o descarta ese resultado.
     "h10000_casco_rep": ("GCR_H", "min", 10000.0, 0.0, "casco"),
+    # Sondas de costo en geometría de producción, para estimar P2.
+    "h1000_prod": ("GCR_H", "min", 1000.0, 0.0, "prod"),
+    "h10000_prod": ("GCR_H", "min", 10000.0, 0.0, "prod"),
+    "he1000_prod": ("GCR_He", "min", 1000.0, 0.0, "prod"),
 }
 SEEDS = {name: 20261002_00+10*i for i, name in enumerate(CASES)}
 

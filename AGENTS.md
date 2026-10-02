@@ -125,6 +125,9 @@ enlaces:
   (2026-10-01) — estimador de incertidumbre de una sola corrida (scorer por
   evento, `/eventStats/*`) y su autodiagnóstico (VOV < 0.1 de MCNP +
   eventos con depósito), con la validación y un borrador para el paper.
+- **[`docs/bitacora/referencias_paper.md`](docs/bitacora/referencias_paper.md)**
+  — referencias para el paper (ICRP 116, Yeom et al. 2020, VOV de MCNP) y
+  para qué se cita cada una.
 - **[`infra/README.md`](infra/README.md)**, **[`infra/deploy/README.md`](infra/deploy/README.md)**,
   **[`infra/GUIA_VOLUNTARIOS.md`](infra/GUIA_VOLUNTARIOS.md)**,
   **[`infra/GUIA_WORKER_LOCAL.md`](infra/GUIA_WORKER_LOCAL.md)** —

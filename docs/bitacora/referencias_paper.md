@@ -1,0 +1,13 @@
+# Referencias para el paper
+
+Lista de trabajo: qué citar y para qué. Antes de enviar, verificar cada
+cita (año, volumen, páginas y DOI) contra la fuente oficial.
+
+| Referencia | Para qué se cita | Dónde se usa en el proyecto |
+|---|---|---|
+| ICRP (2010). *Conversion Coefficients for Radiological Protection Quantities for External Radiation Exposures.* ICRP Publication 116. Ann. ICRP 40(2–5). Material suplementario v2. [icrp.org](https://www.icrp.org/publication.asp?id=ICRP+Publication+116) | Coeficientes de referencia de dosis absorbida por órgano (ISO, fantoma masculino) para validar la normalización absoluta (P0). Incertidumbre de la referencia y acuerdo entre códigos (§4.4.2–4.4.3, §4.7.2–4.7.3). Método de médula roja (§3.4). | `plan_piloto.md` (P0, D7); `tests/p0_normalizacion/referencias/` |
+| Yeom, Y. S. et al. (2020). *Dose coefficients of mesh-type ICRP reference computational phantoms for external exposures of neutrons, protons, and helium ions.* Nucl. Eng. Technol. 52(7):1545–1556. [ScienceDirect](https://www.sciencedirect.com/science/article/pii/S1738573319309726), [PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC11210835/) | Cálculo independiente con Geant4 (10.04, QGSP_BIC_HP) frente a ICRP 116. En ISO, cocientes mayormente entre 0.9 y 1.1 sobre 100 MeV/u para protones y helio. Respalda la tolerancia D7 de ±10%. | `plan_piloto.md` (D7) |
+| Pederson, S. P., Forster, R. A., Booth, T. E. (1997). *Confidence interval procedures for Monte Carlo transport simulations.* Nucl. Sci. Eng. 127(1). [doi:10.13182/NSE97-A1921](https://www.tandfonline.com/doi/abs/10.13182/NSE97-A1921) | VOV y criterio VOV < 0.1 para confiar en el IC de una sola corrida. | `metodo_autodiagnostico_incertidumbre.md` |
+| Forster, R. A., Pederson, S. P., Booth, T. E. *Ten new checks to assess the statistical quality of Monte Carlo solutions in MCNP.* [OSTI 10120110](https://www.osti.gov/biblio/10120110-ten-new-checks-assess-statistical-quality-monte-carlo-solutions-mcnp) | Origen de los chequeos estadísticos de MCNP (VOV, pendiente de la cola). | `metodo_autodiagnostico_incertidumbre.md` |
+| X-5 Monte Carlo Team. *MCNP — A General Monte Carlo N-Particle Transport Code, Version 5.* LA-UR-03-1987, cap. 2. [PDF](https://mcnp.lanl.gov/pdf_files/TechReport_2003_LANL_LA-UR-03-1987Revised212008_SweezyBoothEtAl.pdf) | Definición operativa de la VOV y sus umbrales. | `metodo_autodiagnostico_incertidumbre.md` |
+| Geant4 Collaboration, documentación de multihilo. [Enlace](https://geant4.web.cern.ch/documentation/pipelines/master/bftd_html/ForToolkitDeveloper/OOAnalysisDesign/Multithreading/mt.html) | Semillas por evento: independencia de los eventos. | `metodo_autodiagnostico_incertidumbre.md`, `plan_barrido.md` |

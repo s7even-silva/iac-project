@@ -2,28 +2,32 @@
 """P0 de plan_piloto.md: dosis absorbida por unidad de fluencia en el
 fantoma AM desnudo frente a ICRP 116 (irradiación isótropa, ISO).
 
-Preparado, no corrido: P0 no se aprueba sin la tolerancia D7 ni la tabla
-ICRP 116 transcrita y versionada. Fijar D7, la lista de energías/órganos y
-las comparaciones primarias antes de ejecutar `run`.
-
 Configuración: casco de 0.001 cm, sin bobinas ni campo, nave reducida (radio
 0.6 m, semilongitud 1.0 m; esfera fuente ≈1.37 m). La ley coseno sobre la
 esfera da fluencia isótropa y uniforme N/(πR²) dentro de ella (verificado,
 plan_piloto.md), que es la geometría ISO de ICRP 116.
 
-Coeficiente simulado por categoría c:
-    d_c = (S1_c / M) / m_c · πR²   [Gy·cm²]  -> ×1e12 pGy·cm²
-con S1_c del scorer por evento (/eventStats) y m_c la masa pooled de
-write_event_categories.py. El SE sale de se_mean_J del mismo archivo.
+Coeficiente simulado por órgano o:
+    d_o = (S1_o / M) / m_o · πR²   [Gy·cm²]  -> ×1e12 pGy·cm²
+con S1_o del scorer por evento (/eventStats) y m_o la masa del órgano con la
+definición de ICRP 116 (organos_p0.py). El SE sale de se_mean_J.
 
-Tabla de referencia (`--reference`, CSV): columnas
-    particula (proton|alpha), energia_mev_por_nucleon, categoria, coef_pGy_cm2
-con los valores ISO de ICRP 116 para el fantoma masculino (dosis absorbida,
-no efectiva). Las categorías tienen que ser las de write_event_categories.py.
+Nota: solo se comparan órganos que ICRP 116 tabula, con su definición
+(organos_p0.py: el colon incluye la pared del recto, la médula roja se pondera
+por la masa de médula activa de cada esponjosa). Las categorías propias del
+proyecto (`remainder_tissues`, `total_body`) no se usan en P0.
+
+Criterio D7 (plan_piloto.md): a >= 100 MeV/n, el IC95 del cociente
+simulado/ICRP tiene que caer dentro de 1 ± tolerancia: 10% para pulmones,
+colon, pared del estómago, hígado y médula roja; 15% para mama y tiroides.
+El resto de órganos y energías son descriptivos.
+
+Referencia por defecto: referencias/icrp116_organos_iso_am.csv (material
+suplementario v2 de ICRP 116, fantoma masculino, ISO).
 
 Uso:
-    python3 p0_icrp116.py run --out-dir DIR --events 20000 [--seeds 1]
-    python3 p0_icrp116.py analyze --out-dir DIR --reference icrp116_iso_am.csv
+    python3 p0_icrp116.py run --out-dir DIR --events 3000000 [--seeds 1]
+    python3 p0_icrp116.py analyze --out-dir DIR
 """
 import argparse
 import csv
@@ -34,6 +38,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 PROJECT = HERE.parent.parent
+sys.path.insert(0, str(HERE))
+import organos_p0  # noqa: E402
 BASE_SEED = 20261001_50  # solo P0
 SHIP_RADIUS_M, SHIP_HALF_LENGTH_M, HULL_CM = 0.6, 1.0, 0.001
 SOURCE_R_CM = math.hypot(SHIP_RADIUS_M*100, SHIP_HALF_LENGTH_M*100)+HULL_CM+20.0
@@ -76,9 +82,8 @@ MACRO = """\
 def run(a):
     build = a.build_dir.resolve()
     a.out_dir.mkdir(parents=True, exist_ok=True)
-    categories = a.out_dir/"event_categories.txt"
-    subprocess.run([sys.executable, str(PROJECT/"scripts"/"write_event_categories.py"), str(categories),
-                    "--icrp-data-dir", str(build/"ICRPdata")], check=True)
+    categories = a.out_dir/"organos_p0.txt"
+    organos_p0.write(categories, build/"ICRPdata")
     for i, (particle, energy) in enumerate(POINTS):
         for s in range(a.seeds):
             work = a.out_dir/f"{particle}_{energy:g}"/f"seed_{s}"
@@ -101,11 +106,10 @@ def run(a):
 
 def analyze(a):
     masses = {r["categoria"]: float(r["masa_kg"])
-              for r in csv.DictReader(open(a.out_dir/"event_categories.masses.tsv"), delimiter="\t")}
+              for r in csv.DictReader(open(a.out_dir/"organos_p0.masses.tsv"), delimiter="\t")}
     reference = {}
-    if a.reference:
-        for r in csv.DictReader(open(a.reference)):
-            reference[(r["particula"], float(r["energia_mev_por_nucleon"]), r["categoria"])] = float(r["coef_pGy_cm2"])
+    for r in csv.DictReader(l for l in open(a.reference) if not l.startswith("#")):
+        reference[(r["particula"], float(r["energia_mev_por_nucleon"]), r["organo_icrp"])] = float(r["coef_pGy_cm2"])
     area = math.pi*SOURCE_R_CM**2
     rows = []
     for particle, energy in POINTS:
@@ -114,16 +118,29 @@ def analyze(a):
             for r in csv.DictReader(lines, delimiter="\t"):
                 if r["checkpoint"] != "-1" or r["kind"] != "category":
                     continue
-                cat = r["id"]
-                d = float(r["mean_J"])/masses[cat]*area*1e12
-                se = float(r["se_mean_J"])/masses[cat]*area*1e12
-                ref = reference.get((particle, energy, cat))
-                row = {"particula": particle, "energia_mev_por_nucleon": energy, "semilla": stats.parent.name,
-                       "categoria": cat, "coef_sim_pGy_cm2": d, "se_pGy_cm2": se,
-                       "eventos_con_deposito": r["n_nonzero"], "coef_icrp116_pGy_cm2": ref or "",
-                       "cociente": d/ref if ref else "",
-                       "ic95_lo": (d-1.96*se)/ref if ref else "", "ic95_hi": (d+1.96*se)/ref if ref else ""}
-                rows.append(row)
+                organ = r["id"]
+                d = float(r["mean_J"])/masses[organ]*area*1e12
+                se = float(r["se_mean_J"])/masses[organ]*area*1e12
+                ref = reference.get((particle, energy, organ))
+                tol = organos_p0.TOLERANCE.get(organ) if energy >= organos_p0.MIN_ENERGY_PRIMARY else None
+                lo = (d-1.96*se)/ref if ref else None
+                hi = (d+1.96*se)/ref if ref else None
+                reliable = r["vov"] != "inf" and float(r["vov"]) < 0.1
+                if tol is None or ref is None:
+                    verdict = "descriptivo"
+                elif not reliable:
+                    verdict = "SE_no_confiable"
+                else:
+                    verdict = "dentro" if (lo >= 1-tol and hi <= 1+tol) else (
+                        "fuera" if (hi < 1-tol or lo > 1+tol) else "inconcluso")
+                rows.append({"particula": particle, "energia_mev_por_nucleon": energy,
+                             "semilla": stats.parent.name, "organo_icrp": organ,
+                             "coef_sim_pGy_cm2": d, "se_pGy_cm2": se,
+                             "eventos_con_deposito": r["n_nonzero"], "vov": r["vov"],
+                             "coef_icrp116_pGy_cm2": ref if ref else "",
+                             "cociente": d/ref if ref else "", "ic95_lo": lo if ref else "",
+                             "ic95_hi": hi if ref else "", "tolerancia": tol if tol else "",
+                             "veredicto": verdict})
     if not rows:
         raise SystemExit("Sin corridas en --out-dir")
     out = a.out_dir/"p0_resumen.csv"
@@ -131,9 +148,12 @@ def analyze(a):
         w = csv.DictWriter(f, fieldnames=list(rows[0]))
         w.writeheader()
         w.writerows(rows)
+    for r in rows:
+        if r["tolerancia"]:
+            print(f"{r['particula']:6s} {r['energia_mev_por_nucleon']:>8g} {r['organo_icrp']:9s} "
+                  f"cociente={r['cociente']:.3f} [{r['ic95_lo']:.3f},{r['ic95_hi']:.3f}] "
+                  f"tol=±{r['tolerancia']:.0%} vov={float(r['vov']):.3f} -> {r['veredicto']}")
     print(f"{len(rows)} filas -> {out}")
-    if not reference:
-        print("Sin --reference: solo coeficientes simulados; P0 no se evalúa.")
 
 
 def main():
@@ -147,7 +167,7 @@ def main():
     r.add_argument("--threads", type=int, default=4)
     s = sub.add_parser("analyze")
     s.add_argument("--out-dir", type=Path, required=True)
-    s.add_argument("--reference", type=Path)
+    s.add_argument("--reference", type=Path, default=HERE/"referencias"/"icrp116_organos_iso_am.csv")
     a = p.parse_args()
     run(a) if a.cmd == "run" else analyze(a)
 
