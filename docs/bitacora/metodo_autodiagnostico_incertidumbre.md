@@ -178,8 +178,11 @@ Configuración común:
 - Fuente isótropa con ley coseno sobre una esfera de radio ≈1.37–1.39 m,
   dentro de una nave reducida (radio 0.6 m, semilongitud 1.0 m).
 - Sin bobinas ni campo, fantoma en x=0.
-- Binario compilado desde el árbol de trabajo sobre el commit `f30d073`
-  más los cambios de este documento, sin commit propio todavía.
+- Código: commit `57fa5d1` (rama `plan-piloto-scorer-por-evento`).
+  - Las corridas de las secciones 5.2–5.3 se hicieron con el mismo scorer
+    antes de agregar S3/S4/VOV al C++.
+  - La VOV de la sección 5.4 se calculó en Python desde los totales por
+    evento, con la misma fórmula; T4 verifica que coincida con la del C++.
 
 ### 5.1 Exactitud de la implementación
 
