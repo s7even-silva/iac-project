@@ -93,6 +93,6 @@ watch(path, () => (start = performance.now()));
 .lab-hab { fill: var(--ink-2); font-size: 17px; font-weight: 500; }
 .track { fill: none; stroke: var(--ink); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 .track-cmp { fill: none; stroke: var(--gcr); stroke-width: 3.5; stroke-dasharray: 8 7; stroke-linecap: round; }
-.origin { fill: var(--ink); stroke: var(--panel); stroke-width: 2; }
-.particle { fill: var(--ink); stroke: var(--panel); stroke-width: 2; }
+.origin { fill: var(--ink); stroke: var(--bg); stroke-width: 2; }
+.particle { fill: var(--ink); stroke: var(--bg); stroke-width: 2; }
 </style>

@@ -21,7 +21,6 @@ defineProps<{ title: string; subtitle?: string }>();
   min-width: 0;
 }
 .head {
-  background: var(--panel-head);
   border-bottom: 1px solid var(--line);
   padding: 0.7rem 1rem;
   position: relative;

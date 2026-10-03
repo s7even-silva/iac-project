@@ -21,7 +21,7 @@ defineProps<{ rows: { label: string; kind: "sun" | "galaxy"; dashed?: boolean; f
 .bars { display: grid; gap: 0.45rem; }
 .row { display: grid; grid-template-columns: 18px 5.2em 1fr 4.8em; align-items: center; gap: 0.6rem; }
 .name { font-size: 0.85rem; color: var(--ink-2); }
-.track { height: 10px; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; }
+.track { height: 10px; border-radius: 999px; background: var(--sunken); border: 1px solid var(--line); overflow: hidden; }
 .fill {
   display: block; height: 100%; border-radius: 999px; background: var(--shield);
   transition: width 240ms var(--ease);

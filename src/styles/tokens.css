@@ -10,10 +10,10 @@
 
   /* The poster palette, exact. Lines and grids are the secondary text color
      at low alpha, so no new hue enters the system. */
-  --bg: #0B1220;           /* page background: space blue */
-  --panel: #131D33;        /* panel body: slate blue */
-  --panel-head: #1B2A4A;   /* panel header: steel blue */
-  --sunken: #0B1220;       /* tiles inside panels */
+  --bg: #131D33;           /* page background = the iPoster box body, so the iframe reads as part of the box */
+  --panel: transparent;    /* panels sit on the same sheet, marked by a hairline */
+  --panel-head: #1B2A4A;   /* badges, tooltips: steel blue */
+  --sunken: #0B1220;       /* insets: segmented control, tracks */
   --ink: #E8EEF7;          /* main text: cold white */
   --ink-2: #9FB0C8;        /* secondary text, legends: blue gray */
   --ink-3: rgba(159, 176, 200, 0.7);

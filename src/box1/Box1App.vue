@@ -121,7 +121,7 @@ h1 { margin: 0; font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; li
 .toggle { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--ink-2); cursor: pointer; }
 .toggle input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .knob {
-  width: 36px; height: 20px; border-radius: 999px; background: var(--bg); border: 1px solid var(--line-strong);
+  width: 36px; height: 20px; border-radius: 999px; background: var(--sunken); border: 1px solid var(--line-strong);
   position: relative; transition: background-color var(--dur) var(--ease);
 }
 .knob::after {
