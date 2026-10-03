@@ -1,6 +1,6 @@
 /* Poster design tokens. One meaning per color, in the poster and in every
    figure: cyan = field and active shield, amber = Sun, SEP and HTS coils,
-   indigo = GCR (second GCR species: light indigo, always dashed),
+   indigo = GCR (second GCR species dashed),
    coral = dose and risk figures only. Dark only, to match the poster. */
 @import "@fontsource-variable/inter";
 @import "@fontsource-variable/jetbrains-mono";
@@ -8,24 +8,24 @@
 :root {
   color-scheme: dark;
 
-  --bg: #060b17;
-  --panel: #0e1729;
-  --panel-head: #13203b;
-  --sunken: #0a1222;
-  --line: #1f2e4d;
-  --line-strong: #2b3f66;
+  /* The poster palette, exact. Lines and grids are the secondary text color
+     at low alpha, so no new hue enters the system. */
+  --bg: #0B1220;           /* page background: space blue */
+  --panel: #131D33;        /* panel body: slate blue */
+  --panel-head: #1B2A4A;   /* panel header: steel blue */
+  --sunken: #0B1220;       /* tiles inside panels */
+  --ink: #E8EEF7;          /* main text: cold white */
+  --ink-2: #9FB0C8;        /* secondary text, legends: blue gray */
+  --ink-3: rgba(159, 176, 200, 0.7);
+  --line: rgba(159, 176, 200, 0.16);
+  --line-strong: rgba(159, 176, 200, 0.32);
 
-  --ink: #e6edf7;
-  --ink-2: #93a4bf;
-  --ink-3: #6b7d99;
-
-  --shield: #38bdf8;
+  --shield: #38BDF8;       /* field and active shield: cyan */
   --shield-soft: rgba(56, 189, 248, 0.12);
-  --shield-glow: rgba(56, 189, 248, 0.35);
-  --sep: #f5a524;
-  --gcr: #818cf8;
-  --gcr-2: #c7d2fe;
-  --risk: #f87171;
+  --sep: #F5A524;          /* SEP, Sun, HTS coils: amber */
+  --gcr: #7C8CF8;          /* GCR: indigo (second GCR species dashed) */
+  --gcr-2: #7C8CF8;
+  --risk: #F0605D;         /* dose and risk figures only: coral */
 
   --font-sans: "Inter Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, "SFMono-Regular", Menlo, monospace;

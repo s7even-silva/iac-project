@@ -34,8 +34,8 @@ h1 { margin: 0.2rem 0 0.3rem; font-size: 1.7rem; letter-spacing: -0.02em; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
 .text { margin: 0 0 0.7rem; color: var(--ink-2); font-size: 0.9rem; }
 .open {
-  display: inline-block; color: #04111f; background: var(--shield); border-radius: 8px;
+  display: inline-block; color: #0B1220; background: var(--shield); border-radius: 8px;
   padding: 0.35rem 0.9rem; font-weight: 650; text-decoration: none; font-size: 0.85rem;
 }
-.open:hover { box-shadow: 0 0 14px var(--shield-glow); }
+.open:hover { background: var(--ink); }
 </style>

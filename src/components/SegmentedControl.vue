@@ -39,5 +39,5 @@ button {
   transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
 }
 button:hover { color: var(--ink); background: var(--panel-head); }
-button.on { background: var(--shield); color: #04111f; box-shadow: 0 0 12px var(--shield-glow); }
+button.on { background: var(--shield); color: #0B1220; }
 </style>

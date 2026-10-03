@@ -27,11 +27,11 @@ and commit `docs/` together with the source**.
 
 ## Layout
 
-- `src/styles/tokens.css`: the palette and type. One meaning per color, in
-  the poster and in every figure: cyan = field and active shield, amber =
-  Sun, SEP and HTS coils, indigo = GCR (second GCR species in light indigo,
-  always dashed), coral = dose and risk figures only. Dark only, to match
-  the poster.
+- `src/styles/tokens.css`: the palette and type. Exact poster palette,
+  flat (no glow or shadows), dark only. One meaning per color, in the poster
+  and in every figure: cyan = field and active shield, amber = Sun, SEP and
+  HTS coils, indigo = GCR (second GCR species dashed), coral = dose and risk
+  figures only. Text kept to a minimum: labels, icons and diagrams first.
 - `src/components/`: shared pieces (panel, stat tile, segmented control,
   slider).
 - `src/lib/physics.ts`: rigidity, energy and formatting helpers.

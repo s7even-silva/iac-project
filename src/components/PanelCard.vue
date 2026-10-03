@@ -14,12 +14,11 @@ defineProps<{ title: string; subtitle?: string }>();
 
 <style scoped>
 .panel {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 40%), var(--panel);
+  background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   overflow: hidden;
   min-width: 0;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
 }
 .head {
   background: var(--panel-head);
@@ -36,7 +35,6 @@ defineProps<{ title: string; subtitle?: string }>();
   width: 3px;
   border-radius: 0 3px 3px 0;
   background: var(--shield);
-  box-shadow: 0 0 10px var(--shield-glow);
 }
 h2 { margin: 0; font-size: 1.05rem; font-weight: 650; letter-spacing: -0.01em; }
 p { margin: 0.15rem 0 0; font-size: 0.85rem; color: var(--ink-2); }

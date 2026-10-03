@@ -10,10 +10,7 @@ body {
   font-family: var(--font-sans);
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
-  background:
-    radial-gradient(900px 500px at 8% -10%, rgba(56, 189, 248, 0.10), transparent 60%),
-    radial-gradient(800px 600px at 105% 110%, rgba(129, 140, 248, 0.10), transparent 60%),
-    var(--bg);
+  background: var(--bg);
 }
 
 .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }

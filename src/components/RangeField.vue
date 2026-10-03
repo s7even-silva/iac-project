@@ -39,7 +39,6 @@ input[type="range"]::-webkit-slider-thumb {
   border-radius: 50%;
   background: var(--ink);
   border: 3px solid var(--shield);
-  box-shadow: 0 0 10px var(--shield-glow);
 }
 input[type="range"]::-moz-range-thumb {
   width: 16px;
@@ -47,6 +46,5 @@ input[type="range"]::-moz-range-thumb {
   border-radius: 50%;
   background: var(--ink);
   border: 3px solid var(--shield);
-  box-shadow: 0 0 10px var(--shield-glow);
 }
 </style>

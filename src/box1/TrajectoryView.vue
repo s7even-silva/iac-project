@@ -59,19 +59,8 @@ watch(path, () => (start = performance.now()));
 
 <template>
   <svg :viewBox="`0 0 ${W} ${H}`" role="img" aria-label="Particle path through a uniform magnetic field layer">
-    <defs>
-      <radialGradient id="dotGlow">
-        <stop offset="0%" stop-color="#e6edf7" stop-opacity="0.9" />
-        <stop offset="100%" stop-color="#38bdf8" stop-opacity="0" />
-      </radialGradient>
-      <linearGradient id="slab" x1="0" x2="1">
-        <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.06" />
-        <stop offset="50%" stop-color="#38bdf8" stop-opacity="0.16" />
-        <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.06" />
-      </linearGradient>
-    </defs>
 
-    <rect :x="px(0)" y="0" :width="L * S" :height="H" fill="url(#slab)" />
+    <rect :x="px(0)" y="0" :width="L * S" :height="H" class="slab" />
     <line :x1="px(0)" :x2="px(0)" y1="0" :y2="H" class="edge" />
     <line :x1="px(L)" :x2="px(L)" y1="0" :y2="H" class="edge" />
     <g class="cross">
@@ -89,12 +78,12 @@ watch(path, () => (start = performance.now()));
     <path ref="pathEl" :d="path.d" class="track" />
     <path v-if="compare" :d="path.d" class="track-cmp" />
     <circle :cx="px(X0)" :cy="py(0)" r="5" class="origin" />
-    <circle v-if="!reduced" :cx="dot.x" :cy="dot.y" r="14" fill="url(#dotGlow)" />
-    <circle v-if="!reduced" :cx="dot.x" :cy="dot.y" r="4" class="particle" />
+    <circle v-if="!reduced" :cx="dot.x" :cy="dot.y" r="5" class="particle" />
   </svg>
 </template>
 
 <style scoped>
+.slab { fill: var(--shield-soft); }
 .edge { stroke: var(--shield); stroke-opacity: 0.45; }
 .cross circle { fill: none; stroke: var(--shield); stroke-opacity: 0.45; }
 .cross path { stroke: var(--shield); stroke-opacity: 0.45; }
@@ -105,5 +94,5 @@ watch(path, () => (start = performance.now()));
 .track { fill: none; stroke: var(--ink); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 .track-cmp { fill: none; stroke: var(--gcr); stroke-width: 3.5; stroke-dasharray: 8 7; stroke-linecap: round; }
 .origin { fill: var(--ink); stroke: var(--panel); stroke-width: 2; }
-.particle { fill: #fff; }
+.particle { fill: var(--ink); stroke: var(--panel); stroke-width: 2; }
 </style>

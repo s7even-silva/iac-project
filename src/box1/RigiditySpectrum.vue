@@ -4,8 +4,9 @@ import { scaleLinear, scaleLog } from "d3-scale";
 import { curveMonotoneX, line } from "d3-shape";
 import { SPECTRA, interp, type Spectrum } from "../lib/spectra";
 import { fmtR } from "../lib/physics";
+import SourceIcon from "../components/SourceIcon.vue";
 
-const props = defineProps<{ R: number; Rcut: number; particleName: string }>();
+const props = defineProps<{ R: number; Rcut: number; symbol: string }>();
 
 const W = 600, H = 300;
 const M = { l: 56, r: 34, t: 30, b: 46 };
@@ -32,7 +33,6 @@ const paths = series.map(s => ({ ...s, d: pathOf(SPECTRA[s.key]) }));
 
 const cutX = computed(() => x(props.Rcut));
 const markX = computed(() => x(props.R));
-const markRight = computed(() => props.R > 150);
 
 // Hover: crosshair and the three values at that rigidity.
 const svgEl = ref<SVGSVGElement | null>(null);
@@ -65,7 +65,7 @@ const hoverRows = computed(() =>
     >
       <rect :x="M.l" :y="M.t" :width="Math.max(0, cutX - M.l)" :height="H - M.t - M.b" class="wash" />
       <line :x1="cutX" :x2="cutX" :y1="M.t" :y2="H - M.b" class="cut" />
-      <text :x="cutX - 6" :y="M.t - 10" text-anchor="end" class="cut-lab">turned back below {{ fmtR(Rcut) }}</text>
+      <text :x="cutX - 6" :y="M.t - 10" text-anchor="end" class="cut-lab num">cutoff {{ fmtR(Rcut) }}</text>
 
       <g class="axis">
         <g v-for="t in yTicks" :key="t">
@@ -85,14 +85,13 @@ const hoverRows = computed(() =>
         :style="{ stroke: p.color }"
         :stroke-dasharray="p.dashed ? '7 5' : undefined"
       />
-      <text :x="x(10 ** -0.78) + 8" :y="y(330) + 4" class="dlab">SEP, Oct 1989</text>
-      <text :x="x(10 ** 0.17) - 10" :y="y(140)" text-anchor="end" class="dlab">GCR protons</text>
-      <text :x="x(10 ** 0.36) + 8" :y="y(124) + 4" class="dlab">GCR helium</text>
+      <SourceIcon kind="sun" :size="22" :x="x(10 ** -0.78) + 6" :y="y(345) - 11" />
+      <SourceIcon kind="galaxy" :size="22" :x="x(10 ** 0.165) - 30" :y="y(124) - 11" />
+      <SourceIcon kind="galaxy" dashed :size="22" :x="x(10 ** 0.36) + 8" :y="y(124) - 11" />
 
       <line :x1="markX" :x2="markX" :y1="M.t" :y2="H - M.b" class="mark" />
-      <text :x="markX + (markRight ? -6 : 6)" :y="M.t + 14" :text-anchor="markRight ? 'end' : 'start'" class="mark-lab">
-        your {{ particleName }}
-      </text>
+      <circle :cx="markX" :cy="M.t + 2" r="12" class="mark-dot" />
+      <text :x="markX" :y="M.t + 6.5" text-anchor="middle" class="mark-lab">{{ symbol }}</text>
 
       <line v-if="hover" :x1="hover.vx" :x2="hover.vx" :y1="M.t" :y2="H - M.b" class="hover" />
     </svg>
@@ -116,9 +115,9 @@ const hoverRows = computed(() =>
 .grid { stroke: var(--line); }
 .base { stroke: var(--line-strong); }
 .curve { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
-.dlab { fill: var(--ink); font-size: 15px; font-weight: 500; paint-order: stroke; stroke: var(--panel); stroke-width: 4px; }
 .mark { stroke: var(--ink); stroke-width: 2; }
-.mark-lab { fill: var(--ink); font-size: 14px; font-weight: 550; }
+.mark-dot { fill: var(--ink); }
+.mark-lab { fill: var(--bg); font-size: 12px; font-weight: 700; }
 .hover { stroke: var(--ink-3); }
 .tip {
   position: absolute;
@@ -128,7 +127,6 @@ const hoverRows = computed(() =>
   border-radius: var(--radius-sm);
   padding: 0.35rem 0.55rem;
   font-size: 0.8rem;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
   white-space: nowrap;
 }
 .row { display: flex; align-items: center; gap: 0.4rem; }
