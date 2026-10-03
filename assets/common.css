@@ -1,0 +1,95 @@
+/* Shared look for every box page. Light only on purpose: the pages sit
+   inside a light iPoster and must not flip to dark with the venue's OS. */
+:root {
+  color-scheme: light;
+  --bg: #fcfcfb;
+  --panel: #ffffff;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #8a8984;
+  --line: #e6e5e1;
+  --grid: #ecebe7;
+  --brand: #2f6f75;
+  --series-1: #2a78d6;  /* GCR protons */
+  --series-2: #eb6834;  /* GCR helium */
+  --series-3: #1baf7a;  /* SEP protons */
+  --compare: #4a3aa7;   /* overlay particle */
+  --wash: #f0efec;
+  --radius: 10px;
+  font-size: clamp(12px, 0.8vw + 6px, 17px);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.4;
+}
+
+.page { max-width: 1400px; margin: 0 auto; padding: 16px; }
+
+header h1 {
+  font-size: 1.45rem;
+  margin: 0 0 4px;
+  letter-spacing: -0.01em;
+}
+header p { margin: 0 0 12px; color: var(--ink-2); }
+header { border-left: 4px solid var(--brand); padding-left: 12px; margin-bottom: 12px; }
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  min-width: 0;
+}
+.panel h2 { font-size: 1.05rem; margin: 0 0 2px; }
+.panel .note { font-size: 0.85rem; color: var(--ink-2); margin: 0 0 8px; }
+
+svg { display: block; width: 100%; height: auto; }
+svg text { font-family: inherit; }
+
+.controls { display: grid; gap: 8px; margin-top: 10px; }
+.row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.row label { min-width: 5.5em; color: var(--ink-2); font-size: 0.9rem; }
+.row input[type=range] { flex: 1; min-width: 140px; accent-color: var(--brand); }
+.row output { min-width: 9em; font-variant-numeric: tabular-nums; font-weight: 600; }
+
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button, .presets button {
+  font: inherit; font-size: 0.9rem; border: 0; background: var(--panel); color: var(--ink);
+  padding: 6px 12px; cursor: pointer;
+}
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed=true] { background: var(--brand); color: #fff; }
+.presets { display: flex; gap: 6px; flex-wrap: wrap; }
+.presets button { border: 1px solid var(--line); border-radius: 999px; }
+.presets button:hover, .seg button:hover { outline: 2px solid var(--brand); outline-offset: -2px; }
+
+.readouts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+.stat { background: var(--bg); border-radius: 8px; padding: 6px 10px; }
+.stat .k { font-size: 0.8rem; color: var(--ink-2); }
+.stat .v { font-size: 1.25rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+.stat .s { font-size: 0.8rem; color: var(--ink-2); }
+
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 0.85rem; color: var(--ink-2); margin: 4px 0; }
+.key { display: inline-block; width: 18px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+
+.tip {
+  position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; padding: 6px 8px; font-size: 0.8rem; box-shadow: 0 2px 8px rgba(0,0,0,.08);
+  font-variant-numeric: tabular-nums; display: none; white-space: nowrap;
+}
+
+footer { margin-top: 12px; font-size: 0.78rem; color: var(--muted); }
+footer a { color: var(--ink-2); }

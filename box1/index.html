@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Magnetic Rigidity Explorer</title>
+<link rel="stylesheet" href="../assets/common.css">
+<style>
+  .chartwrap { position: relative; }
+  .turned { fill: var(--wash); }
+  .axis text { font-size: 14px; fill: var(--ink-2); }
+  .axis line, .gridline { stroke: var(--grid); stroke-width: 1; }
+  .slab { fill: #eaf2f3; }
+  .habitat { fill: #f4f3ef; stroke: #c9c7c0; }
+  #traj, #spec { max-height: 38vh; }
+  .controls .row label { min-width: 4.5em; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>A magnet sorts particles by rigidity, not by energy</h1>
+    <p>Rigidity R = p / Ze is momentum per unit charge. Particles with the same rigidity follow the same path in the same field.</p>
+  </header>
+
+  <main class="grid2">
+    <section class="panel">
+      <h2>Path through a 2 m layer of uniform field</h2>
+      <p class="note">An illustration of the physics, not the CREW HaT field (that is Box 2).</p>
+      <svg id="traj" viewBox="0 0 600 300" role="img" aria-label="Particle trajectory through a magnetic field layer"></svg>
+
+      <div class="controls">
+        <div class="row">
+          <label>Particle</label>
+          <div class="seg" id="species">
+            <button data-sp="p" aria-pressed="true">Proton</button>
+            <button data-sp="He" aria-pressed="false">Helium-4</button>
+            <button data-sp="Fe" aria-pressed="false">Iron-56</button>
+          </div>
+          <div class="presets" aria-label="Examples">
+            <button data-preset="sep">Solar p, 100 MeV</button>
+            <button data-preset="gcr">Cosmic-ray p, 2 GeV</button>
+            <button data-preset="pair">10 GeV p vs iron</button>
+          </div>
+        </div>
+        <div class="row">
+          <label for="energy">Energy</label>
+          <input id="energy" type="range" min="1" max="5" step="0.01" value="3">
+          <output id="energyOut"></output>
+        </div>
+        <div class="row">
+          <label for="field">Field B</label>
+          <input id="field" type="range" min="0.5" max="10" step="0.1" value="2">
+          <output id="fieldOut"></output>
+        </div>
+        <div class="row">
+          <label></label>
+          <label style="min-width:0;color:var(--ink)"><input id="compare" type="checkbox"> <span id="compareLabel">Overlay an iron nucleus with the same rigidity</span></label>
+        </div>
+      </div>
+
+      <div class="readouts">
+        <div class="stat"><div class="k">Rigidity</div><div class="v" id="rOut"></div></div>
+        <div class="stat"><div class="k">Radius of curvature</div><div class="v" id="rlOut"></div></div>
+        <div class="stat"><div class="k">In this layer</div><div class="v" id="fateOut"></div></div>
+      </div>
+      <p class="note" id="compareOut" style="margin-top:8px"></p>
+    </section>
+
+    <section class="panel">
+      <h2>Where the incoming particles are</h2>
+      <p class="note">Share of particles per decade of rigidity (above 10 MeV/n). Gray: what the layer turns back.</p>
+      <div class="legend">
+        <span><span class="key" style="background:var(--series-3)"></span>SEP protons, Oct 1989</span>
+        <span><span class="key" style="background:var(--series-1)"></span>GCR protons, solar min.</span>
+        <span><span class="key" style="background:var(--series-2)"></span>GCR helium, solar min.</span>
+      </div>
+      <div class="chartwrap">
+        <svg id="spec" viewBox="0 0 600 300" role="img" aria-label="Rigidity distribution of SEP and GCR particles"></svg>
+        <div class="tip" id="tip"></div>
+      </div>
+      <div class="readouts">
+        <div class="stat"><div class="k">SEP protons turned back</div><div class="v" id="fSep"></div></div>
+        <div class="stat"><div class="k">GCR protons turned back</div><div class="v" id="fH"></div></div>
+        <div class="stat"><div class="k">GCR helium turned back</div><div class="v" id="fHe"></div></div>
+      </div>
+      <p class="note" style="margin-top:8px">In this uniform layer only. Inside a real shield, part of the flux arrives from directions the field cannot block, and secondaries add dose.</p>
+    </section>
+  </main>
+
+  <footer>
+    Spectra: NASA OLTARIS, Badhwar–O'Neill 2020 (free space, 31 Dec 2019) and Historical SPE (October 1989).
+    Radius of curvature r = R / (cB); a particle is turned back when r ≤ 2 m, i.e. R ≤ 0.6 · B[T] GV.
+    IAC 2026 · IAC-26,A1,IPB,42.
+  </footer>
+</div>
+
+<script src="../data/spectra.js"></script>
+<script>
+(() => {
+  const SVGNS = "http://www.w3.org/2000/svg";
+  const C = 0.299792458;          // GV per (T·m)
+  const L = 2.0;                  // layer thickness, m
+  // Nucleus mass per nucleon (MeV), mass number, charge.
+  const SP = {
+    p:  { name: "proton",    mu: 938.272,          A: 1,  Z: 1 },
+    He: { name: "helium-4",  mu: 3727.379 / 4,     A: 4,  Z: 2 },
+    Fe: { name: "iron-56",   mu: 52089.8 / 56,     A: 56, Z: 26 },
+  };
+  const state = { sp: "p", logT: 3, B: 2, compare: false };
+
+  const $ = id => document.getElementById(id);
+  const el = (tag, attrs = {}, parent) => {
+    const n = document.createElementNS(SVGNS, tag);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  };
+
+  // Rigidity in GV from kinetic energy per nucleon (MeV).
+  const rigidity = (sp, tn) => {
+    const s = SP[sp];
+    return s.A * Math.sqrt(tn * (tn + 2 * s.mu)) / s.Z / 1000;
+  };
+  // Kinetic energy per nucleon (MeV) for a given rigidity.
+  const energyAt = (sp, R) => {
+    const s = SP[sp];
+    const pn = R * 1000 * s.Z / s.A;
+    return Math.sqrt(pn * pn + s.mu * s.mu) - s.mu;
+  };
+  const fmtE = mev => mev >= 1000 ? `${+(mev / 1000).toPrecision(3)} GeV` : `${+mev.toPrecision(3)} MeV`;
+  const fmtR = gv => gv >= 10 ? `${gv.toFixed(1)} GV` : `${gv.toPrecision(3)} GV`;
+  const fmtLen = m => m >= 1000 ? `${(m / 1000).toPrecision(3)} km` : m >= 10 ? `${m.toFixed(0)} m` : `${m.toPrecision(2)} m`;
+
+  /* ---------- trajectory panel ---------- */
+  const traj = $("traj");
+  const S = 64, X0 = -1.2, Y0 = -0.35, XMAX = 8.2, YMAX = 4.3;  // px per m and world window
+  const px = x => (x - X0) * S;
+  const py = y => 300 - (y - Y0) * S;
+
+  function drawStatic() {
+    el("rect", { x: px(0), y: 0, width: L * S, height: 300, class: "slab" }, traj);
+    for (let x = 0.33; x < L; x += 0.67) for (let y = 0.3; y < YMAX - 0.4; y += 0.6) {
+      const g = el("g", { opacity: 0.45 }, traj);
+      el("circle", { cx: px(x), cy: py(y), r: 5, fill: "none", stroke: "#2f6f75", "stroke-width": 1 }, g);
+      el("path", { d: `M${px(x) - 3.5} ${py(y) - 3.5} l7 7 M${px(x) + 3.5} ${py(y) - 3.5} l-7 7`, stroke: "#2f6f75", "stroke-width": 1 }, g);
+    }
+    el("rect", { x: px(4.0), y: py(3.4), width: 3.0 * S, height: 3.0 * S, rx: 14, class: "habitat" }, traj);
+    const t1 = el("text", { x: px(5.5), y: py(1.9), "text-anchor": "middle", "font-size": 17, fill: "#52514e" }, traj);
+    t1.textContent = "Habitat";
+    const t2 = el("text", { x: px(L / 2), y: 18, "text-anchor": "middle", "font-size": 15, fill: "#2f6f75" }, traj);
+    t2.textContent = "B into the page";
+  }
+
+  // Path in world coordinates for a positive particle entering at (−1.2, 0) along +x.
+  function pathFor(R, B) {
+    const r = R / (C * B);
+    let d = `M${px(X0)} ${py(0)} L${px(0)} ${py(0)}`;
+    if (r <= L) {
+      // Semicircle back out of the entry face (two quarter arcs to avoid ambiguity).
+      d += ` A${r * S} ${r * S} 0 0 0 ${px(r)} ${py(r)}`;
+      d += ` A${r * S} ${r * S} 0 0 0 ${px(0)} ${py(2 * r)}`;
+      d += ` L${px(X0)} ${py(2 * r)}`;
+      return { d, r, turned: true, theta: Math.PI };
+    }
+    const yExit = r - Math.sqrt(r * r - L * L);
+    const theta = Math.asin(L / r);
+    d += ` A${r * S} ${r * S} 0 0 0 ${px(L)} ${py(yExit)}`;
+    // Straight line to the edge of the window.
+    const dx = Math.cos(theta), dy = Math.sin(theta);
+    const tX = (XMAX - L) / dx, tY = (YMAX - yExit) / dy;
+    const t = Math.min(tX, tY);
+    d += ` L${px(L + dx * t)} ${py(yExit + dy * t)}`;
+    return { d, r, turned: false, theta };
+  }
+
+  const pathMain = el("path", { fill: "none", stroke: "#0b0b0b", "stroke-width": 3, "stroke-linecap": "round", "stroke-linejoin": "round" });
+  const pathCmp = el("path", { fill: "none", style: "stroke: var(--compare)", "stroke-width": 3, "stroke-dasharray": "8 7", "stroke-linecap": "round" });
+  const entryDot = el("circle", { r: 6, fill: "#0b0b0b", stroke: "#fff", "stroke-width": 2 });
+
+  /* ---------- spectrum panel ---------- */
+  const spec = $("spec");
+  const M = { l: 56, r: 34, t: 30, b: 46 }, W = 600, H = 300;
+  const LX0 = -1, LX1 = 3, YM = 360;  // log10 R from 0.1 to 1000 GV
+  const sx = lr => M.l + (lr - LX0) / (LX1 - LX0) * (W - M.l - M.r);
+  const sy = v => H - M.b - v / YM * (H - M.t - M.b);
+  const series = [
+    { key: "sep",    color: "var(--series-3)", label: "SEP" },
+    { key: "gcr_h",  color: "var(--series-1)", label: "GCR p" },
+    { key: "gcr_he", color: "var(--series-2)", label: "GCR He" },
+  ];
+  let wash, cutLabel, marker, markerLabel, hoverLine;
+
+  function drawSpec() {
+    wash = el("rect", { x: sx(LX0), y: M.t, height: H - M.t - M.b, class: "turned" }, spec);
+    cutLabel = el("text", { y: M.t - 10, "font-size": 14, fill: "#52514e", "text-anchor": "end" }, spec);
+    const ax = el("g", { class: "axis" }, spec);
+    for (let v = 0; v <= YM; v += 60) {
+      el("line", { x1: M.l, x2: W - M.r, y1: sy(v), y2: sy(v), class: "gridline" }, ax);
+      const t = el("text", { x: M.l - 8, y: sy(v) + 4, "text-anchor": "end" }, ax);
+      t.textContent = `${v}%`;
+    }
+    for (let e = LX0; e <= LX1; e++) {
+      const t = el("text", { x: sx(e), y: H - M.b + 18, "text-anchor": "middle" }, ax);
+      t.textContent = `${10 ** e >= 1 ? 10 ** e : 10 ** e} GV`;
+    }
+    const xl = el("text", { x: (M.l + W - M.r) / 2, y: H - 6, "text-anchor": "middle" }, ax);
+    xl.textContent = "Rigidity (log scale)";
+    el("line", { x1: M.l, x2: W - M.r, y1: sy(0), y2: sy(0), stroke: "#c9c7c0" }, spec);
+
+    for (const s of series) {
+      const d = SPECTRA.spectra[s.key];
+      const pts = d.log10_R_GV.map((lr, i) => [lr, d.pct_per_decade[i]]).filter(([lr]) => lr >= LX0 && lr <= LX1);
+      el("path", {
+        d: "M" + pts.map(([lr, v]) => `${sx(lr).toFixed(1)} ${sy(v).toFixed(1)}`).join(" L"),
+        fill: "none", style: `stroke: ${s.color}`, "stroke-width": 2.5, "stroke-linejoin": "round", "stroke-linecap": "round",
+      }, spec);
+    }
+    // Direct labels at each curve's peak.
+    const lab = (txt, lr, v, anchor = "start", dx = 8) => {
+      const t = el("text", { x: sx(lr) + dx, y: sy(v) + 4, "font-size": 15, fill: "#0b0b0b", "text-anchor": anchor }, spec);
+      t.textContent = txt;
+    };
+    lab("SEP, Oct 1989", -0.78, 330);
+    lab("GCR protons", 0.17, 124, "end", -10);
+    lab("GCR helium", 0.36, 124);
+
+    marker = el("line", { y1: M.t, y2: H - M.b, stroke: "#0b0b0b", "stroke-width": 2 }, spec);
+    markerLabel = el("text", { y: M.t + 14, "font-size": 14, fill: "#0b0b0b" }, spec);
+    hoverLine = el("line", { y1: M.t, y2: H - M.b, stroke: "#8a8984", "stroke-width": 1, visibility: "hidden" }, spec);
+
+    // Hover: crosshair + values of the three curves at that rigidity.
+    const tip = $("tip");
+    const hit = el("rect", { x: M.l, y: M.t, width: W - M.l - M.r, height: H - M.t - M.b, fill: "transparent" }, spec);
+    hit.addEventListener("pointermove", ev => {
+      const box = spec.getBoundingClientRect();
+      const vx = (ev.clientX - box.left) / box.width * W;
+      const lr = LX0 + (vx - M.l) / (W - M.l - M.r) * (LX1 - LX0);
+      hoverLine.setAttribute("x1", vx); hoverLine.setAttribute("x2", vx); hoverLine.setAttribute("visibility", "visible");
+      const rows = series.map(s => {
+        const v = interp(SPECTRA.spectra[s.key], "pct_per_decade", lr);
+        return `<div><span class="key" style="background:${s.color}"></span>${s.label}: ${v === null ? "–" : v.toFixed(1) + "% / decade"}</div>`;
+      });
+      tip.innerHTML = `<div><b>${fmtR(10 ** lr)}</b></div>` + rows.join("");
+      tip.style.display = "block";
+      const wrap = spec.parentElement.getBoundingClientRect();
+      let left = ev.clientX - wrap.left + 12;
+      if (left > wrap.width - 190) left = ev.clientX - wrap.left - 190;
+      tip.style.left = left + "px";
+      tip.style.top = (ev.clientY - wrap.top - 10) + "px";
+    });
+    hit.addEventListener("pointerleave", () => { tip.style.display = "none"; hoverLine.setAttribute("visibility", "hidden"); });
+  }
+
+  // Linear interpolation in log10 R; null outside the tabulated range.
+  function interp(d, field, lr) {
+    const xs = d.log10_R_GV, ys = d[field];
+    if (lr < xs[0] || lr > xs[xs.length - 1]) return null;
+    let i = 1;
+    while (xs[i] < lr) i++;
+    const f = (lr - xs[i - 1]) / (xs[i] - xs[i - 1]);
+    return ys[i - 1] + f * (ys[i] - ys[i - 1]);
+  }
+  const fractionBelow = (d, lr) => lr < d.log10_R_GV[0] ? 0 : lr > d.log10_R_GV.at(-1) ? 1 : interp(d, "cdf", lr);
+  const pct = f => f < 0.001 ? "< 0.1%" : f > 0.999 ? "> 99.9%" : `${(100 * f).toFixed(f < 0.1 ? 1 : 0)}%`;
+
+  /* ---------- update ---------- */
+  function update() {
+    const tn = 10 ** state.logT;
+    const R = rigidity(state.sp, tn);
+    const sp = SP[state.sp];
+    $("energyOut").textContent = state.sp === "p" ? fmtE(tn) : `${fmtE(tn)}/n · ${fmtE(tn * sp.A)}`;
+    $("fieldOut").textContent = `${state.B.toFixed(1)} T`;
+    for (const b of document.querySelectorAll("#species button")) b.setAttribute("aria-pressed", b.dataset.sp === state.sp);
+
+    const p = pathFor(R, state.B);
+    pathMain.setAttribute("d", p.d);
+    $("rOut").textContent = fmtR(R);
+    $("rlOut").textContent = fmtLen(p.r);
+    $("fateOut").textContent = p.turned ? "Turned back" : `Bent ${(p.theta * 180 / Math.PI).toFixed(p.theta < 0.1745 ? 1 : 0)}°`;
+
+    const partner = state.sp === "Fe" ? "p" : "Fe";
+    $("compareLabel").textContent = `Overlay ${partner === "Fe" ? "an iron nucleus" : "a proton"} with the same rigidity`;
+    if (state.compare) {
+      pathCmp.setAttribute("d", p.d);
+      pathCmp.setAttribute("visibility", "visible");
+      const tp = energyAt(partner, R);
+      const A = SP[partner].A;
+      $("compareOut").innerHTML = `<span class="key" style="background:var(--compare)"></span>` +
+        (partner === "Fe"
+          ? `Iron-56 at ${fmtE(tp)} per nucleon (${fmtE(tp * A)} in total) has the same rigidity and follows the same path.`
+          : `A proton at ${fmtE(tp)} has the same rigidity and follows the same path.`);
+    } else {
+      pathCmp.setAttribute("visibility", "hidden");
+      $("compareOut").textContent = "";
+    }
+
+    // Spectrum panel: cutoff wash and particle marker.
+    const Rcut = C * state.B * L;
+    const lc = Math.max(LX0, Math.min(LX1, Math.log10(Rcut)));
+    wash.setAttribute("width", sx(lc) - sx(LX0));
+    cutLabel.setAttribute("x", sx(lc) - 6);
+    cutLabel.textContent = `turned back below ${fmtR(Rcut)}`;
+    const lr = Math.max(LX0, Math.min(LX1, Math.log10(R)));
+    marker.setAttribute("x1", sx(lr)); marker.setAttribute("x2", sx(lr));
+    markerLabel.setAttribute("x", sx(lr) + (lr > 2.2 ? -6 : 6));
+    markerLabel.setAttribute("text-anchor", lr > 2.2 ? "end" : "start");
+    markerLabel.textContent = `your ${sp.name}`;
+    const S2 = SPECTRA.spectra, lcut = Math.log10(Rcut);
+    $("fSep").textContent = pct(fractionBelow(S2.sep, lcut));
+    $("fH").textContent = pct(fractionBelow(S2.gcr_h, lcut));
+    $("fHe").textContent = pct(fractionBelow(S2.gcr_he, lcut));
+  }
+
+  /* ---------- wiring ---------- */
+  drawStatic();
+  traj.append(pathMain, pathCmp, entryDot);
+  entryDot.setAttribute("cx", px(X0)); entryDot.setAttribute("cy", py(0));
+  drawSpec();
+
+  $("species").addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    state.sp = b.dataset.sp; update();
+  });
+  $("energy").addEventListener("input", e => { state.logT = +e.target.value; update(); });
+  $("field").addEventListener("input", e => { state.B = +e.target.value; update(); });
+  $("compare").addEventListener("change", e => { state.compare = e.target.checked; update(); });
+  const PRESETS = {
+    sep:  { sp: "p", logT: 2, B: 2, compare: false },
+    gcr:  { sp: "p", logT: Math.log10(2000), B: 2, compare: false },
+    pair: { sp: "p", logT: 4, B: 2, compare: true },
+  };
+  document.querySelector(".presets").addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    Object.assign(state, PRESETS[b.dataset.preset]);
+    $("energy").value = state.logT; $("field").value = state.B; $("compare").checked = state.compare;
+    update();
+  });
+  update();
+})();
+</script>
+</body>
+</html>
