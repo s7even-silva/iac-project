@@ -10,8 +10,11 @@ iframes from approved domains; `github.io` is on that list.
 | `box1/` | 1 · Why active shielding | Rigidity explorer: path through a uniform 2 m field layer, SEP and GCR rigidity spectra |
 | `box2/`–`box4/` | 2–4 | Pending |
 
-- `assets/common.css`: shared look. Light only on purpose, so the pages do
-  not switch to dark inside the light poster.
+- `assets/common.css`: shared look, the poster palette "deep space and
+  magnetic shield". Each color has one meaning in the poster and in every
+  figure: cyan = field and active shield, amber = Sun, SEP and HTS coils,
+  indigo = GCR (second GCR species in light indigo, always dashed),
+  coral = dose and risk figures only. Dark only, to match the poster.
 - `data/spectra.js`: built by `tools/build_spectra.py` from the OLTARIS CSVs
   on `main` (`geant4/ActiveShield_Sim/data/sources/oltaris`). Loaded with a
   `<script>` tag, so the pages need no fetch and also open from `file://`.
