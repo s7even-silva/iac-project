@@ -1,0 +1,29 @@
+@import "./tokens.css";
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; }
+
+body {
+  min-height: 100vh;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  background:
+    radial-gradient(900px 500px at 8% -10%, rgba(56, 189, 248, 0.10), transparent 60%),
+    radial-gradient(800px 600px at 105% 110%, rgba(129, 140, 248, 0.10), transparent 60%),
+    var(--bg);
+}
+
+.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--shield); outline-offset: 2px; border-radius: 6px; }
+
+svg { display: block; width: 100%; height: auto; }
+svg text { font-family: var(--font-sans); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}

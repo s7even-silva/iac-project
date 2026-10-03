@@ -1,0 +1,39 @@
+/* Poster design tokens. One meaning per color, in the poster and in every
+   figure: cyan = field and active shield, amber = Sun, SEP and HTS coils,
+   indigo = GCR (second GCR species: light indigo, always dashed),
+   coral = dose and risk figures only. Dark only, to match the poster. */
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
+
+:root {
+  color-scheme: dark;
+
+  --bg: #060b17;
+  --panel: #0e1729;
+  --panel-head: #13203b;
+  --sunken: #0a1222;
+  --line: #1f2e4d;
+  --line-strong: #2b3f66;
+
+  --ink: #e6edf7;
+  --ink-2: #93a4bf;
+  --ink-3: #6b7d99;
+
+  --shield: #38bdf8;
+  --shield-soft: rgba(56, 189, 248, 0.12);
+  --shield-glow: rgba(56, 189, 248, 0.35);
+  --sep: #f5a524;
+  --gcr: #818cf8;
+  --gcr-2: #c7d2fe;
+  --risk: #f87171;
+
+  --font-sans: "Inter Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --radius: 14px;
+  --radius-sm: 8px;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur: 180ms;
+
+  font-size: clamp(12px, 0.75vw + 6px, 17px);
+}

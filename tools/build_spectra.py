@@ -1,4 +1,4 @@
-"""Build data/spectra.js for Box 1 from the OLTARIS CSVs on main.
+"""Build src/data/spectra.json for Box 1 from the OLTARIS CSVs on main.
 
 Usage: python3 tools/build_spectra.py <path to geant4/ActiveShield_Sim/data/sources/oltaris>
 
@@ -64,10 +64,10 @@ def main(src):
             "pct_per_decade": [round(100 * d / total, 5) for d in dens],
             "cdf": [round(c / total, 6) for c in cum],
         }
-    # Loaded with a <script> tag so the page also works from file:// and
-    # needs no fetch at the venue.
-    Path(__file__).resolve().parent.parent.joinpath("data", "spectra.js").write_text(
-        "window.SPECTRA = " + json.dumps(out, separators=(",", ":")) + ";\n")
+    # Imported by the Vue code, so it is bundled into the page: no fetch at
+    # the venue.
+    Path(__file__).resolve().parent.parent.joinpath("src", "data", "spectra.json").write_text(
+        json.dumps(out, separators=(",", ":")) + "\n")
 
 
 if __name__ == "__main__":
