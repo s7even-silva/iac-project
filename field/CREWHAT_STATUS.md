@@ -172,6 +172,21 @@ confirmado) — genera el mapa `.map` directamente desde el
 
 ## Arreglo de las 8 bobinas: implementado con patrón Halbach dipolar (2026-09-10)
 
+> **Corrección (2026-10-04), hallazgo A4 de
+> [`docs/bitacora/auditoria_2026-09-30.md`](../docs/bitacora/auditoria_2026-09-30.md):**
+> el reporte NIAC sí describe la disposición. La fig. 3.1(b) (p. 10) pone
+> las bobinas cardinales en planos radiales y las diagonales en planos
+> tangenciales; el texto de la fig. 3.9 (p. 16) habla de «four coils facing
+> the axis of symmetry»; y el §2 (p. 8) pide un campo «suppressing the
+> magnetic field in the habitat region at the center». El patrón K=1 de
+> esta sección hace lo contrario (0.54 T dentro de la nave). La v2
+> regenera la geometría con la disposición de NIAC; el sentido de
+> corriente de cada bobina sigue sin estar en el reporte y queda como
+> supuesto declarado (candidato θ_k = 90° − φ_k). Ver D9 en
+> [`docs/bitacora/plan_piloto.md`](../docs/bitacora/plan_piloto.md). La
+> masa por bobina de esta sección (77.9 t) es ~5 veces la de NIAC (15.6 t,
+> hallazgo B9).
+
 `field/generate_ellipse_array.py` (análogo a `generate_array.py`, reutiliza
 `controls()` de `generate_ellipse.py` sin modificarlo) genera las N bobinas
 del toro Halbach. **El patrón angular es un supuesto propio del equipo, no
@@ -654,6 +669,17 @@ del arreglo importaría (barrido de posición cerca del casco) y cuándo no
 (cerca del eje). Nada de la configuración de producción cambió: el
 resultado de este ablation es evidencia documentada, no un cambio de
 diseño.
+
+**Alcance (anotado 2026-10-04):** esta comparación es de uniformidad y
+magnitud del campo interior (Biot-Savart), no de dosis ni de η. Además
+mide justo lo que CREW HaT quiere suprimir: NIAC busca un campo débil en
+el hábitat (§2, p. 8), así que un campo interior fuerte y uniforme no es
+un mérito frente a ese diseño. La disposición «alternante» probada tiene
+las orientaciones de la fig. 3.1(b) de NIAC girada 45°, pero con una
+asignación de sentidos de corriente propia, no la de polaridad rotante.
+Ya no respalda la elección de producción: ver hallazgo A4 en
+[`docs/bitacora/auditoria_2026-09-30.md`](../docs/bitacora/auditoria_2026-09-30.md)
+y D9 en [`docs/bitacora/plan_piloto.md`](../docs/bitacora/plan_piloto.md).
 
 ## Barrido de posición del fantoma: infraestructura agregada (2026-09-10)
 

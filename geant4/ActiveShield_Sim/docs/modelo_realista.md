@@ -223,6 +223,20 @@ repetirlas. Los workers que ya están desplegados siguen usando la plantilla
 vieja hasta que se actualice su imagen o su checkout. Prueba de aceptación: con `fieldScale 0` y el
 muestreo corregido, x=0 y x=1 m deben dar dosis parecidas.
 
+### Hallazgo crítico (2026-10-04): las bobinas no siguen la disposición de CREW HaT
+
+El arreglo de `field/production/` usa el patrón Halbach K=1 (θ_k = 2φ_k),
+que pone un dipolo de 0.54 T dentro de la nave. El reporte NIAC describe
+otra cosa: polaridad rotante con el campo suprimido en el hábitat, con las
+bobinas cardinales en planos radiales y las diagonales en planos
+tangenciales. Además, cada bobina simulada pesa 77.9 t (sección cuadrada
+de 0.67 m llena de CORC homogeneizado), frente a 15.6 t en NIAC. Detalle,
+citas y chequeo exploratorio: hallazgos A4 y B9 en
+[`docs/bitacora/auditoria_2026-09-30.md`](../../../docs/bitacora/auditoria_2026-09-30.md).
+La v2 regenera la geometría (P1, paso 0; D9 en `plan_piloto.md`). Hasta
+entonces, «campo de CREW HaT» en este documento quiere decir «campo del
+patrón K=1».
+
 ### Mejoras propuestas (2026-09-30, sin decisión de equipo)
 
 **1. Muestreo, radio de la esfera y costo.** Con ley coseno, la fracción de

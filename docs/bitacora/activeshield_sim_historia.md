@@ -571,7 +571,9 @@ fuentes y pendientes en
   equipo, confirmado por dos rondas de búsqueda que ni el reporte NIAC ni
   la tesis dan una tabla de ángulos ni un conteo de bobinas "radiales"
   vs. "tangenciales" (esa distinción del reporte es para el montaje
-  mecánico, no la fase electromagnética). Las 8 bobinas importan en
+  mecánico, no la fase electromagnética). *(Corregido el 2026-10-04: el
+  reporte sí describe la disposición, en la fig. 3.1(b) y en su §2, y es
+  distinta de K=1; ver hallazgo A4 en `auditoria_2026-09-30.md`.)* Las 8 bobinas importan en
   `ActiveShield_Sim` sin ningún solapamiento, ni entre sí ni con el casco.
   **Campo Biot-Savart superpuesto de las 8 bobinas calculado el mismo día**
   (`field/compute_field_ellipse_array.py`) — resultado físico central del

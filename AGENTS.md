@@ -48,19 +48,21 @@ existe en el repo. Quien tenga un clon anterior debe hacer
 `git fetch --force --tags` y `git reset --hard origin/<rama>` (o clonar de
 nuevo).
 
-## Estado del plan piloto (2026-10-01)
+## Estado del plan piloto (2026-10-04)
 
 Plan vigente: [`docs/bitacora/plan_piloto.md`](docs/bitacora/plan_piloto.md)
-(P0–P6, decisiones D1–D8). Especificación del barrido:
+(P0–P6, decisiones D1–D9). Especificación del barrido:
 [`docs/bitacora/plan_barrido.md`](docs/bitacora/plan_barrido.md).
 
-- **Camino crítico:** P1 → mapa Elmer final → P3/P4/P5 → P6 → barrido. El
+- **Camino crítico:** P1 (desde el paso 0: geometría de bobinas de NIAC)
+  → mapa Elmer final → P3/P4/P5 → P6 → barrido. El
   mapa Elmer es bloqueante y requiere una máquina con más RAM que la de
   desarrollo (~5 GB; la solución anterior llegó a 7.3 GB).
-- **P1, paso 1 hecho** (`field/preselect_source_radius.py`): con la esfera
-  fuente de 6.94 m, un tercio de las direcciones a 67 MeV está mal
-  representado. Candidatos para Elmer: **12, 14 y 16 m**; el mapa tendrá que
-  cubrir ±14–17 m en z (hoy ±7.6 m).
+- **P1, paso 1 hecho con el patrón K=1, hay que repetirlo**
+  (`field/preselect_source_radius.py`): con la esfera fuente de 6.94 m, un
+  tercio de las direcciones a 67 MeV está mal representado. Candidatos con
+  K=1: **12, 14 y 16 m**; el mapa tendrá que cubrir ±14–17 m en z (hoy
+  ±7.6 m). Los números se rehacen con la geometría de NIAC (paso 0, nuevo).
 - **Scorer por evento** (`/eventStats/*`, `EventStatsRunAction.cc`),
   integrado en `run_organ_sweep.py --event-stats`. Validado: el SE de una
   sola corrida es insesgado cuando VOV < 0.1 y hay ≥200 eventos con
@@ -76,7 +78,9 @@ Plan vigente: [`docs/bitacora/plan_piloto.md`](docs/bitacora/plan_piloto.md)
   equipo apruebe D7. El zip de datos de ICRP no se versiona (derechos de
   autor).
 - **Decisiones de equipo pendientes:** máquina para Elmer, D2 (δ_η, efecto
-  mínimo detectable), D3, D4, D7.
+  mínimo detectable), D3, D4, D7, y para D9 el sentido de corriente de
+  cada bobina y la sección del bobinado (la disposición de NIAC ya está
+  decidida).
 - **Coordinator sin actualizar e imagen Docker nueva pendiente**: se hacen
   cuando los pilotos fijen la configuración.
 
@@ -126,7 +130,12 @@ Detalle de interfaces en
   HaT (`shipRadius=4.5m`, `shipHalfLength=5m`). Blindaje pasivo
   (`addPassiveLayerCm`) conservado pero desactivado por defecto.
 - **Bobinas: CREW HaT**, Halbach Torus de 8 bobinas elípticas (diseño NIAC
-  Phase I), conductor CORC homogeneizado. El arreglo de producción **nunca
+  Phase I), conductor CORC homogeneizado. **Hallazgo del 2026-10-04 (A4 y
+  B9 en la auditoría):** la geometría de `field/production/` usa el patrón
+  Halbach K=1, que pone 0.54 T dentro de la nave, mientras que CREW HaT
+  suprime el campo en el hábitat; y cada bobina pesa 77.9 t frente a las
+  15.6 t de NIAC. La v2 regenera la geometría con la disposición de NIAC
+  (P1, paso 0; decisión D9 en `plan_piloto.md`) y compara con K=1. El arreglo de producción **nunca
   usó la cinta de 12 mm**. Geom14/ARSSEM queda como propuesta no
   implementada.
 - **Campo: Elmer FEM a escala real**

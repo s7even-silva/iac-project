@@ -52,6 +52,7 @@ otro sistema y exige un contraste separado.
 | D6 | Posiciones (las 5 actuales u otra elección) | P1, P6, barrido |
 | D7 | Tolerancia con ICRP 116 para P0. **Propuesta con fuentes (2026-10-01): ±10% en órganos grandes y ±15% en mama y tiroides, a ≥100 MeV/n.** Ver «Base de la tolerancia D7» en P0 | P0 |
 | D8 | Perfil temporal de SEP: fuente de datos de cada evento (GOES para oct. 1989; feb. 1956 no tiene datos satelitales), forma del espectro variable o constante, y qué casos lo llevan (`plan_barrido.md`, sección 10) | Criterio temporal de P4 y tasa de dosis SEP; no bloquea la dosis del evento completo |
+| D9 | Disposición y masa de las bobinas. **Decidido (2026-10-04): producción con la disposición de NIAC** (hallazgo A4 de la auditoría); falta fijar el sentido de corriente de cada bobina y la sección y densidad del bobinado (B9). Ver «Disposición de las bobinas (D9)» abajo | Mapa de Elmer de P1, D6, barrido |
 
 **Relación entre D2, D3 y D7.** δ_η (D2) es la diferencia mínima de
 efectividad escudo/control que el estudio tiene que poder resolver.
@@ -66,6 +67,65 @@ sin escudo.
   escudo y control se cancela, así que D7 afecta sobre todo a los
   resultados absolutos (Gy/día, Sv, riesgo). Afecta a η solo si el error
   depende de la energía y el escudo cambia el espectro.
+
+### Disposición de las bobinas (D9, decidido 2026-10-04)
+
+**Decisión.** La producción usa la disposición de CREW HaT tal como la
+describe el reporte NIAC, no el patrón Halbach K=1 que se simuló hasta
+ahora. El motivo está en el hallazgo A4 de
+[`auditoria_2026-09-30.md`](auditoria_2026-09-30.md): K=1 pone un dipolo
+uniforme de 0.54 T dentro de la nave, y CREW HaT está diseñado para lo
+contrario, un campo suprimido en el hábitat (§2, p. 8 del reporte). K=1
+queda como variante de comparación. La masa de las bobinas se corrige a la
+vez (hallazgo B9), porque las dos cosas regeneran el GDML.
+
+**Qué falta fijar antes de generar la geometría (P1, paso 0).**
+
+- **Orientaciones:** las de la fig. 3.1(b) (p. 10), cardinales en planos
+  radiales y diagonales en planos tangenciales. Dato de la fuente.
+- **Sentido de la corriente de cada bobina:** el reporte no lo da.
+  Candidato: θ_k = 90° − φ_k (polaridad que rota en sentido opuesto a la
+  posición), la única asignación continua compatible con esas
+  orientaciones. En el chequeo exploratorio con Biot-Savart
+  (`field/studies/disposicion_bobinas_2026-10-04.py`) da |B| = 0 en el
+  centro y 0.013 T de media a 2 m, como pide NIAC. Supuesto propio
+  declarado; se confirma contra la fig. 3.2 (p. 11) o con los autores.
+  `generate_ellipse_array.py` ya lo admite con `theta_deg_pattern`, sin
+  cambiar código.
+- **Radio:** 8 m (§3.1, p. 12), el que ya usamos.
+- **Sección y masa (B9):** candidato 0.67 m radial × ~0.32 m axial (40
+  vueltas de cable de 8 mm por capa, 67 capas), con densidad efectiva
+  ajustada a las 15.6 t por bobina de la tabla de §4.10.2 (p. 49). La
+  sección cuadrada actual es un supuesto propio y pesa 77.9 t.
+
+**Qué cambia en los pilotos.**
+
+- **P1, paso 0 (nuevo):** generar CAD, malla y GDML de la disposición de
+  NIAC con la masa corregida; verificar solapamientos con el casco, masa
+  importada en Geant4 y |B| en el eje.
+- **P1, paso 1 (rehacer):** la preselección del radio de la esfera fuente
+  se hizo con K=1. Repetirla con la disposición nueva (Biot-Savart, unos
+  40 minutos). Los candidatos de 12, 14 y 16 m pueden cambiar.
+- **P1, paso 2:** el mapa de Elmer en el dominio grande se resuelve para la
+  disposición de NIAC. Si la máquina lo permite, también para K=1, para
+  la comparación.
+- **P1, fase de comparación (nueva, después del paso 2):** η a x = 0 para
+  NIAC y para K=1, con ley coseno, escudo y control con números
+  aleatorios comunes, en energías donde el campo actúa (candidatas: GCR_H a
+  562 MeV y SEP_p entre 100 y 200 MeV). El margen que cuenta como
+  diferencia se fija antes con D3. Sirve para el paper (cuánto importa la
+  disposición) y como respaldo si NIAC resultara claramente peor; no
+  cambia la decisión de producción sin una decisión de equipo nueva.
+- **Anisotropía:** con la disposición final, comparar desplazamientos del
+  fantoma en dos direcciones (por ejemplo +x y la diagonal, a 2 y 4 m)
+  antes de fijar D6. Con K=1 el campo central es un dipolo en +x y la
+  Fase 7 del ablation midió hasta 1.64× de variación angular de |B| a
+  4.5 m; con la disposición de NIAC la simetría es otra y hay que medirla.
+
+**Lo que no cambia.** El scorer, P0 y P2 no usan el campo. Las dosis de la
+v1 ya eran inválidas por A1–A3. El ablation del 2026-09-10 sigue siendo
+válido como medida de uniformidad, pero ya no respalda la elección de
+producción.
 
 ## Requisitos técnicos bloqueantes
 
@@ -218,11 +278,15 @@ Decidido: se amplían. El piloto fija cuánto. Herramienta disponible
 `aggregate_organ_doses.py --source-sphere-radius-m <R>` en el agregador
 (los dos tienen que coincidir).
 
+0. **Geometría de NIAC (nuevo, 2026-10-04):** disposición y masa de las
+   bobinas según el reporte NIAC; ver «Disposición de las bobinas (D9)».
+   Todo lo que sigue se hace sobre esta geometría.
 1. **Preselección:** un mapa Biot-Savart en un dominio grande da la cola
    ∫B⊥·dl fuera de cada radio candidato. Se descartan los radios donde esa
    cola puede desviar de forma apreciable a las partículas de menor
-   rigidez de interés. **Hecha el 2026-10-01; ver «Resultado de la
-   preselección» más abajo.**
+   rigidez de interés. **Hecha el 2026-10-01 con el patrón K=1; hay que
+   repetirla con la geometría del paso 0 (hallazgo A4).** Ver «Resultado
+   de la preselección» más abajo.
 2. **Elmer:** dominios crecientes. Comparar el campo interior entre ellos
    (efecto de la frontera `AV=0`; hoy Biot-Savart y Elmer difieren hasta
    un 40% hacia los extremos en z). Requiere una máquina con más de ~8 GB
@@ -230,6 +294,9 @@ Decidido: se amplían. El piloto fija cuánto. Herramienta disponible
 3. **Convergencia de la dosis:** x=0 y una posición fuera del eje, en las
    energías más sensibles al campo (cerca del corte del escudo), para
    R₁ < R₂ < R₃.
+4. **Comparación de disposiciones (nuevo, 2026-10-04):** η a x = 0 con la
+   disposición de NIAC y con K=1; detalle en «Disposición de las bobinas
+   (D9)».
 
 - **Criterio:** fijar por separado dominio/resolución del mapa, radio y
   límite de trazas; variar uno por vez y confirmar la configuración conjunta.
@@ -242,6 +309,10 @@ Decidido: se amplían. El piloto fija cuánto. Herramienta disponible
 - **Bloquea:** P3–P6 y el barrido. Cambiar el campo después invalida todo.
 
 #### Resultado de la preselección (paso 1, 2026-10-01)
+
+> **Nota (2026-10-04):** esta preselección usó el patrón K=1, que dejó de
+> ser la geometría de producción (hallazgo A4). El método sigue valiendo;
+> los números se rehacen con la disposición de NIAC.
 
 Script: `field/preselect_source_radius.py`. Resultados:
 `field/studies/p1_preseleccion_radio_2026-10-01.json`.
@@ -522,7 +593,7 @@ Equivale a la Fase 10.
 ## Dependencias
 
 ```
-D1–D8 + scorer nuevo
+D1–D9 + scorer nuevo
    ├─ P0 (normalización, sin campo)
    ├─ P1 (dominio y radio) ─┬─ P3 (costo y convergencia) ─┬─ P6 (η)
    │   └─ mapa Elmer final  │   P4 (energías) ────────────┤
@@ -530,13 +601,16 @@ D1–D8 + scorer nuevo
    └─ P2 (estimador, sin campo) ─┘
 ```
 
-**Camino crítico:** P1 → mapa Elmer final → P3/P4/P5 → P6. Lo que no usa
+**Camino crítico:** P1 (desde el paso 0, geometría de NIAC) → mapa Elmer
+final → P3/P4/P5 → P6. Lo que no usa
 el campo (P0, P2, scorer, tests) se adelanta en paralelo, pero ninguna
 corrida con campo hecha antes del mapa final es reutilizable.
 
 ## Condición para empezar el barrido
 
 - [ ] D1–D7 y D8 si aplica decididas y registradas antes de los pilotos afectados.
+- [ ] Geometría de bobinas de NIAC (disposición y masa, D9; hallazgos A4 y
+      B9) generada, verificada y versionada en `field/production/`.
 - [ ] Mapa de campo Elmer final (dominio de P1) generado, versionado en
       `field/production/` con su manifiesto y hash, y cargado en Geant4 sin
       truncamiento dentro de la esfera fuente ni del `MagnetEnvelope`.

@@ -11,7 +11,7 @@ piloto o esa decisión (sección 9).
 |---|---|---|
 | Physics list | `Shielding` + `G4StepLimiterPhysics` | `ICRP110phantoms.cc` |
 | Nave | cilindro G4_Al, radio 4.5 m, semilongitud 5 m, casco 1.5 cm; cabina de aire 0.001 g/cm³ | `run_organ_sweep.py` |
-| Bobinas | `field/production/crewhat_corc_array.gdml` (radio 5.67–10.34 m, z ±4.34 m) | GDML versionado |
+| Bobinas | Disposición de CREW HaT según NIAC, masa corregida (D9; hallazgos A4 y B9 de la auditoría). **El `crewhat_corc_array.gdml` actual es el patrón K=1 y no sirve para la v2** | GDML nuevo versionado, P1 paso 0 |
 | Campo | mapa Elmer del dominio aprobado en P1, global, B=0 fuera del mapa | *(P1)*, sha256 en procedencia |
 | Esfera fuente | radio aprobado en P1 | *(P1)* |
 | Dirección de entrada | ley coseno respecto a la normal interior | D1 |

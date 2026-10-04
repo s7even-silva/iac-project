@@ -51,6 +51,33 @@ Estado: **corregido** (código cambiado y verificado), **pendiente**
 | C7 | El aire de cabina tiene 0.001 g/cm³ y N/O 80/20 (el real: 1.2e-3 con Ar). | Menor. |
 | C8 | `ICRP110.out` tiene un nombre fijo: dos corridas en el mismo directorio de build se pisan. | Ya documentado; el worker usa un directorio propio. |
 
+## Hallazgos posteriores (2026-10-04): geometría de las bobinas frente a NIAC
+
+Revisión de `field/production/` contra el reporte NIAC Phase I (D'Onghia,
+NTRS 20250002403; PDF en la máquina de desarrollo, fuera del repo). Las
+páginas citadas son las del PDF.
+
+| # | Hallazgo | Efecto | Estado |
+|---|---|---|---|
+| A4 | **La disposición simulada no es la de CREW HaT.** El arreglo de producción usa el patrón Halbach dipolar K=1 (θ_k = 2φ_k, `generate_ellipse_array.py`), elegido el 2026-09-10 porque las fuentes no fijaban el patrón. NIAC sí lo describe: «rotating magnetic polarities» que generan un campo alrededor del arreglo «while suppressing the magnetic field in the habitat region at the center» (§2, p. 8), un campo «weak or virtually non-existent in the crew habitat» (§2, p. 8); en la fig. 3.1(b) (p. 10) las cuatro bobinas cardinales están en planos radiales y las cuatro diagonales en planos tangenciales, y la fig. 3.9 (p. 16) muestra «four coils facing the axis of symmetry». K=1 hace lo contrario: un dipolo uniforme **dentro** de la nave (0.54 T en el eje con Elmer). | Todo lo que depende del campo: el mapa de producción, la preselección del radio de P1 (paso 1) y cualquier dosis con campo. Las dosis de la v1 ya eran inválidas por A1–A3. El criterio del ablation que respaldó a K=1 (uniformidad de \|B\| dentro de la nave, `CREWHAT_STATUS.md`) mide una propiedad que el diseño de NIAC busca suprimir, y no mide dosis. | **Pendiente.** Cambio de plan en `plan_piloto.md` (D9 y P1): producción con la disposición de NIAC y comparación con K=1 en P1. |
+| B9 | **Las bobinas simuladas pesan unas 5 veces más que las de NIAC.** Cada bobina es un sólido de sección cuadrada de 0.67 × 0.67 m (supuesto propio, `CREWHAT_STATUS.md`) lleno de CORC homogeneizado a 8.96 g/cm³: 8.70 m³ y 77.9 t por bobina, 623 t el arreglo. NIAC da para la bobina elíptica CORC 40 vueltas por capa, 67 capas, 0.67 m de espesor radial y **15.6 t** por bobina (tabla de §4.10.2, p. 49). Con cable de 8 mm, 40 vueltas por capa dan unos 0.32 m de ancho, no 0.67 m. | Exceso de material en la geometría de transporte: más secundarios producidos en las bobinas, con un sesgo hacia más dosis que no se puede corregir después. El campo no cambia (la corriente total es la misma). | **Pendiente.** Candidato: sección de ~0.67 × 0.32 m con densidad efectiva ajustada a 15.6 t por bobina; se decide junto con A4, porque los dos regeneran el GDML. |
+
+Chequeo exploratorio de A4 (Biot-Savart con filamentos, no es un piloto):
+`field/studies/disposicion_bobinas_2026-10-04.py` y su salida `.txt`. Con
+θ_k = 90° − φ_k, la única asignación de sentidos que respeta las
+orientaciones de la fig. 3.1(b) con polaridad rotando de forma continua,
+|B| es 0 en el centro y 0.013 T de media a 2 m del eje, frente a 0.52 y
+0.55 T con K=1. Coincide con el «campo suprimido» de NIAC y con el centro
+casi sin campo de su fig. 3.2 (p. 11). El reporte no dice el sentido de
+la corriente de cada bobina, así que esa asignación queda como supuesto
+propio declarado hasta confirmarla con la fig. 3.2 o con los autores.
+
+Dos datos más del reporte para quien prepare la charla o el paper: el
+radio de Halbach de diseño es 8 m (§3.1, p. 12; la fig. 3.1(b) dibuja un
+anillo más chico, y las figs. 3.2 y 3.9 vienen de la ref. [35], un diseño
+anterior con bobinas de pista de carreras), y no hay en
+el reporte una cifra de 24 t: las ocho bobinas CORC suman unas 125 t.
+
 ## Requisitos del scorer para la próxima producción
 
 Para no tener que volver a correr la producción si después aparece otra

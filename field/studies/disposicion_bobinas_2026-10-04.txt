@@ -1,0 +1,3 @@
+K1 (simulated, th=2phi): |B|(0)=0.517 T; r=2: mean 0.546 min 0.534 max 0.559; r=4.5: mean 0.711 min 0.592 max 0.970 ; between coils r=8: mean 1.87
+NIAC candidate (th=90deg-phi): |B|(0)=0.000 T; r=2: mean 0.013 min 0.007 max 0.019; r=4.5: mean 0.358 min 0.335 max 0.428 ; between coils r=8: mean 1.85
+ablation alternating: |B|(0)=0.000 T; r=2: mean 0.057 min 0.028 max 0.082; r=4.5: mean 0.500 min 0.437 max 0.600 ; between coils r=8: mean 1.86

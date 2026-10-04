@@ -10,6 +10,15 @@ de mallado/FEM. `field/generated/` sigue sin versionarse; esto no cambia
 ese criterio, es una carpeta aparte con una regla propia en `.gitignore`
 (`!field/production/**`).
 
+**Aviso (2026-10-04): estos archivos no son la geometría de la v2.** El
+arreglo de aquí usa el patrón Halbach K=1, que no es la disposición de
+CREW HaT descrita en el reporte NIAC, y sus bobinas pesan 77.9 t cada una
+frente a las 15.6 t de NIAC (hallazgos A4 y B9 en
+[`docs/bitacora/auditoria_2026-09-30.md`](../../docs/bitacora/auditoria_2026-09-30.md)).
+Se conservan para reproducir la v1 y como variante de comparación en P1;
+la geometría y el mapa de la v2 salen de P1, paso 0
+([`plan_piloto.md`](../../docs/bitacora/plan_piloto.md), D9).
+
 **Corrección importante (2026-09-12), léela antes de usar estos
 archivos:** el arreglo de 8 bobinas de aquí es la variante **CORC**
 (winding pack 0,67m), **no** la cinta 12mm (1,43m) que el equipo había
