@@ -611,10 +611,10 @@ const ROOMS = [
     draw: () => `${eAxis(400)}<g id="six"></g>`, after: (svg, ctx, room) => sixLoop(svg, ctx, room.ui),
     ui: (bar, rerender, svg) => { bar.innerHTML = pills("Environment", CASES.map(([k, , s]) => [k, s]), CASES[S.six.k][0]);
       bindPills(bar, k => { stopAll(); S.six.k = CASES.findIndex(c => c[0] === k); drawSix(svg, k); }); } },
-  { t: "How many energies?", box: [63, 66, 740, 444], sub: "double the grid until the answer stops moving",
-    cap: "More energies, smaller error: the integral is recomputed with 2, 4, 8, 16 and 32 intervals until it sits inside a tolerance fixed in advance.",
-    say: "And how many energies are enough? We double the grid until the answer stops moving, within a tolerance written down in advance, and confirm it against an independent reference.",
-    note: "Real spectrum × illustrative response. The error shown is the trapezoid rule against a fine integral.",
+  { t: "How many energies?", box: [63, 66, 740, 444], sub: "add energies only where the error is largest",
+    cap: "Each step adds one energy, only in the interval where the error indicator is largest, until the integral sits inside a tolerance fixed in advance.",
+    say: "And how many energies are enough? We add points only where the error is largest, until the answer sits inside a tolerance written down in advance, and confirm it against an independent reference.",
+    note: "Local refinement, as in pilot P4 (plan_piloto.md): the indicator compares grid N with 2N on each interval, weighted by the case's spectrum Φ_s, and a point is added only where it is largest; the grid is never doubled everywhere. Not to be confused with the event allocation of plan_barrido.md §6, which shares events, not energies, among the points: M_j ∝ |w_j|·σ_j/√c_j, with a floor M_min from P3. Here: real spectrum × illustrative response; the error is the trapezoid rule against a fine integral.",
     draw: () => `${eAxis(400)}<g id="refine"></g>`, after: (svg, ctx) => refineLoop(svg, ctx) },
   { t: "Seven pilots, then the sweep", box: [24, 112, 800, 380], sub: "each criterion fixed before seeing data",
     cap: "Before production, seven pilot studies must pass, each against a criterion written down in advance. The first compares our organ doses with ICRP 116. Click a pilot to see its test.",
@@ -772,20 +772,30 @@ function sixLoop(svg, ctx, ui) {
   show(S.six.k); if (!ctx.live || reduce) return;
   ctx.every(() => show((S.six.k + 1) % CASES.length), 2400);
 }
+/* local refinement: start from 4 energies; each step splits the interval where |T_N − T_2N| (trapezoid on the interval against its two halves,
+   with the integrand already weighted by the spectrum) is largest, until the integral is inside the tolerance */
 function refineLoop(svg, ctx) {
-  const g = svg.querySelector("#refine"), f = lg => specAt("GCR_H_min", lg) * Rshape(lg), a = 1.05, b = 5;
+  const g = svg.querySelector("#refine"), f = lg => specAt("GCR_H_min", lg) * Rshape(lg), a = 1.05, b = 5, TOL = .01;
   let ref = 0; const NF = 4000; for (let i = 0; i <= NF; i++) ref += f(a + (b - a) * i / NF) * (i === 0 || i === NF ? .5 : 1); ref *= (b - a) / NF;
   const fmax = Math.max(...Array.from({ length: 200 }, (_, i) => f(a + (b - a) * i / 199)));
-  const Y = v => ePlotY(v / fmax, 140, 250), NS_ = [2, 4, 8, 16, 32]; let k = 0;
-  const draw = N => { let s = "", I = 0, curve = [];
-    for (let lg = a; lg <= b + 1e-9; lg += .02) curve.push([PX(lg), Y(f(lg))]);
-    for (let i = 0; i < N; i++) { const x0 = a + (b - a) * i / N, x1 = a + (b - a) * (i + 1) / N; I += (f(x0) + f(x1)) / 2 * (x1 - x0);
-      s += `<path d="M${f1(PX(x0))} 400 L${f1(PX(x0))} ${f1(Y(f(x0)))} L${f1(PX(x1))} ${f1(Y(f(x1)))} L${f1(PX(x1))} 400 Z" class="f-film" opacity=".4" stroke="var(--vit)" stroke-width="${N > 16 ? 1 : 2}"/>`; }
-    const err = I / ref - 1, ok = Math.abs(err) < .02;
-    g.innerHTML = s + poly(curve, "s-ink", 'stroke-width="1.6"') + `<text x="90" y="88" class="vt">${N + 1} energies, ${N} intervals</text><text x="90" y="106" class="vd">trapezoid error: ${err >= 0 ? "+" : ""}${(100 * err).toFixed(1)}%</text>
-      <text x="710" y="88" text-anchor="end" class="vt">${ok ? "inside the tolerance" : "keep refining"}</text><text x="710" y="106" text-anchor="end" class="vd">tolerance fixed in advance, here ±2%</text>`; };
-  if (!ctx.live || reduce) { draw(32); return; } draw(NS_[0]);
-  ctx.every(() => { k = (k + 1) % NS_.length; draw(NS_[k]); }, 1800);
+  const Y = v => ePlotY(v / fmax, 140, 250), T = (x0, x1) => (f(x0) + f(x1)) / 2 * (x1 - x0);
+  const ind = (x0, x1) => { const m = (x0 + x1) / 2; return Math.abs(T(x0, x1) - T(x0, m) - T(m, x1)); };
+  const start = () => Array.from({ length: 4 }, (_, i) => a + (b - a) * i / 3);
+  let pts = start(), hold = 0, added = null;
+  const curve = []; for (let lg = a; lg <= b + 1e-9; lg += .02) curve.push([PX(lg), Y(f(lg))]);
+  const draw = () => { let s = "", I = 0, worst = -1, wv = -1;
+    for (let i = 0; i < pts.length - 1; i++) { const x0 = pts[i], x1 = pts[i + 1], v = ind(x0, x1); I += T(x0, x1); if (v > wv) { wv = v; worst = i; } }
+    const err = I / ref - 1, ok = Math.abs(err) < TOL;
+    for (let i = 0; i < pts.length - 1; i++) { const x0 = pts[i], x1 = pts[i + 1], hot = !ok && i === worst;
+      s += `<path d="M${f1(PX(x0))} 400 L${f1(PX(x0))} ${f1(Y(f(x0)))} L${f1(PX(x1))} ${f1(Y(f(x1)))} L${f1(PX(x1))} 400 Z" class="f-film" opacity="${hot ? .75 : .35}" stroke="var(--vit)" stroke-width="1.5"/>`; }
+    pts.forEach(x => s += `<circle cx="${f1(PX(x))}" cy="${f1(Y(f(x)))}" r="${x === added ? 6 : 3.5}" class="${x === added ? "f-sun" : "f-ink"}"/>`);
+    g.innerHTML = s + poly(curve, "s-ink", 'stroke-width="1.6"') + `<text x="90" y="88" class="vt">${pts.length} energies</text><text x="90" y="106" class="vd">trapezoid error: ${err >= 0 ? "+" : ""}${(100 * err).toFixed(1)}%</text>
+      <text x="710" y="88" text-anchor="end" class="vt">${ok ? "inside the tolerance" : "next point: where the error is largest"}</text><text x="710" y="106" text-anchor="end" class="vd">${ok ? "tolerance fixed in advance, here ±1%" : "highlighted interval"}</text>`;
+    return { ok, worst }; };
+  const step = () => { const r = draw(); if (r.ok) { if (++hold > 2) { pts = start(); added = null; hold = 0; draw(); } return; }
+    const m = (pts[r.worst] + pts[r.worst + 1]) / 2; pts.splice(r.worst + 1, 0, m); added = m; draw(); };
+  if (!ctx.live || reduce) { while (!draw().ok && pts.length < 60) step(); return; }
+  draw(); ctx.every(step, 1400);
 }
 
 /* ---------- build the page ---------- */
