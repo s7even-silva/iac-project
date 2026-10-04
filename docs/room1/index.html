@@ -3,7 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <script>window.KIOSK="rain"</script>
-<title>Cuatro cosas invisibles</title>
+<title>Four invisible things</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap">
@@ -17,12 +17,12 @@
   --font-ui:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif;
   color-scheme:light;
 }
-:root[data-mode="noche"]{ --wall:#0D1217; --ink:#E4EAE6; --dim:#93A09C; --line:rgba(228,234,230,.13); --vit:#04070A; color-scheme:dark; }
-:root[data-mode="dia"]{ --vit:#FBFCFA; --vink:#18211F; --vdim:#66726E; --vline:rgba(24,33,31,.16);
+:root[data-mode="night"]{ --wall:#0D1217; --ink:#E4EAE6; --dim:#93A09C; --line:rgba(228,234,230,.13); --vit:#04070A; color-scheme:dark; }
+:root[data-mode="day"]{ --vit:#FBFCFA; --vink:#18211F; --vdim:#66726E; --vline:rgba(24,33,31,.16);
   --plus:#2F64D6; --neu:#23935A; --minus:#CF3B30; --film:#233B8F; --filing:#2E3936; --sun:#B85F0C; }
 *{box-sizing:border-box}
 body{background:var(--wall);color:var(--ink);font-family:var(--font-ui);font-size:16px;line-height:1.55;margin:0;transition:background .4s,color .4s}
-.wrap{max-width:1200px;margin:0 auto;padding-inline:max(16px,4vw);padding-block:40px 80px}
+.wrap{max-width:1480px;margin:0 auto;padding-inline:max(16px,4vw);padding-block:40px 80px}
 h1,h2,h3{font-family:var(--font-display);font-weight:400;text-wrap:balance;margin:0}
 button,input{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--ink);outline-offset:3px}
@@ -42,35 +42,39 @@ button,input{font:inherit;color:inherit}
 .cue{font-size:14px;color:var(--dim);margin:14px 0 0;max-width:60ch}
 .cue b{color:var(--ink)}
 
-.room{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:36px;padding-block:56px;border-bottom:1px solid var(--line)}
-.room.flip{grid-template-columns:minmax(0,1fr) minmax(0,1.6fr)}
+.room{display:grid;grid-template-columns:minmax(0,2.5fr) minmax(0,1fr);gap:32px;padding-block:56px;border-bottom:1px solid var(--line)}
+.room.flip{grid-template-columns:minmax(0,1fr) minmax(0,2.5fr)}
 .room.flip .label{order:-1;text-align:right;align-items:flex-end}
 .room.flip .label .say{border-left:0;border-right:2px solid var(--ink);padding-left:0;padding-right:16px}
 .room.flip .label .meta{justify-content:flex-end}
 .case{min-width:0}
 
-/* The display case is exactly what an iframe will show: stage, in-case controls and caption. */
-.vitrina{background:var(--vit);border-radius:3px;overflow:hidden;transition:background .4s;color:var(--vink)}
-:root[data-mode="dia"] .vitrina{box-shadow:inset 0 0 0 1px var(--line)}
-.stage{position:relative;aspect-ratio:16/10;max-width:100%;cursor:pointer;touch-action:pan-y}
+/* Each display case is one 16:9 slide, exactly what an iframe shows. The drawing fills it; title, controls,
+   caption and counter float on top, and every scene is fitted into the free area between them (see fitScene). */
+.slide{--pad:clamp(10px,1.6cqw,30px);container-type:inline-size;position:relative;aspect-ratio:16/9;background:var(--vit);border-radius:3px;overflow:hidden;transition:background .4s;color:var(--vink);cursor:pointer;touch-action:pan-y;user-select:none}
+:root[data-mode="day"] .slide{box-shadow:inset 0 0 0 1px var(--line)}
+.stage{position:absolute;inset:0}
 .stage canvas,.stage svg{position:absolute;inset:0;width:100%;height:100%;display:block}
-.stitle{position:absolute;left:18px;top:12px;font-family:var(--font-display);font-size:clamp(15px,1.8vw,21px);pointer-events:none;line-height:1.2}
-.stitle small{display:block;font-family:var(--font-ui);font-size:12px;color:var(--vdim)}
-.ui{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;padding:4px 16px 12px;font-size:15px}
+.stitle{position:absolute;left:var(--pad);top:calc(var(--pad) * .9);font-family:var(--font-display);font-size:clamp(14px,2.3cqw,44px);pointer-events:none;line-height:1.15}
+.stitle small{display:block;font-family:var(--font-ui);font-size:clamp(11px,1.2cqw,23px);color:var(--vdim);margin-top:.2em}
+.band{position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;gap:clamp(5px,.7cqw,14px);padding:0 var(--pad) calc(var(--pad) * .8);font-size:clamp(11px,1.3cqw,25px);pointer-events:none}
+.ui{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;cursor:default;pointer-events:auto}
 .ui[hidden]{display:none}
-.ui .grp{display:flex;gap:6px;flex-wrap:wrap}
-.ui button{border:1px solid var(--vline);background:transparent;color:var(--vink);border-radius:999px;padding:0 16px;min-height:44px;min-width:44px;cursor:pointer;font-size:15px}
+.ui .grp{display:flex;gap:5px;flex-wrap:wrap}
+.ui button{border:1px solid var(--vline);background:var(--vit);color:var(--vink);border-radius:999px;padding:0 1.1em;height:clamp(26px,2.7cqw,52px);min-width:clamp(26px,2.7cqw,52px);cursor:pointer;font:inherit}
 .ui button[aria-pressed="true"]{background:var(--vink);color:var(--vit);border-color:var(--vink)}
 .ui button:hover{border-color:var(--vdim)}
-.ui label{display:flex;align-items:center;gap:10px;color:var(--vdim);min-height:44px}
+.ui label{display:flex;align-items:center;gap:.7em;color:var(--vdim);height:clamp(26px,2.7cqw,52px)}
 .ui .read{font-variant-numeric:tabular-nums;color:var(--vink)}
-.ui input[type=range]{-webkit-appearance:none;appearance:none;width:170px;height:44px;background:transparent;cursor:pointer}
-.ui input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:var(--vline)}
-.ui input[type=range]::-moz-range-track{height:6px;border-radius:3px;background:var(--vline)}
-.ui input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:28px;height:28px;border-radius:50%;background:var(--vink);margin-top:-11px;border:0}
-.ui input[type=range]::-moz-range-thumb{width:28px;height:28px;border-radius:50%;background:var(--vink);border:0}
+.ui input[type=range]{-webkit-appearance:none;appearance:none;width:clamp(100px,12cqw,260px);height:100%;background:transparent;cursor:pointer}
+.ui input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:var(--vline)}
+.ui input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:var(--vline)}
+.ui input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--vink);margin-top:-7px;border:0}
+.ui input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:var(--vink);border:0}
 .ui :focus-visible{outline:2px solid var(--vink);outline-offset:2px}
-.cap{padding:10px 18px 14px;font-size:14px;line-height:1.45;border-top:1px solid var(--vline)}
+.capline{display:flex;align-items:flex-end;gap:2em}
+.cap{flex:1;line-height:1.45;min-height:2.9em;display:flex;align-items:flex-end;color:var(--vdim);max-width:96ch}
+.count{font-size:.9em;color:var(--vdim);margin-left:auto;font-variant-numeric:tabular-nums;white-space:nowrap}
 
 .controls{display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap}
 .step{border:1px solid var(--line);background:transparent;border-radius:999px;width:40px;height:40px;cursor:pointer;font-size:18px;line-height:1}
@@ -80,16 +84,15 @@ button,input{font:inherit;color:inherit}
 .dots button::after{content:"";width:9px;height:9px;border-radius:50%;border:1.5px solid var(--dim)}
 .dots button[aria-current="true"]::after{background:var(--ink);border-color:var(--ink)}
 .dots .gap{width:12px}
-.count{font-size:13px;color:var(--dim);margin-left:auto;font-variant-numeric:tabular-nums}
 
-.label{min-width:0;display:flex;flex-direction:column;gap:16px}
-.label .num{font-family:var(--font-display);font-size:64px;line-height:.8;color:var(--dim)}
-.label h2{font-size:clamp(28px,3vw,38px);line-height:1.08}
-.label .invis{font-size:15px;color:var(--dim);margin:0}
+.label{min-width:0;display:flex;flex-direction:column;gap:12px}
+.label .num{font-family:var(--font-display);font-size:48px;line-height:.8;color:var(--dim)}
+.label h2{font-size:clamp(22px,2.1vw,30px);line-height:1.1}
+.label .invis{font-size:13.5px;color:var(--dim);margin:0}
 .label .invis b{color:var(--ink)}
-.label .say{font-family:var(--font-display);font-size:19px;line-height:1.5;margin:0;border-left:2px solid var(--ink);padding-left:16px}
-.label .note{font-size:14px;color:var(--dim);margin:0}
-.label .meta{font-size:13px;color:var(--dim);font-variant-numeric:tabular-nums;display:flex;gap:16px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:12px;margin-top:auto;width:100%}
+.label .say{font-family:var(--font-display);font-size:16px;line-height:1.5;margin:0;border-left:2px solid var(--ink);padding-left:16px}
+.label .note{font-size:12.5px;color:var(--dim);margin:0}
+.label .meta{font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums;display:flex;gap:16px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:12px;margin-top:auto;width:100%}
 
 .closing{padding-block:56px;border-bottom:1px solid var(--line);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:40px}
 .closing h2,.script h2,.howto h2{font-size:clamp(26px,3vw,36px);margin-bottom:14px}
@@ -127,13 +130,9 @@ button,input{font:inherit;color:inherit}
 .kiosk .top,.kiosk .plan,.kiosk .closing,.kiosk .script,.kiosk .howto,.kiosk .label{display:none}
 .kiosk .wrap{max-width:none;padding:0}
 .kiosk .room,.kiosk .room.flip{display:block;padding:0;border:0}
-.kiosk .vitrina{border-radius:0;box-shadow:none}
-.kiosk .stage{width:min(100%, calc((100vh - 180px) * 1.6));margin-inline:auto}
-.kiosk .controls{margin:0;padding:6px 16px 12px;background:var(--vit);color:var(--vink)}
-.kiosk .step{border-color:var(--vline);color:var(--vink);width:44px;height:44px}
-.kiosk .dots button::after{border-color:var(--vdim)}
-.kiosk .dots button[aria-current="true"]::after{background:var(--vink);border-color:var(--vink)}
-.kiosk .count{color:var(--vdim)}
+.kiosk .slide{border-radius:0;box-shadow:none}
+.kiosk .slide{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(100vw, calc(100vh * 16 / 9))}
+.kiosk .controls{display:none}
 
 @media (max-width:860px){
   .top,.plan,.room,.room.flip,.closing{grid-template-columns:minmax(0,1fr)}
@@ -142,7 +141,6 @@ button,input{font:inherit;color:inherit}
   .room.flip .label .meta{justify-content:flex-start}
   .howto{grid-template-columns:minmax(0,1fr)}
   .label .num{font-size:44px}
-  .ui input[type=range]{width:130px}
 }
 </style>
 
@@ -156,21 +154,21 @@ button,input{font:inherit;color:inherit}
   <header class="top">
     <h1>Four invisible things<span>a walk through the project</span></h1>
     <div>
-      <p>Guion gráfico de la charla del IAC 2026. Cada caja del iPoster es una sala; cada sala avanza por escenas con un clic, al ritmo del guion. La vitrina oscura, con sus controles y su pie, es exactamente lo que mostrará el iframe. El texto en serif es lo que se dice en voz alta.</p>
-      <p>Cada sala hace visible una cosa invisible: la radiación, el escudo, la dosis y el error. La última es la que más costó.</p>
-      <div class="modes" role="group" aria-label="Iluminación de la sala">
-        <button type="button" data-set="contraste" aria-pressed="true">Galería clara, vitrinas oscuras</button>
-        <button type="button" data-set="noche" aria-pressed="false">Todo oscuro</button>
-        <button type="button" data-set="dia" aria-pressed="false">Todo claro</button>
+      <p>Storyboard for the IAC 2026 talk. Each iPoster box is a room; each room moves scene by scene with a click, in step with the script. The dark case is a 16:9 slide (drawing, controls, caption and counter), exactly what the iframe shows. The serif text is what is said aloud.</p>
+      <p>Each room makes one invisible thing visible: the radiation, the shield, the dose and the error. The last one was the hardest.</p>
+      <div class="modes" role="group" aria-label="Room lighting">
+        <button type="button" data-set="contrast" aria-pressed="true">Light gallery, dark cases</button>
+        <button type="button" data-set="night" aria-pressed="false">All dark</button>
+        <button type="button" data-set="day" aria-pressed="false">All light</button>
       </div>
     </div>
   </header>
 
-  <section class="plan" aria-label="Recorrido">
-    <svg id="floorplan" viewBox="0 0 520 420" role="img" aria-label="Plano del recorrido: cuatro salas en el orden del guion"></svg>
+  <section class="plan" aria-label="Route">
+    <svg id="floorplan" viewBox="0 0 520 420" role="img" aria-label="Floor plan of the visit: four rooms in script order"></svg>
     <div>
       <p class="spoken" id="opening-say"></p>
-      <p class="cue"><b>Apertura.</b> El póster entero en pantalla, ninguna caja abierta. El plano es el póster: las cuatro salas son las cuatro cajas del 2×2 y el recorrido sigue el orden del guion. Clic en una sala para ir a ella.</p>
+      <p class="cue"><b>Opening.</b> The whole poster on screen, no box open. The floor plan is the poster: the four rooms are the four boxes of the 2×2, and the route follows the script. Click a room to go to it.</p>
     </div>
   </section>
 
@@ -178,27 +176,27 @@ button,input{font:inherit;color:inherit}
 
   <section class="closing" aria-labelledby="close-h">
     <div>
-      <h2 id="close-h">Salida</h2>
+      <h2 id="close-h">Exit</h2>
       <p class="spoken" id="closing-say"></p>
     </div>
     <div>
-      <p class="cue"><b>Cierre.</b> Se vuelve al póster completo. Las cuatro salas se leen como un solo pasillo: lluvia, escudo, dosis, error. Terminar en «where we still have to apply it» y no agregar nada después de «Thank you».</p>
-      <p class="cue"><b>Lo filosófico, sin decirlo.</b> Las tres primeras salas son física; la cuarta es método. La charla no promete un número: promete saber cuándo un número merece confianza. Y el escudo que protege mejor es el que deja en calma el cuarto donde vive la tripulación.</p>
+      <p class="cue"><b>Closing.</b> Back to the full poster. The four rooms read as one corridor: rain, shield, dose, error. End on “where we still have to apply it” and add nothing after “Thank you”.</p>
+      <p class="cue"><b>The philosophy, unspoken.</b> The first three rooms are physics; the fourth is method. The talk does not promise a number: it promises knowing when a number deserves trust. And the best shield is the one that leaves the crew’s room calm.</p>
     </div>
   </section>
 
   <section class="script" aria-labelledby="script-h">
-    <h2 id="script-h">Guion completo</h2>
+    <h2 id="script-h">Full script</h2>
     <p class="totals" id="totals"></p>
     <ol id="script-list"></ol>
   </section>
 
   <section class="howto" aria-labelledby="how-h">
-    <h2 id="how-h">Cómo pasa esto al iPoster</h2>
-    <div><h3>Una sala, un iframe</h3><p>Cada caja carga una página de GitHub Pages con su vitrina. Se avanza con clic sobre la imagen o con las flechas; cada avance coincide con una marca [CLICK] del guion.</p></div>
-    <div><h3>Controles dentro de la escena</h3><p>Los botones y deslizadores viven dentro de la vitrina, con áreas de toque de 44 px. Los usa el presentador con la caja expandida y, después, cualquier visitante. Ninguna escena los necesita: todas arrancan solas en el estado que cuenta la historia.</p></div>
-    <div><h3>Respaldo</h3><p>La última escena de cada sala se exporta como imagen para el iPoster, por si el iframe no carga o no recibe clics en la sede. Falta confirmar en el editor que el iframe expandido acepta clics y arrastres.</p></div>
-    <div><h3>Las cuatro vitrinas sueltas</h3><p>Lo que carga cada iframe: <a href="../sala1/">sala I</a>, <a href="../sala2/">sala II</a>, <a href="../sala3/">sala III</a> y <a href="../sala4/">sala IV</a>. Se avanza con clic sobre la imagen, con los botones de abajo o con las flechas del teclado.</p></div>
+    <h2 id="how-h">How this goes into the iPoster</h2>
+    <div><h3>One room, one iframe</h3><p>Each box loads a GitHub Pages page with its slide. Click the slide to advance, click its left third to go back, or use the arrow keys; each advance matches a [CLICK] mark in the script.</p></div>
+    <div><h3>Controls inside the scene</h3><p>Buttons and sliders live inside the slide, along its bottom edge, and every scene keeps the same 16:9 frame. The presenter uses them with the box expanded, and any visitor afterwards. No scene needs them: each one starts on its own in the state that tells the story.</p></div>
+    <div><h3>Fallback</h3><p>The last scene of each room is exported as an image for the iPoster, in case the iframe does not load or does not take clicks at the venue. Still to confirm in the editor: the expanded iframe accepts clicks and drags.</p></div>
+    <div><h3>The four slides on their own</h3><p>What each iframe loads: <a href="../room1/">room I</a>, <a href="../room2/">room II</a>, <a href="../room3/">room III</a> and <a href="../room4/">room IV</a>. Each fills the window without distortion; click to advance, left third to go back, or the arrow keys.</p></div>
   </section>
 </div>
 
@@ -229,11 +227,11 @@ function makeCtx(live) {
     loop: fn => { if (live && !reduce) { if (fn(performance.now()) === false) return; RT.loops.add(fn); if (!RT.raf) RT.raf = requestAnimationFrame(tick); } else fn(performance.now(), true); },
   };
 }
-/* canvas in the 800 × 500 stage coordinates */
+/* Scenes are drawn in 800 × 500 units and fitted into the 800 × 450 slide (cv._fit = {s, tx, ty}); canvases use the same fit */
 function prepCanvas(cv) {
-  const r = cv.getBoundingClientRect(), dpr = Math.min(2, devicePixelRatio || 1);
+  const r = cv.getBoundingClientRect(), dpr = Math.min(2, devicePixelRatio || 1), f = cv._fit || { s: 1, tx: 0, ty: 0 };
   cv.width = Math.max(1, Math.round(r.width * dpr)); cv.height = Math.max(1, Math.round(r.height * dpr));
-  const c = cv.getContext("2d"); c.setTransform(cv.width / 800, 0, 0, cv.height / 500, 0, 0); c.clearRect(0, 0, 800, 500); return c;
+  const c = cv.getContext("2d"), k = cv.width / 800; c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, cv.width, cv.height); c.setTransform(k * f.s, 0, 0, k * f.s, k * f.tx, k * f.ty); return c;
 }
 const clearCanvas = cv => { const c = cv.getContext("2d"); c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, cv.width, cv.height); };
 
@@ -248,15 +246,15 @@ function layerTrack(R, B, y0) {
   for (let a = da; a <= Math.PI + 1e-9; a += da) {
     const x = X0 + rpx * Math.sin(a), y = y0 - rpx * (1 - Math.cos(a));
     if (x > X1) { const ang = Math.asin((X1 - X0) / rpx), ey = y0 - rpx * (1 - Math.cos(ang)); p.push([X1, ey], [820, ey - (820 - X1) * Math.tan(ang)]); return { p, back: false, deg: ang * 180 / Math.PI }; }
-    if (y < -40) { p.push([x, y]); return { p, back: false, deg: 90 }; }
+    if (y < 40) { p.push([x, y]); return { p, back: false, deg: 90 }; }
     p.push([x, y]);
   }
   p.push([X0 - 60, y0 - 2 * rpx]); return { p, back: true, deg: 180 }; // short stub back out, so returning tracks never cross the labels
 }
 function layerBg() {
-  let s = `<rect x="${X0}" y="0" width="${X1 - X0}" height="500" class="f-line" opacity=".45"/>`;
-  for (let x = X0 + 20; x < X1; x += 40) for (let y = 30; y < 500; y += 40) s += `<circle cx="${x}" cy="${y}" r="1.5" class="f-dim" opacity=".6"/>`;
-  return s + `<text x="${X1 - 8}" y="40" text-anchor="end" class="vd">field layer, 2 m</text><text x="${X1 - 8}" y="56" text-anchor="end" class="vs">B points out of the page</text>`;
+  let s = `<rect x="${X0}" y="40" width="${X1 - X0}" height="400" class="f-line" opacity=".45"/>`;
+  for (let x = X0 + 20; x < X1; x += 40) for (let y = 60; y < 440; y += 40) s += `<circle cx="${x}" cy="${y}" r="1.5" class="f-dim" opacity=".6"/>`;
+  return s + `<text x="${X0}" y="30" class="vd">field layer, 2 m <tspan class="vs">· B points out of the page</tspan></text>`;
 }
 const LG = Array.from({ length: 41 }, (_, i) => 1 + i * .1);
 function fracBelow(key, Tc) {
@@ -358,23 +356,24 @@ const bindPills = (root, fn) => root.querySelectorAll(".grp").forEach(g => g.que
 
 /* ---------- the rooms ---------- */
 const S = {}; // per-scene state
+const SCALE = .8; // drawing units → slide units, shared by every scene
 const ROOMS = [
-{ id: "rain", num: "I", title: "The rain that never stops", invisible: "la radiación", scenes: [
-  { t: "1.8 mSv a day", sub: "measured by RAD on Curiosity, cruise to Mars",
+{ id: "rain", num: "I", title: "The rain that never stops", invisible: "the radiation", scenes: [
+  { t: "1.8 mSv a day", bleed: true, sub: "measured by RAD on Curiosity, cruise to Mars",
     cap: "Deep space is never dark for an astronaut: particles cross the body from every direction, all the time.",
     say: "On the way to Mars, the RAD instrument on Curiosity measured 1.8 millisieverts a day. Over a 900-day mission that is 0.6 to 0.7 sievert, a whole career limit, spent before anyone lands. For cancer, there is no safe threshold.",
-    note: "[CLICK: Box 1] La vitrina abre con lluvia: la radiación que nadie ve.",
-    draw: () => `${person(400, 260, 140)}<g class="rain" data-kind="iso" data-n="90"></g>`, after: rain },
-  { t: "Two weathers", sub: "storms and rain",
+    note: "[CLICK: Box 1] The case opens with rain: the radiation nobody sees.",
+    draw: (a, f) => `<g class="rain" data-kind="iso" data-n="110" data-y0="${f.top - 20}" data-y1="${f.bot}"></g>${person(400, (f.top + f.bot) / 2 - 72, 150)}`, after: rain },
+  { t: "Two weathers", bleed: true, sub: "storms and rain",
     cap: "Solar storms arrive from one side, in bursts you can see coming. Cosmic rays arrive from everywhere, always.",
     say: "Space radiation comes in two weathers. Solar particle events are storms: mostly protons of a few hundred MeV, lasting hours to days. You can see them coming and take shelter. Galactic cosmic rays are a rain that never stops. They arrive from every direction, up to a thousand GeV per nucleon.",
-    note: "Naranja = Sol, azul = cósmicos. Ese código se mantiene en toda la sala.",
-    draw: () => `<line x1="400" y1="70" x2="400" y2="470" class="s-line"/><g class="rain" data-kind="storm" data-n="60" data-x0="0" data-x1="400"></g><g class="rain" data-kind="iso" data-n="45" data-x0="400" data-x1="800" data-cls="s-plus"></g>
-      ${plate(110, 450, 180, 30)}${plate(510, 450, 180, 30)}<text x="200" y="470" text-anchor="middle" class="vt">Solar particle events</text><text x="600" y="470" text-anchor="middle" class="vt">Galactic cosmic rays</text>`, after: rain },
-  { t: "What a magnet sees", sub: "rigidity = momentum per unit charge",
+    note: "Orange = Sun, blue = cosmic rays. That colour code holds for the whole room.",
+    draw: (a, f) => `<line x1="400" y1="${f.top}" x2="400" y2="${f.bot - 34}" class="s-line"/><g class="rain" data-kind="storm" data-n="60" data-x0="0" data-x1="400" data-y0="${f.top}" data-y1="${f.bot - 34}"></g><g class="rain" data-kind="iso" data-n="50" data-x0="400" data-x1="800" data-y0="${f.top}" data-y1="${f.bot - 34}" data-cls="s-plus"></g>
+      <text x="200" y="${f.bot - 6}" text-anchor="middle" class="vt" style="font-size:13px">Solar particle events</text><text x="600" y="${f.bot - 6}" text-anchor="middle" class="vt" style="font-size:13px">Galactic cosmic rays</text>`, after: rain },
+  { t: "What a magnet sees", box: [0, 40, 800, 440], sub: "rigidity = momentum per unit charge",
     cap: "Two particles with the same rigidity follow the same path in a magnetic field, whatever their energy. Change the particle or its energy.",
     say: "Walls of mass are heavy, and they shatter incoming nuclei into secondaries. A magnet pushes back with nothing. It doesn't see energy; it sees rigidity, momentum per unit charge. A 10-GeV proton and an iron nucleus of about 240 GeV follow exactly the same path.",
-    note: "Arranca con hierro a 4.2 GeV/n (236 GeV de energía cinética): su traza cae sobre la banda gris del protón. Mover la energía muestra cómo se separan; el botón vuelve a igualarlas.",
+    note: "Starts with iron at 4.2 GeV/n (236 GeV of kinetic energy): its track falls on the proton’s grey band. Moving the energy shows them part; the button matches them again.",
     init: () => S.magnet = S.magnet || { sp: "Fe", lg: Math.log10(4213), B: 1.6 },
     draw: anim => { const st = S.magnet, Tn = 10 ** st.lg, R = rigidity(st.sp, Tn), ref = layerTrack(rigidity("p", 10000), st.B, 380), tr = layerTrack(R, st.B, 380);
       return `${layerBg()}${poly(ref.p, "s-dim", 'stroke-width="10" opacity=".35" stroke-linecap="round"')}
@@ -391,14 +390,14 @@ const ROOMS = [
       bindPills(bar, k => { st.sp = k; rerender(); });
       bar.querySelector("#mg-e").oninput = e => { st.lg = +e.target.value; rerender(); };
       bar.querySelector("#mg-match").onclick = e => { e.stopPropagation(); const s = SPECIES[st.sp], pn = 10.898 * s.Z / s.A; st.lg = Math.log10((Math.sqrt(pn * pn + (s.m / 1000) ** 2) - s.m / 1000) * 1000); bar.querySelector("#mg-e").value = st.lg; rerender(); }; } },
-  { t: "A selective shield", sub: "what it turns back, what it lets through",
+  { t: "A selective shield", box: [0, 40, 800, 440], sub: "what it turns back, what it lets through",
     cap: "The same field turns back almost every solar proton but only bends the fast cosmic rays. Change the strength of the field.",
     say: "So a magnetic shield is selective by nature. It turns back almost every solar proton, and only bends the hardest cosmic rays. Any honest evaluation has to be resolved by particle and by energy.",
-    note: "Los porcentajes salen de los espectros reales de OLTARIS (octubre de 1989 y BON2020 en mínimo solar) para una capa uniforme de 2 m, que es solo una ilustración.",
+    note: "The percentages come from the real OLTARIS spectra (October 1989, and BON2020 at solar minimum) for a uniform 2 m layer, which is only an illustration.",
     init: () => S.sel = S.sel || { B: 1.6 },
     draw: anim => { const B = S.sel.B; let s = layerBg();
-      [12, 25, 45, 75, 120, 180].forEach((E, i) => s += poly(layerTrack(rigidity("p", E), B, 350 + i * 22).p, `s-sun ${anim ? "draw" : ""}`, `pathLength="1" stroke-width="2.2" style="--dl:${(i * .08).toFixed(2)}s"`));
-      [300, 700, 1500, 4000, 12000, 50000].forEach((E, i) => s += poly(layerTrack(rigidity("p", E), B, 240 + i * 18).p, "s-plus", 'stroke-width="2.2" stroke-dasharray="8 6"'));
+      [12, 25, 45, 75, 120, 180].forEach((E, i) => s += poly(layerTrack(rigidity("p", E), B, 330 + i * 20).p, `s-sun ${anim ? "draw" : ""}`, `pathLength="1" stroke-width="2.2" style="--dl:${(i * .08).toFixed(2)}s"`));
+      [300, 700, 1500, 4000, 12000, 50000].forEach((E, i) => s += poly(layerTrack(rigidity("p", E), B, 226 + i * 16).p, "s-plus", 'stroke-width="2.2" stroke-dasharray="8 6"'));
       const Tc = protonT(.299792 * B * LAYER), fs = fracBelow("SEP_max", Tc), fg = fracBelow("GCR_H_min", Tc);
       const bar = (y, f, cls, lab) => `<text x="24" y="${y}" class="vt">${lab}</text><rect x="24" y="${y + 8}" width="200" height="9" class="f-line"/><rect x="24" y="${y + 8}" width="${f1(200 * f)}" height="9" class="${cls}"/><text x="232" y="${y + 17}" class="vd">${pct(f, f > .99 ? 1 : 0)} turned back</text>`;
       return s + plate(14, 74, 336, 140) + bar(98, fs, "f-sun", "Solar protons, Oct 1989") + bar(140, fg, "f-plus", "Cosmic-ray protons, solar min")
@@ -408,33 +407,33 @@ const ROOMS = [
       const v = bar.querySelector("#sel-v"), upd = () => { v.textContent = `${st.B.toFixed(1)} T over 2 m; protons below ${fmtE(protonT(.299792 * st.B * LAYER))} turn back`; rerender(); };
       bar.querySelector("#sel-b").oninput = e => { st.B = +e.target.value; upd(); }; upd(); } },
 ]},
-{ id: "shield", num: "II", title: "A shield made of nothing", invisible: "el campo", scenes: [
-  { t: "Eight coils, one torus", sub: "CREW HaT, NASA Innovative Advanced Concepts",
+{ id: "shield", num: "II", title: "A shield made of nothing", invisible: "the field", scenes: [
+  { t: "Eight coils, one torus", box: [0, 30, 800, 460], sub: "CREW HaT, NASA Innovative Advanced Concepts",
     cap: "Eight elliptical coils, 8 m long and 4 m across, on an 8 m ring around the ship: four face the ship, four stand edge-on. Drag to turn it.",
     say: "Our shield is CREW HaT, from NASA's Innovative Advanced Concepts program: eight elliptical coils on a ring around the habitat, each eight meters long and four across, carrying ten million amp-turns. Four coils face the ship and four stand edge-on, and their magnetic polarity turns around the ring.",
-    note: "[CLICK: Box 2] Disposición del reporte NIAC (fig. 3.1(b) y §2). El sentido de corriente de cada bobina no está en el reporte: usamos θ = 90° − φ, supuesto declarado (D9). El botón «First sweep» muestra la disposición K=1 que usó la v1 (hallazgo A4); úsenlo solo si preguntan.",
+    note: "[CLICK: Box 2] Layout from the NIAC report (fig. 3.1(b) and §2). The report does not give each coil’s current sense: we use θ = 90° − φ, a declared assumption (D9). The “First sweep” button shows the K=1 layout used in v1 (finding A4); use it only if asked.",
     init: () => { S.view = S.view || { az: .5, el: .5 }; S.layout = S.layout || "niac"; },
-    draw: () => person(400, 240, 44, "f-ink"),
+    draw: () => person(400, 230, 40, "f-ink"),
     after: (svg, ctx, room) => coils3d(room, ctx),
     ui: (bar, rerender, svg, room) => { bar.innerHTML = pills("Layout", [["niac", "CREW HaT (NIAC)"], ["k1", "First sweep (v1)"]], S.layout) + pills("View", [["o", "Oblique"], ["a", "Along the ship"], ["s", "Side"]], "");
       bindPills(bar, (k, g) => { if (g.getAttribute("aria-label") === "Layout") S.layout = k; else { Object.assign(S.view, { o: { az: .5, el: .5 }, a: { az: 0, el: Math.PI / 2 }, s: { az: .3, el: 0 } }[k]); g.querySelectorAll("[data-k]").forEach(x => x.setAttribute("aria-pressed", "false")); } stopAll(); coils3d(room, makeCtx(false)); }); } },
-  { t: "The field", sub: "a strong wall around the ship, a quiet room inside",
+  { t: "The field", box: [160, 26, 640, 474], sub: "a strong wall around the ship, a quiet room inside",
     cap: "Iron filings drawn from the computed field: strong around the coils, almost zero where the crew lives. Point anywhere to read it.",
     say: "Nothing touches the particle; the field only bends its path. And the design does something elegant: the field is strong around the coils and almost vanishes inside, where the crew lives. The shield is a wall made of nothing, with a quiet room at its center.",
-    note: "Campo de Biot-Savart de la disposición de NIAC (bobinado repartido, sentidos supuestos θ = 90° − φ): 0 T en el centro, ~0.01 T a 2 m, ~0.36 T junto al casco. El mapa de Elmer de esta disposición sale de P1. «First sweep» muestra el campo de la v1 (Elmer, K=1): 0.54 T en todo el hábitat.",
+    note: "Biot–Savart field of the NIAC layout (distributed winding pack, assumed senses θ = 90° − φ): 0 T at the center, ~0.01 T at 2 m, ~0.36 T next to the hull. The Elmer map of this layout comes out of P1. “First sweep” shows the v1 field (Elmer, K=1): 0.54 T throughout the habitat.",
     init: () => S.fieldSet = S.fieldSet || "niac",
-    draw: () => `${hull(400, 250, 20)}${halbach(400, 250, 20, { layout: S.fieldSet, op: .9 })}<circle id="probe" cx="-50" cy="-50" r="6" class="nofill s-ink" stroke-width="1.6"/>`,
+    draw: () => `${hull(400, 250, 20)}${halbach(400, 250, 20, { layout: S.fieldSet, op: .9 })}<circle id="probe" cx="400" cy="250" r="6" class="nofill s-ink" stroke-width="1.6" visibility="hidden"/>`,
     after: (svg, ctx, room) => paintFilings(room.cv, S.fieldSet, 400, 250, 20),
     ui: (bar, rerender, svg, room) => { bar.innerHTML = pills("Field", [["niac", "CREW HaT"], ["k1", "First sweep (v1)"]], S.fieldSet) + `<span class="read" id="bread">${S.fieldSet === "niac" ? "|B| at the center: 0.00 T" : "|B| at the center: 0.54 T"}</span>`;
       const out = bar.querySelector("#bread");
       bindPills(bar, k => { S.fieldSet = k; rerender(); paintFilings(room.cv, k, 400, 250, 20); out.textContent = k === "niac" ? "|B| at the center: 0.00 T" : "|B| at the center: 0.54 T"; });
-      svg.onpointermove = e => { const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; const q = pt.matrixTransform(svg.getScreenCTM().inverse());
-        const x = (q.x - 400) / 20, y = -(q.y - 250) / 20, B = Bat(S.fieldSet, x, y), probe = svg.querySelector("#probe"); if (probe) { probe.setAttribute("cx", q.x); probe.setAttribute("cy", q.y); }
+      svg.onpointermove = e => { const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; const q = pt.matrixTransform(svg.querySelector(".fit").getScreenCTM().inverse());
+        const x = (q.x - 400) / 20, y = -(q.y - 250) / 20, B = Bat(S.fieldSet, x, y), probe = svg.querySelector("#probe"); if (probe) { probe.setAttribute("cx", q.x); probe.setAttribute("cy", q.y); probe.setAttribute("visibility", "visible"); }
         out.textContent = B ? `|B| = ${Math.hypot(B[0], B[1]).toFixed(2)} T at ${Math.hypot(x, y).toFixed(1)} m from the axis` : "outside the computed region"; }; } },
-  { t: "A cold machine", sub: "REBCO superconductor at 40 K",
+  { t: "A cold machine", box: [17, 94, 768, 428], sub: "REBCO superconductor at 40 K",
     cap: "Sunlight powers cryocoolers that keep the coils at 40 K. The eight coils weigh about 125 t, in the range of the 100 t of passive shielding that would protect as much.",
     say: "The coils are REBCO superconductor, kept at 40 kelvin by cryocoolers instead of liquid helium, and powered by solar arrays sized for their end-of-life output. The eight coils weigh about 125 tonnes, in the same range as the hundred tonnes of passive shielding that would give the same protection.",
-    note: "Cifras del reporte NIAC: 15.6 t por bobina CORC elíptica (§4.10.2), «slightly over 120 tons for all eight coils»; criocooler de 34–80 kg y 1.4–3 kW de entrada según la opción (§4.11); equivalente pasivo de ~100 t. Paneles y estructura no se dimensionaron en la fase I. Ya no se cita «24 t»: no aparece en el reporte.",
+    note: "Figures from the NIAC report: 15.6 t per elliptical CORC coil (§4.10.2), “slightly over 120 tons for all eight coils”; a 34–80 kg cryocooler with 1.4–3 kW input depending on the option (§4.11); a passive equivalent of ~100 t. Arrays and structure were not sized in Phase I. “24 t” is no longer quoted: it is not in the report.",
     draw: anim => { const A = anim ? "appear" : "", N = [["Sunlight", ""], ["Solar arrays", "end-of-life sizing"], ["Cryocoolers", "1.4–3 kW each"], ["Coils at 40 K", "REBCO, Tc ≈ 93 K"]]; let s = "";
       N.forEach(([a, b], i) => { const x = 120 + i * 187;
         s += `<g class="${A}" style="--dl:${i * .3}s"><circle cx="${x}" cy="130" r="${i ? 30 : 36}" class="nofill ${i === 3 ? "s-film" : "s-ink"}" stroke-width="1.6"/>
@@ -449,10 +448,10 @@ const ROOMS = [
         else if (i === 0) { for (let k = 0; k < 8; k++) s += `<rect x="${f1(X(k * 15.6))}" y="${y}" width="${f1(15.6 * 3.2 - 2)}" height="18" class="${cls} ${A}" style="--dl:${(1.2 + k * .08).toFixed(2)}s"/>`; s += `<text x="${f1(X(t) + 10)}" y="${y + 14}" class="vd">${v}</text>`; }
         else s += `<rect x="230" y="${y}" width="${f1(t * 3.2)}" height="18" class="${cls}" opacity=".6"/><text x="${f1(X(t) + 10)}" y="${y + 14}" class="vd">${v}</text>`; });
       return s; } },
-  { t: "The real shape", sub: "finite elements, not a filament",
+  { t: "The real shape", box: [60, 49, 800, 430], sub: "finite elements, not a filament",
     cap: "To scale: a filament model squeezes each coil's current into a 6.7 cm core; the real winding pack is 67 cm of cable, about 1.2 m from the hull.",
     say: "And we did not shrink each coil into a wire. A filament model packs the current into a 6.7-centimeter core; the real winding pack is 67 centimeters of superconducting cable, just over a meter from the hull. So the field is solved over the real cross-section, and the coils are in the simulation as matter, because a shield that bends particles also breaks them.",
-    note: "NIAC: 67 capas de 40 vueltas de cable CORC de 8 mm, 0.67 m de espesor, 15.6 t por bobina. El ancho de ~0.32 m es nuestra estimación (40 × 8 mm) y está pendiente en D9; la v1 usó una sección cuadrada de 0.67 m y 77.9 t por bobina (hallazgo B9). 1.2 m = borde interior de una bobina radial (5.67 m) menos el radio del casco (4.5 m).",
+    note: "NIAC: 67 layers of 40 turns of 8 mm CORC cable, 0.67 m thick, 15.6 t per coil. The ~0.32 m width is our estimate (40 × 8 mm) and is pending in D9; v1 used a 0.67 m square section and 77.9 t per coil (finding B9). 1.2 m = inner edge of a radial coil (5.67 m) minus the hull radius (4.5 m).",
     draw: () => { const k = 2.4, x0 = 60, y0 = 120, w = 67 * k, hgt = 32 * k; let s = "";
       s += `<rect x="${x0}" y="${y0}" width="${w}" height="${hgt}" class="nofill s-film" stroke-width="1.6"/>`;
       for (let i = 1; i < 8; i++) s += `<line x1="${f1(x0 + i * w / 8)}" y1="${y0}" x2="${f1(x0 + i * w / 8)}" y2="${y0 + hgt}" class="s-film" opacity=".2"/>`;
@@ -460,48 +459,48 @@ const ROOMS = [
       s += `<circle cx="${x0 + w / 2}" cy="${y0 + hgt / 2}" r="${f1(3.35 * k)}" class="f-film"/>`;
       s += `<rect x="${x0}" y="${y0}" width="${w}" height="${w}" class="nofill s-dim" stroke-dasharray="3 5" opacity=".7"/><text x="${x0 + w + 6}" y="${y0 + w - 4}" class="vs">v1: square, 77.9 t</text>`;
       const hx = x0 + w + 117 * k; s += `<line x1="${x0 + w}" y1="${y0 + hgt / 2}" x2="${hx}" y2="${y0 + hgt / 2}" class="s-dim" stroke-dasharray="3 5"/><text x="${(x0 + w + hx) / 2}" y="${y0 + hgt / 2 - 8}" text-anchor="middle" class="vd">≈ 1.2 m</text>`;
-      s += `<rect x="${hx}" y="70" width="4" height="360" class="f-ink"/><text x="${hx + 2}" y="60" text-anchor="middle" class="vs">hull, 1.5 cm Al</text>${person(hx + 60, 240, 130)}`;
+      s += `<rect x="${hx}" y="70" width="4" height="360" class="f-ink"/><text x="${hx + 2}" y="60" text-anchor="middle" class="vs">hull, 1.5 cm Al</text>${person(hx + 42, 240, 130)}`;
       s += `<text x="${x0}" y="${y0 + w + 34}" class="vt">winding pack 67 × ~32 cm, 15.6 t</text><text x="${x0}" y="${y0 + w + 52}" class="vd">67 layers × 40 turns of 8 mm cable</text><text x="${x0}" y="${y0 + w + 70}" class="vd">dot: filament core, 6.7 cm</text>`;
       const cx = 700, cy = 120; s += `<line x1="${x0 + w - 10}" y1="${y0 + 8}" x2="${cx - 52}" y2="${cy}" class="s-dim" stroke-width=".8"/>
         <circle cx="${cx}" cy="${cy}" r="48" class="nofill s-film" stroke-width="10" opacity=".9"/><circle cx="${cx}" cy="${cy}" r="19" class="f-sun" opacity=".8"/>
         <text x="${cx}" y="${cy + 70}" text-anchor="middle" class="vs">CORC cable, 8 mm</text><text x="${cx}" y="${cy + 84}" text-anchor="middle" class="vs">copper core + REBCO tapes</text>`;
       const L = [["Cu", 40, "f-sun"], ["Ag", 2, "f-ink"], ["REBCO", 1, "f-film"], ["Hastelloy", 50, "f-dim"], ["Ag", 1.8, "f-ink"]]; let y = 270;
-      L.forEach(([n, t, c]) => { const h = Math.max(2, t * 1.4); s += `<rect x="590" y="${f1(y)}" width="40" height="${f1(h)}" class="${c}"/>`;
-        if (n === "Cu" || n === "Hastelloy") s += `<text x="638" y="${f1(y + h / 2 + 4)}" class="vs">${n}, ${t} µm</text>`; if (n === "REBCO") s += `<text x="638" y="${f1(y + 3)}" class="vs">REBCO 1 µm, silver 3.8 µm</text>`; y += h; });
-      return s + `<text x="590" y="${f1(y + 18)}" class="vs">one tape, 95 µm</text>`; } },
+      L.forEach(([n, t, c]) => { const h = Math.max(2, t * 1.4); s += `<rect x="604" y="${f1(y)}" width="40" height="${f1(h)}" class="${c}"/>`;
+        if (n === "Cu" || n === "Hastelloy") s += `<text x="652" y="${f1(y + h / 2 + 4)}" class="vs">${n}, ${t} µm</text>`; if (n === "REBCO") s += `<text x="652" y="${f1(y + 3)}" class="vs">REBCO 1 µm, silver 3.8 µm</text>`; y += h; });
+      return s + `<text x="604" y="${f1(y + 18)}" class="vs">one tape, 95 µm</text>`; } },
 ]},
-{ id: "dose", num: "III", title: "The body as an instrument", invisible: "la dosis", scenes: [
-  { t: "The sky, as weights", sub: "OLTARIS spectra, integrated by trapezoids",
+{ id: "dose", num: "III", title: "The body as an instrument", invisible: "the dose", scenes: [
+  { t: "The sky, as weights", box: [63, 78, 740, 445], sub: "OLTARIS spectra, integrated by trapezoids",
     cap: "Real cosmic-ray proton spectrum at solar minimum. We simulate a few energies (eight in the first sweep); the trapezoids between them carry each energy's share of the flux.",
     say: "Then we sent the sky through it. NASA's OLTARIS gave us the spectra: cosmic-ray protons and helium at solar minimum, and the October 1989 solar storm. We simulate a few energies, and each one is weighted by the real flux around it.",
-    note: "[CLICK: Box 3] Espectro real (E·Φ, escala log). Ocho energías, como en la v1; en la v2 la grilla la fija P4 (escena «How many energies?» de la sala IV).",
+    note: "[CLICK: Box 3] Real spectrum (E·Φ, log scale). Eight energies, as in v1; in v2 the grid is set by P4 (scene “How many energies?” in room IV).",
     draw: anim => { const key = "GCR_H_min", N = 8; let s = eAxis(400), pts = [];
       for (let lg = 1.05; lg <= 5.0001; lg += .02) pts.push([PX(lg), ePlotY(specAt(key, lg))]);
       for (let i = 0; i < N; i++) { const a = 1.05 + i * (3.95 / N), b = a + 3.95 / N, ya = specAt(key, a), yb = specAt(key, b);
         s += `<path d="M${f1(PX(a))} 400 L${f1(PX(a))} ${f1(ePlotY(ya))} L${f1(PX(b))} ${f1(ePlotY(yb))} L${f1(PX(b))} 400 Z" class="f-plus ${anim ? "appear" : ""}" opacity=".45" stroke="var(--vit)" stroke-width="2" style="--dl:${(1 + i * .1).toFixed(2)}s"/>`;
         s += `<circle cx="${f1(PX(a))}" cy="${f1(ePlotY(ya))}" r="4" class="f-ink ${anim ? "appear" : ""}" style="--dl:${(1 + i * .1).toFixed(2)}s"/>`; }
       return s + poly(pts, `s-ink ${anim ? "draw" : ""}`, 'pathLength="1" stroke-width="2"') + `<text x="710" y="90" text-anchor="end" class="vd">particles per log-energy interval</text>`; } },
-  { t: "One particle at a time", sub: "Geant4, Shielding physics list",
+  { t: "One particle at a time", box: [24, 40, 776, 475], sub: "Geant4, Shielding physics list",
     cap: "Four fates of a particle: bent away by the field, stopped in a coil, broken in the hull, or crossing the body.",
     say: "Geant4 follows each particle, one at a time, through field, coils, hull and body, with everything it creates on the way. A proton that strikes a coil can still reach the crew as a shower of secondaries.",
-    note: "Cuatro historias en bucle; el pie cambia con cada una. Colores de Geant4: azul carga positiva, verde neutra, rojo negativa.",
+    note: "Four stories on a loop; the caption changes with each one. Geant4 colours: blue positive charge, green neutral, red negative.",
     draw: () => `${hull(400, 250, 19)}${halbach(400, 250, 19, { cls: "f-dim", op: .55 })}${person(400, 222, 46, "f-dim")}<g id="ev"></g>
-      <g class="vs"><text x="24" y="440">+ charge</text><text x="24" y="456">neutral</text><text x="24" y="472">− charge</text></g>
-      <line x1="80" y1="436" x2="100" y2="436" class="s-plus" stroke-width="3"/><line x1="80" y1="452" x2="100" y2="452" class="s-neu" stroke-width="3" stroke-dasharray="4 3"/><line x1="80" y1="468" x2="100" y2="468" class="s-minus" stroke-width="3"/>`,
+      <g class="vs"><text x="694" y="440">+ charge</text><text x="694" y="456">neutral</text><text x="694" y="472">− charge</text></g>
+      <line x1="664" y1="436" x2="684" y2="436" class="s-plus" stroke-width="3"/><line x1="664" y1="452" x2="684" y2="452" class="s-neu" stroke-width="3" stroke-dasharray="4 3"/><line x1="664" y1="468" x2="684" y2="468" class="s-minus" stroke-width="3"/>`,
     after: (svg, ctx, room) => eventLoop(svg, ctx, room.capEl) },
-  { t: "A body made of voxels", sub: "ICRP-110 reference adult male, 254 × 127 × 222 voxels",
+  { t: "A body made of voxels", box: [250, 60, 640, 449], sub: "ICRP-110 reference adult male, 254 × 127 × 222 voxels",
     cap: "Every voxel belongs to an organ. We score the six tissues with the highest cancer weight. Choose one.",
     say: "At the center stands the ICRP-110 reference man, 254 by 127 by 222 voxels, each assigned to an organ. We score the six tissues with the highest cancer weight. Red bone marrow isn't even one organ in the model; we rebuild it from nineteen skeletal sites.",
-    note: "Los tejidos se encienden solos uno por uno; un botón detiene el recorrido y elige uno. Masas del fantoma masculino (tabla de la v1).",
+    note: "The tissues light up one by one on their own; a button stops the tour and picks one. Masses of the male phantom (v1 table).",
     draw: () => `<g>${voxelPhantom(250, 60)}</g><text id="organ-read" x="520" y="230"></text>`,
     after: (svg, ctx, room) => { let i = 0; if (!ctx.live || reduce) { paintOrgans(svg, "all", room.ui); return; } paintOrgans(svg, ORGANS[0][0], room.ui);
       ctx.every(() => { i++; if (i < ORGANS.length) paintOrgans(svg, ORGANS[i][0], room.ui); else { paintOrgans(svg, "all", room.ui); stopAll(); } }, 1400); },
     ui: (bar, rerender, svg) => { bar.innerHTML = pills("Tissue", [["all", "All six"], ...ORGANS.map(([k, l]) => [k, l])], "");
       bindPills(bar, k => { stopAll(); paintOrgans(svg, k, bar); }); } },
-  { t: "The first answer", sub: "the first sweep: 600 runs of 10 000 particles",
+  { t: "The first answer", box: [72, 80, 756, 424], sub: "the first sweep: 600 runs of 10 000 particles",
     cap: "Each square is one run: 3 worst-case spectra × 8 energies × 5 positions across the cabin × 5 repetitions. It produced about 0.15 Sv a day to the colon, on the axis.",
     say: "Our first sweep ran 600 simulations: three worst-case spectra, eight energies, five positions across the cabin, five repetitions each. It produced an answer: about 0.15 sievert a day to the colon, on the ship's axis.",
-    note: "Solo el peor caso: GCR en mínimo solar y la tormenta de octubre de 1989. Cada panel es una posición; filas = espectro × repetición; columnas = energía. Esta v1 usó la disposición K=1 de bobinas.",
+    note: "Worst case only: GCR at solar minimum and the October 1989 storm. Each panel is a position; rows = spectrum × repetition; columns = energy. This v1 sweep used the K=1 coil layout.",
     draw: anim => { const cell = 10, gap = 2, pw = 8 * (cell + gap), x0 = 190, sep = 22; let s = "";
       const cases = [["Cosmic p", "f-plus", .85], ["Cosmic He", "f-plus", .5], ["Solar p", "f-sun", .85]];
       for (let pos = 0; pos < 5; pos++) { const px = x0 + pos * (pw + sep);
@@ -512,10 +511,10 @@ const ROOMS = [
       s += `<text x="${x0 - 14}" y="${106 + 216 + 6}" text-anchor="end" class="vs">5 repetitions each</text>`;
       s += `<line x1="${x0}" y1="${106 + 218}" x2="${x0 + pw}" y2="${106 + 218}" class="s-dim" marker-end="url(#arrd)"/><text x="${x0}" y="${106 + 234}" class="vs">8 energies, low to high</text>`;
       return s + `<text x="400" y="420" text-anchor="middle" class="vt">≈ 0.15 Sv per day to the colon, on the axis</text>`; } },
-  { t: "Compared to what?", sub: "a sanity check on the first answer",
+  { t: "Compared to what?", box: [53, 132, 713, 353], sub: "a sanity check on the first answer",
     cap: "A shield should lower the dose. Our simulated dose with the shield came out 83 times above a measurement made with no shield at all, so the measurement had to be checked.",
     say: "Put that next to the rain we started with: 1.8 millisieverts a day, measured with no magnet at all. Our number is 83 times larger. A shield does not make the sky 83 times worse. So instead of explaining the number, we audited the instrument.",
-    note: "Pausa después de «83 times worse». Es el giro de la charla y el paso a la sala IV.",
+    note: "Pause after “83 times worse”. It is the turn of the talk and the way into room IV.",
     draw: anim => { const X = v => 110 + Math.log10(v) * 190, A = anim ? "appear" : ""; let s = `<line x1="${X(.5)}" y1="300" x2="${X(1500)}" y2="300" class="s-dim"/>`;
       [1, 10, 100, 1000].forEach(v => s += `<line x1="${X(v)}" y1="294" x2="${X(v)}" y2="306" class="s-dim"/><text x="${X(v)}" y="326" text-anchor="middle" class="vd">${v}</text>`);
       s += `<text x="${X(30)}" y="350" text-anchor="middle" class="vd">dose rate, mSv per day (log scale)</text>`;
@@ -524,16 +523,16 @@ const ROOMS = [
       s += `<path d="M${X(1.8) + 14} 300 L${X(150) - 14} 300" class="nofill s-film ${anim ? "draw" : ""}" pathLength="1" stroke-width="2" style="--dl:.9s"/>`;
       return s + `<text x="${X(16.4)}" y="160" text-anchor="middle" class="vbig ${A}" style="--dl:1.6s">83 times higher?</text>`; } },
 ]},
-{ id: "error", num: "IV", title: "Measuring the measurer", invisible: "el error", scenes: [
-  { t: "The patient walked away", sub: "what the audit found, 30 September 2026",
+{ id: "error", num: "IV", title: "Measuring the measurer", invisible: "the error", scenes: [
+  { t: "The patient walked away", box: [76, 96, 760, 474], sub: "what the audit found, 30 September 2026",
     cap: "Dose is counted on a grid laid over the body. In the first sweep the grid stayed at the center while the astronaut moved. Move the astronaut.",
     say: "Geant4 counts dose on a grid laid over the body. When we moved the astronaut off-axis, the grid stayed where it was. We were scoring cabin air and calling it organs. The steep drop off-axis wasn't the magnet. It was an instrument that stayed still while the patient walked away.",
-    note: "[CLICK: Box 4] El fantoma camina solo hasta 4 m; después se mueve con el control y se alterna «grid stays» / «grid follows». Contado con calma es una buena historia, no una vergonzosa.",
+    note: "[CLICK: Box 4] The phantom walks to 4 m on its own; then move it with the slider and switch between “grid stays” and “grid follows”. Told calmly, it is a good story, not an embarrassing one.",
     init: () => S.walk = S.walk || { x: 0, fixed: false },
     draw: () => { const st = S.walk, P = m => 120 + m * 150, gx = st.fixed ? P(st.x) : P(0), ok = st.fixed || st.x < .2; let s = `<line x1="100" y1="420" x2="740" y2="420" class="s-dim"/>`;
       for (let m = 0; m <= 4; m++) s += `<line x1="${P(m)}" y1="414" x2="${P(m)}" y2="426" class="s-dim"/><text x="${P(m)}" y="446" text-anchor="middle" class="vd">${m} m</text>`;
       s += `${person(P(st.x), 180, 225)}<rect x="${gx - 24}" y="170" width="48" height="236" class="nofill s-film" stroke-width="1.8" stroke-dasharray="5 4"/><text x="${gx}" y="158" text-anchor="middle" class="vt">scoring grid</text>`;
-      return s + `<text x="760" y="40" text-anchor="end" class="vt">${ok ? "grid on the body" : "grid on empty air"}</text><text x="760" y="58" text-anchor="end" class="vd">distance from the ship axis: ${st.x.toFixed(1)} m</text>
+      return s + `<text x="760" y="110" text-anchor="end" class="vt">${ok ? "grid on the body" : "grid on empty air"}</text><text x="760" y="128" text-anchor="end" class="vd">distance from the ship axis: ${st.x.toFixed(1)} m</text>
         <text x="100" y="472" class="vs">distance from the ship axis</text>`; },
     after: (svg, ctx, room) => { const st = S.walk; if (!ctx.live || st.played) return; st.played = true; const t0 = performance.now();
       ctx.loop(now => { const t = Math.min(1, (now - t0 - 600) / 4200); st.x = Math.max(0, 4 * (t < 0 ? 0 : t * t * (3 - 2 * t))); room.sync(); return t < 1; }); },
@@ -544,30 +543,30 @@ const ROOMS = [
       xi.oninput = e => { stopAll(); st.x = +e.target.value; upd(); };
       bindPills(bar, k => { st.fixed = k === "1"; upd(); });
       return upd; } },
-  { t: "Three more problems", sub: "the aim, the missing twin, the coils",
+  { t: "Three more problems", box: [30, 110, 812, 375], sub: "the aim, the missing twin, the coils",
     cap: "Every particle was aimed at the astronaut; no run had the field switched off; and the coils were arranged so that the habitat sat in half a tesla, where CREW HaT keeps it almost field-free.",
     say: "Three more problems reached the center. We aimed every particle at the astronaut, but the real sky isn't aimed at anyone, and that inflated the dose, more than twice at 562 MeV. We never ran the twin with the field off. And our coils were turned the wrong way: CREW HaT keeps the habitat almost free of field; ours filled it with half a tesla.",
-    note: "Una escena para tres errores (A2, falta de control y A4). La esfera de lanzamiento (6.94 m) quedaba dentro del anillo de bobinas. En la tercera columna, el relleno es el campo interior de cada disposición.",
-    draw: anim => { const sc = 8; let s = "";
+    note: "One scene for three errors (A2, the missing control, and A4). The launch sphere (6.94 m) sat inside the coil ring. In the third group, the fill is the field inside each layout.",
+    draw: anim => { const sc = 10; let s = "";
       { const cx = 135, cy = 220; s += `${halbach(cx, cy, sc, { layout: "k1", cls: "f-dim", op: .6 })}${hull(cx, cy, sc)}${person(cx, cy - 12, 22)}<circle cx="${cx}" cy="${cy}" r="${f1(6.94 * sc)}" class="nofill s-sun" stroke-width="1.4" stroke-dasharray="5 4"/>`;
         for (let i = 0; i < 12; i++) { const a = i / 12 * 2 * Math.PI, R = 6.94 * sc; s += `<line x1="${f1(cx + R * Math.cos(a))}" y1="${f1(cy + R * Math.sin(a))}" x2="${f1(cx + 6 * Math.cos(a))}" y2="${f1(cy + 6 * Math.sin(a))}" class="s-sun ${anim ? "draw" : ""}" pathLength="1" stroke-width="1.3" style="--dl:${(i * .05).toFixed(2)}s;--d:.8s"/>`; }
         s += `<text x="${cx}" y="350" text-anchor="middle" class="vt">aimed at the astronaut</text><text x="${cx}" y="368" text-anchor="middle" class="vd">dashed: launch sphere</text>`; }
-      { const tw = (x, on) => `<circle cx="${x}" cy="220" r="36" class="nofill s-ink" stroke-width="1.5" ${on ? "" : 'stroke-dasharray="5 5" opacity=".55"'}/>${person(x, 205, 28, on ? "f-ink" : "f-dim")}`;
-        s += `${tw(350, 1)}${tw(450, 0)}<text x="350" y="280" text-anchor="middle" class="vd">field on</text><text x="450" y="280" text-anchor="middle" class="vd">field off</text><text x="400" y="350" text-anchor="middle" class="vt">no field-off twin</text><text x="400" y="368" text-anchor="middle" class="vd">shield effect = ?</text>`; }
-      { const ring = (cx, layout, fill, lab) => `<circle cx="${cx}" cy="220" r="${f1(4.5 * 5.5)}" class="${fill}" opacity="${fill === "f-film" ? .55 : 1}"/>${hull(cx, 220, 5.5)}${halbach(cx, 220, 5.5, { layout, cls: "f-dim" })}<text x="${cx}" y="290" text-anchor="middle" class="vd">${lab}</text>`;
-        s += `${ring(610, "k1", "f-film", "ours: 0.54 T")}${ring(730, "niac", "f-vit", "CREW HaT: ≈ 0")}<text x="670" y="350" text-anchor="middle" class="vt">coils turned the wrong way</text><text x="670" y="368" text-anchor="middle" class="vd">shaded: field inside</text>`; }
+      { const tw = (x, on) => `<circle cx="${x}" cy="220" r="46" class="nofill s-ink" stroke-width="1.5" ${on ? "" : 'stroke-dasharray="5 5" opacity=".55"'}/>${person(x, 201, 36, on ? "f-ink" : "f-dim")}`;
+        s += `${tw(345, 1)}${tw(455, 0)}<text x="345" y="290" text-anchor="middle" class="vd">field on</text><text x="455" y="290" text-anchor="middle" class="vd">field off</text><text x="400" y="350" text-anchor="middle" class="vt">no field-off twin</text><text x="400" y="368" text-anchor="middle" class="vd">shield effect = ?</text>`; }
+      { const ring = (cx, layout, fill, lab) => `<circle cx="${cx}" cy="220" r="${f1(4.5 * 6.5)}" class="${fill}" opacity="${fill === "f-film" ? .55 : 1}"/>${hull(cx, 220, 6.5)}${halbach(cx, 220, 6.5, { layout, cls: "f-dim" })}<text x="${cx}" y="306" text-anchor="middle" class="vd">${lab}</text>`;
+        s += `${ring(592, "k1", "f-film", "ours: 0.54 T")}${ring(742, "niac", "f-vit", "CREW HaT: ≈ 0")}<text x="667" y="350" text-anchor="middle" class="vt">coils turned the wrong way</text><text x="667" y="368" text-anchor="middle" class="vd">shaded: field inside</text>`; }
       return s; } },
-  { t: "The instrument, rebuilt", sub: "the corrected setup for the second version",
+  { t: "The instrument, rebuilt", box: [130, 50, 790, 435], sub: "the corrected setup for the second version",
     cap: "Particles now start on a sphere that encloses the coils and enter with the angular law of an isotropic sky; most miss the ship, as in reality. The coils follow the NIAC design.",
     say: "So we rebuilt the instrument. The coils are being rebuilt to the NIAC design, with their real mass. Particles enter from a sphere that encloses the coils, with the angular law of an isotropic sky, and the flux at the center matches the expected value to within two percent.",
-    note: "Radio de la esfera: 12, 14 o 16 m eran los candidatos con K=1; P1 los recalcula con la disposición de NIAC. La normalización medida es 1.010 ± 0.020.",
+    note: "Sphere radius: 12, 14 or 16 m were the candidates with K=1; P1 recomputes them with the NIAC layout. The measured normalization is 1.010 ± 0.020.",
     draw: () => `${halbach(400, 250, 13, { cls: "f-dim", op: .6 })}${hull(400, 250, 13)}<circle cx="400" cy="250" r="${14 * 13}" class="nofill s-dim" stroke-width="1" stroke-dasharray="3 6"/><g id="sky"></g>
       <text x="400" y="${250 - 14 * 13 - 10}" text-anchor="middle" class="vs">source sphere, encloses the coils</text>${plate(600, 380, 190, 50)}<text x="780" y="400" text-anchor="end" class="vt">flux at the center</text><text x="780" y="420" text-anchor="end" class="vd">1.010 ± 0.020 of expected</text>`,
     after: (svg, ctx) => skyLoop(svg, ctx) },
-  { t: "Every run has a twin", sub: "same particles, field on and off",
+  { t: "Every run has a twin", box: [112, 72, 692, 472], sub: "same particles, field on and off",
     cap: "Each shielded run has a twin with the field off, fed the same random numbers. Only the field differs, so the difference is the shield.",
     say: "Every shielded run has a twin with the field switched off, driven by the same random numbers. Their difference is the shield, and its effectiveness comes with its own error bar.",
-    note: "Mismas entradas en ambas naves: a la izquierda se doblan, a la derecha siguen rectas.",
+    note: "Same entry points in both ships: on the left they bend, on the right they go straight.",
     draw: anim => { let s = ""; const r = rng(9), entries = Array.from({ length: 7 }, () => [r() * Math.PI * 2, (r() - .5) * .9]);
       [[220, 1], [580, 0]].forEach(([cx, on]) => { s += `<circle cx="${cx}" cy="215" r="47" class="nofill s-ink" stroke-width="1.5"/>${person(cx, 195, 40, "f-dim")}${on ? halbach(cx, 215, 10.5, { cls: "f-film" }) : ""}`;
         entries.forEach(([a, off], i) => { const R = 145, x = cx + R * Math.cos(a), y = 215 + R * Math.sin(a), dx = -Math.cos(a + off), dy = -Math.sin(a + off);
@@ -575,35 +574,35 @@ const ROOMS = [
           s += `<path d="M${f1(x)} ${f1(y)} Q${f1(mx)} ${f1(my)} ${f1(ex)} ${f1(ey)}" class="nofill s-plus ${anim ? "draw" : ""}" pathLength="1" stroke-width="1.5" style="--dl:${(i * .15).toFixed(2)}s"/>`; }); });
       return s + `${plate(150, 368, 500, 104)}<text x="220" y="390" text-anchor="middle" class="vt">field on, dose D₁</text><text x="580" y="390" text-anchor="middle" class="vt">field off, dose D₀</text>
         <text x="400" y="440" text-anchor="middle" class="vbig">η = 1 − D₁ / D₀</text><text x="400" y="462" text-anchor="middle" class="vd">with its own error bar</text>`; } },
-  { t: "An error bar that checks itself", sub: "variance of the variance, event by event",
+  { t: "An error bar that checks itself", box: [74, 83, 734, 443], sub: "variance of the variance, event by event",
     cap: "Illustration with synthetic data: the error shrinks as particles add up, a rare huge event makes it jump, and the variance of the variance (VOV) says when to trust it.",
     say: "Each run also measures its own uncertainty, event by event, and says when that estimate cannot be trusted. A rare, huge event can fool the error bar; the variance of the variance catches it. Our old method underestimated errors two to nine times.",
-    note: "Regla: VOV < 0.1 y al menos ~200 eventos con depósito (el 200 se confirma en P2). Los datos de la animación son sintéticos.",
+    note: "Rule: VOV < 0.1 and at least ~200 events with a deposit (the 200 is confirmed in P2). The animation data are synthetic.",
     draw: () => `<g id="vov"></g>`, after: (svg, ctx) => vovLoop(svg, ctx) },
-  { t: "One response, six skies", sub: "simulate once per energy, weight per environment",
+  { t: "One response, six skies", box: [63, 66, 740, 444], sub: "simulate once per energy, weight per environment",
     cap: "Geant4 gives the dose per particle at each energy once (dashed). Each radiation environment is a different set of weights on that same curve. Choose one.",
     say: "Geant4 runs once per energy. The six environments, cosmic rays at solar minimum and maximum and two historic solar storms, are only different weights on the same response. One set of simulations serves every sky.",
-    note: "Espectros reales de OLTARIS (los seis casos). La curva de respuesta es ilustrativa: la real sale del barrido. Los botones detienen el ciclo automático.",
+    note: "Real OLTARIS spectra (all six cases). The response curve is illustrative: the real one comes out of the sweep. The buttons stop the automatic cycle.",
     init: () => S.six = S.six || { k: 0 },
     draw: () => `${eAxis(400)}<g id="six"></g>`, after: (svg, ctx, room) => sixLoop(svg, ctx, room.ui),
     ui: (bar, rerender, svg) => { bar.innerHTML = pills("Environment", CASES.map(([k, , s]) => [k, s]), CASES[S.six.k][0]);
       bindPills(bar, k => { stopAll(); S.six.k = CASES.findIndex(c => c[0] === k); drawSix(svg, k); }); } },
-  { t: "How many energies?", sub: "double the grid until the answer stops moving",
+  { t: "How many energies?", box: [63, 66, 740, 444], sub: "double the grid until the answer stops moving",
     cap: "More energies, smaller error: the integral is recomputed with 2, 4, 8, 16 and 32 intervals until it sits inside a tolerance fixed in advance.",
     say: "And how many energies are enough? We double the grid until the answer stops moving, within a tolerance written down in advance, and confirm it against an independent reference.",
-    note: "Producto real espectro × respuesta ilustrativa. El error mostrado es el de la regla del trapecio frente a una integral fina.",
+    note: "Real spectrum × illustrative response. The error shown is the trapezoid rule against a fine integral.",
     draw: () => `${eAxis(400)}<g id="refine"></g>`, after: (svg, ctx) => refineLoop(svg, ctx) },
-  { t: "Seven pilots, then the sweep", sub: "each criterion fixed before seeing data",
+  { t: "Seven pilots, then the sweep", box: [24, 160, 800, 380], sub: "each criterion fixed before seeing data",
     cap: "Before production, seven pilot studies must pass, each against a criterion written down in advance. The first compares our organ doses with ICRP 116.",
     say: "Seven pilot studies come before production, each with its pass criterion fixed before we see the data. The first checks our organ doses against the ICRP 116 reference values.",
-    note: "Aquí la numeración es real: es una secuencia. P0 está listo. P1 incluye ahora la geometría de NIAC y la comparación con la disposición de la v1.",
+    note: "Here the numbering is real: it is a sequence. P0 is ready. P1 now includes the NIAC geometry and the comparison with the v1 layout.",
     draw: anim => { const P = [["P0", "dose vs ICRP 116", "ready"], ["P1", "coils, field, source", "NIAC geometry first"], ["P2", "error bars", ""], ["P3", "events per energy", ""], ["P4", "energy grid", ""], ["P5", "biasing", "optional"], ["P6", "precision of η", ""]];
       let s = `<path d="M60 300 C 200 240, 300 360, 420 290 S 640 250, 770 290" class="nofill s-line ${anim ? "draw" : ""}" pathLength="1" stroke-width="2"/>`;
       P.forEach(([k, l, st], i) => { const x = 80 + i * 100, y = 300 + Math.sin(i * 1.3) * 18, done = st === "ready";
         s += `<g class="${anim ? "appear" : ""}" style="--dl:${.3 + i * .18}s"><circle cx="${x}" cy="${f1(y)}" r="22" class="${done ? "f-film" : "f-vit"}" stroke="var(--vink)" stroke-width="1.4"/>
           <text x="${x}" y="${f1(y + 5)}" text-anchor="middle" class="vt" style="font-size:13px;${done ? "fill:var(--vit)" : ""}">${k}</text>
           <text x="${x}" y="${f1(i % 2 ? y - 52 : y + 50)}" text-anchor="middle" class="vd">${l}</text>${st ? `<text x="${x}" y="${f1(i % 2 ? y - 36 : y + 66)}" text-anchor="middle" class="vd" style="font-style:italic">${st}</text>` : ""}</g>`; });
-      return s + `<text x="780" y="120" text-anchor="end" class="vbig">then, the sweep</text>`; } },
+      return s + `<text x="780" y="196" text-anchor="end" class="vbig">then, the sweep</text>`; } },
 ]},
 ];
 
@@ -612,7 +611,7 @@ const CLOSING = "Four invisible things: the rain, the shield, the dose and the e
 
 /* ---------- animations ---------- */
 function coils3d(room, ctx) {
-  const cv = room.cv, st = S.view, sc = 19, cx = 400, cy = 262, layout = S.layout;
+  const cv = room.cv, st = S.view, sc = 20, cx = 400, cy = 250, layout = S.layout;
   const proj = P => { const [x, y, z] = P, ca = Math.cos(st.az), sa = Math.sin(st.az), ce = Math.cos(st.el), se = Math.sin(st.el);
     const x1 = x * ca - y * sa, z1 = x * sa + y * ca; return [cx + x1 * sc, cy - (z * ce + z1 * se) * sc, -z * se + z1 * ce]; }; // ship axis (z) is screen-up at el = 0
   const draw = () => { const c = prepCanvas(cv), ink = cssVar("--vink"), film = cssVar("--film"), segs = [];
@@ -639,18 +638,18 @@ function coils3d(room, ctx) {
 }
 function rain(svg, ctx) {
   const sets = [...svg.querySelectorAll(".rain")].map((g, gi) => {
-    g.innerHTML = ""; const kind = g.dataset.kind, n = +g.dataset.n, x0 = +(g.dataset.x0 || 0), x1 = +(g.dataset.x1 || 800), r = rng(20 + gi), drops = [];
+    g.innerHTML = ""; const kind = g.dataset.kind, n = +g.dataset.n, x0 = +(g.dataset.x0 || 0), x1 = +(g.dataset.x1 || 800), y0 = +(g.dataset.y0 || 40), y1 = +(g.dataset.y1 || 440), r = rng(20 + gi), drops = [];
     for (let i = 0; i < n; i++) { const el = document.createElementNS(NS, "line"); el.setAttribute("stroke-width", "1.5"); el.setAttribute("stroke-linecap", "round");
       const d = { el, t: r() }; if (kind === "storm") { d.a = Math.PI / 4 + (r() - .5) * .5; d.v = .5 + r() * .35; d.burst = r() < .7; el.setAttribute("class", "s-sun"); }
-      else { d.a = r() * Math.PI * 2; d.cx = x0 + r() * (x1 - x0); d.cy = 40 + r() * 400; d.v = .12 + r() * .18; el.setAttribute("class", g.dataset.cls || (r() < .3 ? "s-sun" : "s-plus")); }
+      else { d.a = r() * Math.PI * 2; d.cx = x0 + r() * (x1 - x0); d.cy = y0 + 30 + r() * (y1 - y0 - 60); d.v = .12 + r() * .18; el.setAttribute("class", g.dataset.cls || (r() < .3 ? "s-sun" : "s-plus")); }
       g.appendChild(el); drops.push(d); }
-    return { kind, drops, x0, x1 }; });
+    return { kind, drops, x0, x1, y0, y1 }; });
   let last = performance.now();
   ctx.loop(now => { const dt = Math.min(.05, (now - last) / 1000); last = now; const on = (now / 1000) % 4 < 1.6;
-    sets.forEach(({ kind, drops, x0, x1 }) => drops.forEach(d => { d.t = (d.t + dt * d.v) % 1; let x, y, L = 14, o;
+    sets.forEach(({ kind, drops, x0, x1, y0, y1 }) => drops.forEach(d => { d.t = (d.t + dt * d.v) % 1; let x, y, L = 14, o;
       if (kind === "storm") { const dist = d.t * 640; x = x0 - 20 + Math.cos(d.a) * dist; y = -20 + Math.sin(d.a) * dist; L = 20; o = d.burst ? (on ? .95 : .08) : .3; }
       else { const s = (d.t - .5) * 220; x = d.cx + Math.cos(d.a) * s; y = d.cy + Math.sin(d.a) * s; o = Math.sin(d.t * Math.PI) * .85; }
-      if (x < x0 || x > x1) o = 0;
+      if (x < x0 || x > x1 || y < y0 || y > y1) o = 0;
       d.el.setAttribute("opacity", o.toFixed(2)); d.el.setAttribute("x1", f1(x)); d.el.setAttribute("y1", f1(y)); d.el.setAttribute("x2", f1(x - Math.cos(d.a) * L)); d.el.setAttribute("y2", f1(y - Math.sin(d.a) * L)); })); });
 }
 function eventLoop(svg, ctx, capEl) {
@@ -677,7 +676,7 @@ function skyLoop(svg, ctx) {
   ctx.loop((now, once) => { const dt = once ? 0 : Math.min(.05, (now - last) / 1000); last = now;
     parts.forEach(p => { p.s += dt * 260; if (p.s > 2 * R) spawn(p);
       const x = p.x + p.dx * p.s, y = p.y + p.dy * p.s, hit = Math.abs((p.x - 400) * p.dy - (p.y - 250) * p.dx) < 4.5 * 13;
-      p.el.setAttribute("class", hit ? "s-sun" : "s-plus"); p.el.setAttribute("opacity", hit ? ".95" : ".45");
+      p.el.setAttribute("class", hit ? "s-sun" : "s-plus"); p.el.setAttribute("opacity", Math.hypot(x - 400, y - 250) > R ? "0" : hit ? ".95" : ".45");
       p.el.setAttribute("x1", f1(x)); p.el.setAttribute("y1", f1(y)); p.el.setAttribute("x2", f1(x - p.dx * 22)); p.el.setAttribute("y2", f1(y - p.dy * 22)); }); });
 }
 function vovLoop(svg, ctx) {
@@ -740,83 +739,98 @@ ROOMS.forEach((room, ri) => {
   const sec = document.createElement("section");
   sec.className = "room" + (ri % 2 ? " flip" : ""); sec.id = room.id; sec.setAttribute("aria-labelledby", room.id + "-h");
   sec.innerHTML = `<div class="case">
-      <div class="vitrina"><div class="stage" title="Clic para la escena siguiente"><canvas aria-hidden="true"></canvas><svg viewBox="0 0 800 500" role="img"></svg><div class="stitle"></div></div>
-        <div class="ui" hidden></div><div class="cap"></div></div>
+      <div class="slide"><div class="stage"><canvas aria-hidden="true"></canvas><svg viewBox="0 0 800 450" role="img"></svg><div class="stitle"></div></div>
+        <div class="band"><div class="ui" hidden></div><div class="capline"><div class="cap"></div><span class="count"></span></div></div></div>
       <div class="controls">
-        <button type="button" class="step prev" aria-label="Escena anterior">‹</button>
-        <div class="dots" role="group" aria-label="Escenas">${room.scenes.map((s, i) => `${room.id === "error" && i === errStart ? '<span class="gap"></span>' : ""}<button type="button" aria-label="Escena ${i + 1}: ${s.t}"></button>`).join("")}</div>
-        <button type="button" class="step next" aria-label="Escena siguiente">›</button>
-        <span class="count"></span>
+        <button type="button" class="step prev" aria-label="Previous scene">‹</button>
+        <div class="dots" role="group" aria-label="Scenes">${room.scenes.map((s, i) => `${room.id === "error" && i === errStart ? '<span class="gap"></span>' : ""}<button type="button" aria-label="Scene ${i + 1}: ${s.t}"></button>`).join("")}</div>
+        <button type="button" class="step next" aria-label="Next scene">›</button>
       </div></div>
     <div class="label">
       <div class="num">${room.num}</div>
       <h2 id="${room.id}-h">${room.title}</h2>
-      <p class="invis">Lo invisible que esta sala hace visible: <b>${room.invisible}</b></p>
+      <p class="invis">The invisible thing this room makes visible: <b>${room.invisible}</b></p>
       <p class="say" aria-live="polite"></p>
       <p class="note"></p>
-      <div class="meta"><span>Caja ${ri + 1}</span><span>${mmss(room.start)}–${mmss(room.end)}</span><span>${w} palabras, ${room.scenes.length} clics</span></div>
+      <div class="meta"><span>Box ${ri + 1}</span><span>${mmss(room.start)}–${mmss(room.end)}</span><span>${w} words, ${room.scenes.length} clicks</span></div>
     </div>`;
   roomsEl.appendChild(sec);
   const R = { svg: sec.querySelector("svg"), cv: sec.querySelector("canvas"), ui: sec.querySelector(".ui"), capEl: sec.querySelector(".cap"), repaint: null, sync: () => {} };
   const title = sec.querySelector(".stitle"), say = sec.querySelector(".say"), note = sec.querySelector(".note");
   const dots = [...sec.querySelectorAll(".dots button")], prev = sec.querySelector(".prev"), next = sec.querySelector(".next"), count = sec.querySelector(".count");
   let cur = 0;
+  const slide = sec.querySelector(".slide"), capline = sec.querySelector(".capline");
+  /* free area = below the title, above the controls (or the caption); scenes keep one common scale so text sizes match */
+  const fitScene = sc => {
+    const r = slide.getBoundingClientRect(), u = r.width / 800 || 1;
+    const top = (title.getBoundingClientRect().bottom - r.top) / u + 10, bot = ((R.ui.hidden ? capline : R.ui).getBoundingClientRect().top - r.top) / u - 10;
+    if (sc.bleed) return R.cv._fit = { s: 1, tx: 0, ty: 0, top, bot };
+    const [x0, y0, x1, y1] = sc.box || [0, 0, 800, 500], sc_ = Math.min(SCALE, 760 / (x1 - x0), (bot - top) / (y1 - y0));
+    return R.cv._fit = { s: sc_, tx: 400 - sc_ * (x0 + x1) / 2, ty: (top + bot) / 2 - sc_ * (y0 + y1) / 2, top, bot };
+  };
+  const paint = (sc, live) => { const f = R.cv._fit; R.svg.innerHTML = `<g class="fit" transform="translate(${f1(f.tx)} ${f1(f.ty)}) scale(${f.s.toFixed(4)})">${sc.draw(live, f)}</g>`; };
   const render = live => {
     const sc = room.scenes[cur], svg = R.svg; sc.init && sc.init();
     if (live) { stopAll(); active = sec; }
-    clearCanvas(R.cv); R.repaint = null;
-    const rerender = () => { svg.innerHTML = sc.draw(false); svg.classList.add("still"); };
+    clearCanvas(R.cv); R.repaint = null; R.cv._fit = null;
+    const rerender = () => { if (R.cv._fit) { paint(sc, false); svg.classList.add("still"); } };
     svg.classList.toggle("still", !live);
-    svg.innerHTML = sc.draw(live); svg.onpointermove = svg.onpointerdown = svg.onpointerup = svg.onpointercancel = null; svg.setAttribute("aria-label", `${sc.t}. ${sc.cap}`);
+    svg.onpointermove = svg.onpointerdown = svg.onpointerup = svg.onpointercancel = null; svg.setAttribute("aria-label", `${sc.t}. ${sc.cap}`);
     title.innerHTML = `${sc.t}<small>${sc.sub}</small>`; R.capEl.textContent = sc.cap;
     say.textContent = sc.say; note.textContent = sc.note;
     dots.forEach((d, j) => d.setAttribute("aria-current", j === cur ? "true" : "false"));
     prev.disabled = cur === 0; next.disabled = cur === room.scenes.length - 1;
-    count.textContent = KIOSK ? `${cur + 1} / ${room.scenes.length}` : `Escena ${cur + 1} de ${room.scenes.length}`;
-    R.sync = rerender;
-    if (sc.ui) { R.ui.hidden = false; const s2 = sc.ui(R.ui, rerender, svg, R); if (typeof s2 === "function") R.sync = s2; } else { R.ui.hidden = true; R.ui.innerHTML = ""; }
+    count.textContent = `${cur + 1} / ${room.scenes.length}`;
+    R.sync = rerender; R.ui.innerHTML = ""; R.ui.hidden = !sc.ui;
+    if (sc.ui) { const s2 = sc.ui(R.ui, rerender, svg, R); if (typeof s2 === "function") R.sync = s2; }
+    fitScene(sc); paint(sc, live);
     sc.after && sc.after(svg, makeCtx(live), R);
   };
   R.render = render;
   const go = i => { i = Math.max(0, Math.min(room.scenes.length - 1, i)); if (i === cur && active === sec) return; cur = i; render(true); };
   prev.onclick = () => go(cur - 1); next.onclick = () => go(cur + 1);
   dots.forEach((d, j) => d.onclick = () => go(j));
-  sec.querySelector(".stage").addEventListener("click", () => { if (R.svg._moved) { R.svg._moved = false; return; } go(cur + 1 > room.scenes.length - 1 ? 0 : cur + 1); });
+  slide.addEventListener("click", e => {
+    if (R.svg._moved) { R.svg._moved = false; return; }
+    if (e.target.closest(".ui")) return;
+    const r = slide.getBoundingClientRect();
+    if (e.clientX - r.left < r.width / 3) go(cur - 1); else go(cur + 1 > room.scenes.length - 1 ? 0 : cur + 1);
+  });
   sec.addEventListener("keydown", e => { if (e.target.matches("input")) return; if (e.key === "ArrowRight") go(cur + 1); if (e.key === "ArrowLeft") go(cur - 1); });
   players.push({ sec, render, R, rerenderCurrent: () => render(active === sec) });
 });
 players.forEach(p => p.render(false));
 const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting && e.intersectionRatio >= .55) { const p = players.find(p => p.sec === e.target); if (active !== p.sec) p.render(true); } }), { threshold: [.55] });
 players.forEach(p => io.observe(p.sec));
-if (KIOSK && players[0]) { players[0].render(true); document.addEventListener("keydown", e => { if (e.target.matches("input")) return; if (e.key === "ArrowRight" || e.key === " ") players[0].sec.querySelector(".next").click(); if (e.key === "ArrowLeft") players[0].sec.querySelector(".prev").click(); }); }
+if (KIOSK && players[0]) { players[0].render(true); document.addEventListener("keydown", e => { if (e.target.matches("input")) return; if (e.key === "ArrowRight" || e.key === " ") { e.preventDefault(); players[0].sec.querySelector(".next").click(); } if (e.key === "ArrowLeft") players[0].sec.querySelector(".prev").click(); }); }
 /* canvases follow the stage size */
-let rsT = 0, lastW = 0; new ResizeObserver(es => { const w = Math.round(es[0].contentRect.width); if (w === lastW) return; const first = !lastW; lastW = w; if (first) return; clearTimeout(rsT); rsT = setTimeout(() => players.forEach(p => p.rerenderCurrent()), 150); }).observe(document.body);
+let rsT = 0, lastW = 0; new ResizeObserver(es => { const w = Math.round(es[0].contentRect.width); if (w === lastW) return; const first = !lastW; lastW = w; if (first) return; clearTimeout(rsT); rsT = setTimeout(() => players.forEach(p => p.rerenderCurrent()), 150); }).observe(document.querySelector(".stage") || document.body);
 
 document.getElementById("opening-say").textContent = OPENING;
 document.getElementById("closing-say").textContent = CLOSING;
 const list = document.getElementById("script-list");
 let total = words(OPENING) + words(CLOSING);
 const li = (h, sub, paras) => { const el = document.createElement("li"); el.innerHTML = `<h3>${h}<small>${sub}</small></h3>` + paras.map(([c, t]) => `<p>${c ? `<span class="clk">${c}</span>` : ""}${t}</p>`).join(""); list.appendChild(el); };
-li("Opening", "póster completo, 0:00", [["", OPENING]]);
-ROOMS.forEach((r, ri) => { total += r.scenes.reduce((a, s) => a + words(s.say), 0); li(`${r.num}. ${r.title}`, `Caja ${ri + 1}, ${mmss(r.start)}–${mmss(r.end)}`, r.scenes.map((s, i) => [i === 0 ? `CLICK: Box ${ri + 1}` : "CLICK", s.say])); });
-li("Closing", `póster completo, ${mmss(clock)}–${mmss(TOTAL)}`, [["CLICK: overview", CLOSING]]);
-document.getElementById("totals").textContent = `${total} palabras habladas. A ${WPM} palabras por minuto, más ${CLICK_S} s por clic, la charla dura ≈ ${mmss(TOTAL)} (límite 10:00). Si el ensayo pasa de 9:40, recortar primero «A cold machine» y «One response, six skies».`;
+li("Opening", "full poster, 0:00", [["", OPENING]]);
+ROOMS.forEach((r, ri) => { total += r.scenes.reduce((a, s) => a + words(s.say), 0); li(`${r.num}. ${r.title}`, `Box ${ri + 1}, ${mmss(r.start)}–${mmss(r.end)}`, r.scenes.map((s, i) => [i === 0 ? `CLICK: Box ${ri + 1}` : "CLICK", s.say])); });
+li("Closing", `full poster, ${mmss(clock)}–${mmss(TOTAL)}`, [["CLICK: overview", CLOSING]]);
+document.getElementById("totals").textContent = `${total} spoken words. At ${WPM} words per minute plus ${CLICK_S} s per click, the talk runs ≈ ${mmss(TOTAL)} (limit 10:00). If a rehearsal runs past 9:40, cut “A cold machine” and “One response, six skies” first.`;
 
 /* floor plan = the iPoster 2×2; the visit starts at the entrance and leaves by the exit */
 const fp = document.getElementById("floorplan");
 const PL = [[30, 20, "I", "the rain"], [270, 20, "II", "the shield"], [30, 200, "III", "the dose"], [270, 200, "IV", "the error"]];
 let s = `<rect x="20" y="10" width="480" height="370" fill="none" stroke="var(--ink)" stroke-width="2.5"/>`;
-PL.forEach(([x, y, n, l], i) => s += `<a href="#${ROOMS[i].id}" aria-label="Sala ${n}, ${l}"><rect x="${x}" y="${y}" width="220" height="160" fill="transparent" stroke="var(--line)"/>
+PL.forEach(([x, y, n, l], i) => s += `<a href="#${ROOMS[i].id}" aria-label="Room ${n}, ${l}"><rect x="${x}" y="${y}" width="220" height="160" fill="transparent" stroke="var(--line)"/>
   <text x="${x + 18}" y="${y + 48}" style="font-family:var(--font-display);font-size:38px" fill="var(--ink)">${n}</text><text x="${x + 18}" y="${y + 74}" style="font-family:var(--font-ui);font-size:15px" fill="var(--dim)">${l}</text></a>`);
 s += `<path d="M60 392 L60 120 L330 120 L330 190 L120 190 L120 300 L400 300 L400 392" fill="none" stroke="var(--ink)" stroke-width="1.6" stroke-dasharray="2 6" stroke-linecap="round"/>
   <path d="M200 120 L206 120" stroke="var(--ink)" marker-end="url(#pa)"/><path d="M230 190 L224 190" stroke="var(--ink)" marker-end="url(#pa)"/><path d="M260 300 L266 300" stroke="var(--ink)" marker-end="url(#pa)"/>
-  <circle cx="60" cy="392" r="5" fill="var(--ink)"/><text x="60" y="412" text-anchor="middle" style="font-family:var(--font-ui);font-size:13px" fill="var(--dim)">entrada</text>
-  <rect x="395" y="387" width="10" height="10" fill="var(--ink)"/><text x="400" y="412" text-anchor="middle" style="font-family:var(--font-ui);font-size:13px" fill="var(--dim)">salida</text>`;
+  <circle cx="60" cy="392" r="5" fill="var(--ink)"/><text x="60" y="412" text-anchor="middle" style="font-family:var(--font-ui);font-size:13px" fill="var(--dim)">entrance</text>
+  <rect x="395" y="387" width="10" height="10" fill="var(--ink)"/><text x="400" y="412" text-anchor="middle" style="font-family:var(--font-ui);font-size:13px" fill="var(--dim)">exit</text>`;
 fp.innerHTML = s;
 
 const btns = document.querySelectorAll(".modes button");
-const setMode = m => { document.documentElement.dataset.mode = m; btns.forEach(b => b.setAttribute("aria-pressed", b.dataset.set === m ? "true" : "false")); try { localStorage.setItem("museo-mode", m); } catch (e) {} players.forEach(p => p.rerenderCurrent()); };
+const setMode = m => { document.documentElement.dataset.mode = m; btns.forEach(b => b.setAttribute("aria-pressed", b.dataset.set === m ? "true" : "false")); try { localStorage.setItem("museum-mode", m); } catch (e) {} players.forEach(p => p.rerenderCurrent()); };
 btns.forEach(b => b.onclick = () => setMode(b.dataset.set));
-try { const m = localStorage.getItem("museo-mode"); if (m) setMode(m); } catch (e) {}
+try { const m = localStorage.getItem("museum-mode"); if (m) setMode(m); } catch (e) {}
 })();
 </script>

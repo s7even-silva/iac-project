@@ -12,15 +12,15 @@ loads its own code.
 | Page | Box | Content |
 |---|---|---|
 | `/` | — | Index of the boxes |
-| `/guion/` | — | Talk storyboard (2026-10-04): the four rooms, their scenes, the spoken script and presenter notes |
-| `/sala1/`–`/sala4/` | 1–4 | **What each iPoster iframe loads.** One room of the storyboard alone (kiosk mode): scene, in-case controls, caption and scene navigation |
-| `/box1/` | 1 (old) | First rigidity explorer (Vue). Superseded by `/sala1/`; kept until the poster is switched over |
+| `/storyboard/` | — | Talk storyboard (2026-10-04): the four rooms, their scenes, the spoken script and presenter notes |
+| `/room1/`–`/room4/` | 1–4 | **What each iPoster iframe loads.** One room of the storyboard alone (kiosk mode): a 16:9 slide that fills the window, with its controls, caption and counter. Click to advance, left third to go back |
+| `/box1/` | 1 (old) | First rigidity explorer (Vue). Superseded by `/room1/`; kept until the poster is switched over |
 
 The storyboard and the four rooms are static files in `public/` (copied
 as they are into `docs/` by `npm run build`). They are generated from one
-template: each `sala<N>/index.html` is the storyboard page with
+template: each `room<N>/index.html` is the storyboard page with
 `window.KIOSK` set to the room id (`rain`, `shield`, `dose`, `error`).
-Edit `public/guion/index.html` only, then run `python3 tools/build_salas.py`
+Edit `public/storyboard/index.html` only, then run `python3 tools/build_rooms.py`
 and `npm run build`.
 
 ## Work on it
