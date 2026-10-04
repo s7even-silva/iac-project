@@ -37,6 +37,13 @@ El 2026-10-01 el proyecto se reordenó:
 - **La rama `infra/distributed-sweep` sigue viva:** la VM del coordinator la
   clona al arrancar (`infra/deploy/cloud-init-coordinator.yaml`). No
   borrarla ni convertirla en tag.
+- **Rama `gh-pages`** (sin historia común con `main`): páginas interactivas
+  que el iPoster del IAC 2026 embebe como iframes, servidas por GitHub
+  Pages. Guion gráfico de la charla (en inglés) en
+  `https://s7even-silva.github.io/iac-project/storyboard/` y una página
+  por caja del iPoster en `/room1/` a `/room4/` (las URL de los iframes:
+  una diapositiva 16:9 por sala). Detalle en su `README.md`. No mezclarla
+  con `main`.
 
 El 2026-10-02 la historia se reescribió para quitar las líneas
 `Co-Authored-By`/`Claude-Session` que 7 commits tenían contra la regla de
