@@ -591,23 +591,49 @@ const ROOMS = [
     say: "And how many energies are enough? We double the grid until the answer stops moving, within a tolerance written down in advance, and confirm it against an independent reference.",
     note: "Real spectrum × illustrative response. The error shown is the trapezoid rule against a fine integral.",
     draw: () => `${eAxis(400)}<g id="refine"></g>`, after: (svg, ctx) => refineLoop(svg, ctx) },
-  { t: "Seven pilots, then the sweep", box: [24, 160, 800, 380], sub: "each criterion fixed before seeing data",
-    cap: "Before production, seven pilot studies must pass, each against a criterion written down in advance. The first compares our organ doses with ICRP 116.",
+  { t: "Seven pilots, then the sweep", box: [24, 130, 800, 380], sub: "each criterion fixed before seeing data",
+    cap: "Before production, seven pilot studies must pass, each against a criterion written down in advance. The first compares our organ doses with ICRP 116. Click a pilot to see its test.",
     say: "Seven pilot studies come before production, each with its pass criterion fixed before we see the data. The first checks our organ doses against the ICRP 116 reference values.",
-    note: "Here the numbering is real: it is a sequence. P0 is ready. P1 now includes the NIAC geometry and the comparison with the v1 layout.",
-    draw: anim => { const P = [["P0", "dose vs ICRP 116", "ready"], ["P1", "coils, field, source", "NIAC geometry first"], ["P2", "error bars", ""], ["P3", "events per energy", ""], ["P4", "energy grid", ""], ["P5", "biasing", "optional"], ["P6", "precision of η", ""]];
-      let s = `<path d="M60 300 C 200 240, 300 360, 420 290 S 640 250, 770 290" class="nofill s-line ${anim ? "draw" : ""}" pathLength="1" stroke-width="2"/>`;
-      P.forEach(([k, l, st], i) => { const x = 80 + i * 100, y = 300 + Math.sin(i * 1.3) * 18, done = st === "ready";
-        s += `<g class="${anim ? "appear" : ""}" style="--dl:${.3 + i * .18}s"><circle cx="${x}" cy="${f1(y)}" r="22" class="${done ? "f-film" : "f-vit"}" stroke="var(--vink)" stroke-width="1.4"/>
+    note: "Here the numbering is real: it is a sequence. P0 is ready. P1 now includes the NIAC geometry and the comparison with the v1 layout. Clicking a pilot opens a small card with its question and pass criterion; clicking it again closes it.",
+    draw: anim => { let s = `<path d="M60 300 C 200 240, 300 360, 420 290 S 640 250, 770 290" class="nofill s-line ${anim ? "draw" : ""}" pathLength="1" stroke-width="2"/>`;
+      PILOTS.forEach(([k, l, st], i) => { const x = 80 + i * 100, y = 300 + Math.sin(i * 1.3) * 18, done = st === "ready";
+        s += `<g class="pnode ${anim ? "appear" : ""}" data-i="${i}" role="button" tabindex="0" aria-label="${k}: ${l}" style="--dl:${.3 + i * .18}s"><circle cx="${x}" cy="${f1(y)}" r="22" class="${done ? "f-film" : "f-vit"}" stroke="var(--vink)" stroke-width="1.4"/>
           <text x="${x}" y="${f1(y + 5)}" text-anchor="middle" class="vt" style="font-size:13px;${done ? "fill:var(--vit)" : ""}">${k}</text>
           <text x="${x}" y="${f1(i % 2 ? y - 52 : y + 50)}" text-anchor="middle" class="vd">${l}</text>${st ? `<text x="${x}" y="${f1(i % 2 ? y - 36 : y + 66)}" text-anchor="middle" class="vd" style="font-style:italic">${st}</text>` : ""}</g>`; });
-      return s + `<text x="780" y="196" text-anchor="end" class="vbig">then, the sweep</text>`; } },
+      return s + `<text id="sweep-t" x="780" y="196" text-anchor="end" class="vbig" style="transition:opacity .3s">then, the sweep</text><g id="pop"></g>`; },
+    after: svg => pilotPops(svg) },
 ]},
 ];
 
 const OPENING = "Everything in this project is invisible. The radiation that crosses an astronaut. The shield we built against it. The dose it leaves inside the body. And the error hiding in every number we computed. This talk is a walk through four rooms. In each one we make one invisible thing visible. The last one was the hardest.";
 const CLOSING = "Four invisible things: the rain, the shield, the dose and the error. The first three are physics. The fourth decides whether the other three mean anything. An active shield doesn't only need a strong field. It needs a measurement you can trust, organ by organ, position by position. We've shown what that proof looks like, and exactly where we still have to apply it. Thank you.";
 
+/* pilots: [id, label, status, question, passes if]; from docs/bitacora/plan_piloto.md */
+const PILOTS = [
+  ["P0", "dose vs ICRP 116", "ready", "Is the absolute organ dose right?", "each organ within ±10% of ICRP 116"],
+  ["P1", "coils, field, source", "NIAC geometry first", "How large must the field and the source be?", "the dose stops changing as they grow"],
+  ["P2", "error bars", "", "Can one run's error bar be trusted?", "it matches the scatter between runs"],
+  ["P3", "events per energy", "", "How many particles per energy?", "the error settles, with fresh seeds"],
+  ["P4", "energy grid", "", "Are the energies enough for six skies?", "integral error inside a fixed tolerance"],
+  ["P5", "biasing", "optional", "Can a biased source save time?", "same answer, measured gain in speed"],
+  ["P6", "precision of η", "", "Is the shield effect precise enough?", "error ≤ half the smallest effect of interest"],
+];
+function pilotPops(svg) {
+  const g = svg.querySelector("#pop"), sweep = svg.querySelector("#sweep-t"); let open = -1;
+  const show = i => { open = i; sweep.style.opacity = i < 0 ? 1 : .15;
+    svg.querySelectorAll(".pnode circle").forEach((c, j) => c.setAttribute("stroke-width", j === i ? "2.6" : "1.4"));
+    if (i < 0) { g.innerHTML = ""; return; }
+    const [k, , , q, pass] = PILOTS[i], nx = 80 + i * 100, ny = 300 + Math.sin(i * 1.3) * 18, h = 66, tip = i % 2 ? ny - 70 : ny - 34, y = tip - h - 8;
+    const draw = w => { const x = Math.max(24, Math.min(800 - 24 - w, nx - w / 2)); g.innerHTML = `<g class="appear" style="--d:.25s"><path d="M${nx - 7} ${y + h} L${nx} ${tip} L${nx + 7} ${y + h} Z" class="f-ink"/><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" class="f-ink"/>
+      <text x="${x + 12}" y="${y + 20}" class="vt" style="fill:var(--vit);font-size:13px"><tspan style="font-weight:700">${k}</tspan>  ${q}</text>
+      <text x="${x + 12}" y="${y + 38}" class="vs" style="fill:var(--vit);opacity:.7">passes if</text>
+      <text x="${x + 12}" y="${y + 54}" class="vd" style="fill:var(--vit)">${pass}</text></g>`; };
+    draw(200); draw(Math.max(...[...g.querySelectorAll("text")].map(t => t.getBBox().width)) + 24); }; // size the card to its text
+  svg.querySelectorAll(".pnode").forEach(n => { n.style.cursor = "pointer";
+    const pick = e => { e.stopPropagation(); const i = +n.dataset.i; show(open === i ? -1 : i); };
+    n.addEventListener("click", pick); n.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(e); } }); });
+  g.addEventListener("click", e => { e.stopPropagation(); show(-1); });
+}
 /* ---------- animations ---------- */
 function coils3d(room, ctx) {
   const cv = room.cv, st = S.view, sc = 20, cx = 400, cy = 250, layout = S.layout;
