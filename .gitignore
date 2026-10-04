@@ -103,3 +103,9 @@ venv/
 # SI van al articulo siguen viviendo en geant4/**/resultados/*.csv (ya
 # versionado mas arriba en este archivo).
 /infra/coordinator/data/
+
+# ─── Grafo de conocimiento local (graphify) ───
+graphify-out/
+
+# ─── Datos de ICRP con derechos de autor (P0, ICRP 116) ───
+p116jaicrp_*.zip
