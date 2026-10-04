@@ -579,7 +579,7 @@ const ROOMS = [
     say: "Each run also measures its own uncertainty, event by event, and says when that estimate cannot be trusted. A rare, huge event can fool the error bar; the variance of the variance catches it. Our old method underestimated errors two to nine times.",
     note: "Rule: VOV < 0.1 and at least ~200 events with a deposit (the 200 is confirmed in P2). The animation data are synthetic.",
     draw: () => `<g id="vov"></g>`, after: (svg, ctx) => vovLoop(svg, ctx) },
-  { t: "One response, six skies", box: [63, 66, 740, 444], sub: "simulate once per energy, weight per environment",
+  { t: "One response, six skies", box: [63, 66, 905, 444], sub: "simulate once per energy, weight per environment",
     cap: "Geant4 gives the dose per particle at each energy once (dashed). Each radiation environment is a different set of weights on that same curve. Choose one.",
     say: "Geant4 runs once per energy. The six environments, cosmic rays at solar minimum and maximum and two historic solar storms, are only different weights on the same response. One set of simulations serves every sky.",
     note: "Real OLTARIS spectra (all six cases). The response curve is illustrative: the real one comes out of the sweep. The buttons stop the automatic cycle.",
@@ -700,8 +700,12 @@ function drawSix(svg, key) {
   const g = svg.querySelector("#six"); if (!g) return; const name = CASES.find(c => c[0] === key)[1]; let sp = [], pr = [], rr = [];
   for (let lg = 1.05; lg <= 5.0001; lg += .02) { const y = specAt(key, lg), R = Rshape(lg); sp.push([PX(lg), ePlotY(y)]); rr.push([PX(lg), ePlotY(R)]); pr.push([PX(lg), ePlotY(y * R)]); }
   const fill = `M${f1(PX(1.05))} 400 L` + pr.map(p => f1(p[0]) + " " + f1(p[1])).join(" L") + ` L${f1(PX(5))} 400 Z`;
-  g.innerHTML = `<path d="${fill}" class="f-film" opacity=".35"/>${poly(sp, key.startsWith("SEP") ? "s-sun" : "s-plus", 'stroke-width="2"')}${poly(rr, "s-ink", 'stroke-width="1.5" stroke-dasharray="6 5"')}
-    ${plate(84, 66, 520, 66)}<text x="94" y="86" class="vt">${name}</text><text x="94" y="104" class="vd">solid: spectrum (real, OLTARIS); dashed: dose per particle (illustrative)</text><text x="94" y="122" class="vd">shaded: what this sky delivers</text>`;
+  const sc = key.startsWith("SEP") ? "s-sun" : "s-plus", [n1, n2] = name.split(", "), L = 736;
+  g.innerHTML = `<path d="${fill}" class="f-film" opacity=".35"/>${poly(sp, sc, 'stroke-width="2"')}${poly(rr, "s-ink", 'stroke-width="1.5" stroke-dasharray="6 5"')}
+    <text x="${L}" y="170" class="vt">${n1}</text><text x="${L}" y="188" class="vd">${n2}</text>
+    <line x1="${L}" y1="218" x2="${L + 26}" y2="218" class="${sc}" stroke-width="2"/><text x="${L + 34}" y="222" class="vd">spectrum</text><text x="${L + 34}" y="237" class="vs">real, OLTARIS</text>
+    <line x1="${L}" y1="262" x2="${L + 26}" y2="262" class="s-ink" stroke-width="1.5" stroke-dasharray="6 5"/><text x="${L + 34}" y="266" class="vd">dose per particle</text><text x="${L + 34}" y="281" class="vs">illustrative</text>
+    <rect x="${L}" y="298" width="26" height="12" class="f-film" opacity=".35"/><text x="${L + 34}" y="308" class="vd">dose from this sky</text>`;
 }
 function sixLoop(svg, ctx, ui) {
   const show = k => { S.six.k = k; drawSix(svg, CASES[k][0]); ui && ui.querySelectorAll("[data-k]").forEach(x => x.setAttribute("aria-pressed", x.dataset.k === CASES[k][0])); };
