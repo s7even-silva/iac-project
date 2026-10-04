@@ -20,6 +20,8 @@ The storyboard and the four rooms are static files in `public/` (copied
 as they are into `docs/` by `npm run build`). They are generated from one
 template: each `sala<N>/index.html` is the storyboard page with
 `window.KIOSK` set to the room id (`rain`, `shield`, `dose`, `error`).
+Edit `public/guion/index.html` only, then run `python3 tools/build_salas.py`
+and `npm run build`.
 
 ## Work on it
 
