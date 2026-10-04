@@ -12,8 +12,14 @@ loads its own code.
 | Page | Box | Content |
 |---|---|---|
 | `/` | — | Index of the boxes |
-| `/box1/` | 1 · Why active shielding | Rigidity explorer: path through a uniform 2 m field layer, SEP and GCR rigidity spectra |
-| `/box2/`–`/box4/` | 2–4 | Pending |
+| `/guion/` | — | Talk storyboard (2026-10-04): the four rooms, their scenes, the spoken script and presenter notes |
+| `/sala1/`–`/sala4/` | 1–4 | **What each iPoster iframe loads.** One room of the storyboard alone (kiosk mode): scene, in-case controls, caption and scene navigation |
+| `/box1/` | 1 (old) | First rigidity explorer (Vue). Superseded by `/sala1/`; kept until the poster is switched over |
+
+The storyboard and the four rooms are static files in `public/` (copied
+as they are into `docs/` by `npm run build`). They are generated from one
+template: each `sala<N>/index.html` is the storyboard page with
+`window.KIOSK` set to the room id (`rain`, `shield`, `dose`, `error`).
 
 ## Work on it
 
