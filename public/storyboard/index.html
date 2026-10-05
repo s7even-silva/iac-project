@@ -375,12 +375,14 @@ const pills = (name, items, cur) => `<div class="grp" role="group" aria-label="$
 const bindPills = (root, fn) => root.querySelectorAll(".grp").forEach(g => g.querySelectorAll("[data-k]").forEach(b => b.onclick = e => { e.stopPropagation(); g.querySelectorAll("[data-k]").forEach(x => x.setAttribute("aria-pressed", x === b)); fn(b.dataset.k, g); }));
 
 /* ---------- room covers ----------
+   PREVIEW_CUT: the iPoster preview shows only the top of the iframe, about 240 px of a ~785 px wide box, i.e. y ≈ 245 of 450
+   slide units. Cover content sits wholly above y = 235 or wholly below y = 262, so nothing appears half cut in the preview.
    The first scene of each box. The iPoster preview shows only the top half of the iframe, so the cover keeps its text
    and its animation there. It does not repeat the box title (the iPoster shows it); it says what the room makes visible. */
 const coverText = (num, thing) => `${plate(30, 46, 300, 168)}<text x="48" y="128" class="f-dim" style="font-family:var(--font-display);font-size:88px">${num}</text>
   <text x="48" y="160" class="vd" style="font-size:13px">What this room makes visible</text><text x="48" y="196" class="vbig" style="font-size:32px">${thing}</text>`;
-const coverIndex = titles => `${plate(30, 222, 300, 22 + 17 * titles.length)}<text x="48" y="242" class="vs" style="letter-spacing:.06em">IN THIS ROOM</text>` +
-  titles.map((t, i) => `<text x="48" y="${262 + 17 * i}" class="vs">${i + 1}</text><text x="64" y="${262 + 17 * i}" class="vd" style="font-size:12.5px">${t}</text>`).join("");
+const coverIndex = titles => `${plate(30, 262, 300, 22 + 15 * titles.length)}<text x="48" y="280" class="vs" style="letter-spacing:.06em">IN THIS ROOM</text>` +
+  titles.map((t, i) => `<text x="48" y="${298 + 15 * i}" class="vs">${i + 1}</text><text x="64" y="${298 + 15 * i}" class="vd" style="font-size:12px">${t}</text>`).join("");
 const cover = (num, thing, box, draw, after) => { const sc = { cover: true, bleed: true, t: "", sub: "", say: "", titles: [],
   cap: "Tap anywhere to begin.", note: `[CLICK: Box ${box}] The box opens on this cover. One tap starts the room.`,
   draw: (anim, f) => draw(anim, f) + coverText(num, thing) + coverIndex(sc.titles), after }; return sc; };
@@ -394,13 +396,13 @@ function meterLoop(svg, ctx) {
     T.forEach(([n], i) => { const h = 140 * lvl[i], on = i === hit;
       s += `<rect x="${X(i)}" y="56" width="34" height="140" class="nofill s-line"/><rect x="${X(i)}" y="${f1(196 - h)}" width="34" height="${f1(h)}" class="f-film" opacity="${on ? 1 : .55}"/>
         <text x="${X(i) + 17}" y="214" text-anchor="middle" class="vs" style="${on ? "fill:var(--film)" : ""}">${n}</text>`; });
-    s += `<text x="430" y="250" class="vs" style="letter-spacing:.06em">GEANT4, EVENT BY EVENT</text>`;
-    log.forEach((l, i) => { const k = log.length - 1 - i; s += `<text x="430" y="${396 - 17 * k}" class="vd" style="${mono};${k === 0 ? "fill:var(--film)" : ""}" opacity="${Math.max(.15, 1 - k * .12).toFixed(2)}">${l}</text>`; });
+    s += `<text x="430" y="276" class="vs" style="letter-spacing:.06em">GEANT4, EVENT BY EVENT</text>`;
+    log.forEach((l, i) => { const k = log.length - 1 - i; s += `<text x="430" y="${392 - 16 * k}" class="vd" style="${mono};${k === 0 ? "fill:var(--film)" : ""}" opacity="${Math.max(.15, 1 - k * .12).toFixed(2)}">${l}</text>`; });
     g.innerHTML = s; };
   const step = () => { let u = r(), i = 0; while (u > P[i] && i < 5) u -= P[i++];
     const alpha = r() < .25, E = alpha ? `alpha ${Math.round(80 + r() * 900)} MeV/n` : `proton ${(.05 + -Math.log(1 - r() * .97) * .9).toFixed(2)} GeV`, dep = .05 + -Math.log(1 - r() * .97) * (alpha ? 2.4 : .6);
-    evn += 1 + Math.floor(r() * 40); hit = i; lvl[i] += Math.min(.3, dep * .015 / Math.sqrt(T[i][1])); if (lvl[i] > 1) lvl[i] = .15;
-    log.push(`#${evn.toLocaleString("en").replace(/,/g, " ")} · ${E} → ${T[i][0]} ${dep.toFixed(2)} MeV`); if (log.length > 8) log.shift(); draw(); };
+    evn += 300 + Math.floor(r() * 4000); if (evn > 9.9e6) evn = 18204; // only a small share of primaries leaves energy in the body hit = i; lvl[i] += Math.min(.3, dep * .015 / Math.sqrt(T[i][1])); if (lvl[i] > 1) lvl[i] = .15;
+    log.push(`#${evn.toLocaleString("en").replace(/,/g, " ")} · ${E} → ${T[i][0]} ${dep.toFixed(2)} MeV`); if (log.length > 7) log.shift(); draw(); };
   for (let k = 0; k < 6; k++) step();
   if (!ctx.live || reduce) return;
   ctx.every(step, 750);
@@ -413,10 +415,10 @@ function convergeLoop(svg, ctx) { // room IV cover
     ev.map(([h, big], i) => `<line x1="${f1(420 + i * 5)}" y1="${BASE}" x2="${f1(420 + i * 5)}" y2="${f1(BASE - h)}" class="${big ? "s-film" : "s-plus"}" stroke-width="${big ? 2.4 : 1.6}" opacity="${big ? 1 : .7}"/>`).join("") +
     `<line x1="416" y1="${BASE}" x2="772" y2="${BASE}" class="s-dim"/><text x="420" y="${BASE + 18}" class="vs">energy left by each particle</text>${ev.some(e => e[1]) ? `<text x="770" y="${BASE + 18}" text-anchor="end" class="vs" style="fill:var(--film)">a rare, huge one</text>` : ""}`; };
   const add = () => { if (pts.length >= 13) pts = []; let big = false;
-    for (let k = 0; k < 10; k++) { const huge = r() < .012; big = big || huge; ev.push([huge ? 130 + r() * 40 : 4 + 26 * -Math.log(1 - r() * .93) / 2.7, huge]); } while (ev.length > 71) ev.shift();
+    for (let k = 0; k < 10; k++) { const huge = r() < .012; big = big || huge; ev.push([huge ? 100 + r() * 25 : 4 + 22 * -Math.log(1 - r() * .93) / 2.7, huge]); } while (ev.length > 71) ev.shift();
     const n = 2 ** pts.length, e = Math.min(60, 55 / Math.sqrt(n) * (big ? 2.4 : 1)); pts.push([Y0 + (r() - .5) * 1.2 * e + (big ? -e * .3 : 0), e, big]); draw(); };
   if (!ctx.live || reduce) { for (let i = 0; i < 13; i++) add(); return; }
-  for (let i = 0; i < 6; i++) { for (let k = 0; k < 10; k++) ev.push([4 + 26 * -Math.log(1 - r() * .93) / 2.7, false]); }
+  for (let i = 0; i < 6; i++) { for (let k = 0; k < 10; k++) ev.push([4 + 22 * -Math.log(1 - r() * .93) / 2.7, false]); }
   add(); ctx.every(add, 650);
 }
 /* ---------- the rooms ---------- */
@@ -474,8 +476,8 @@ const ROOMS = [
       bar.querySelector("#sel-b").oninput = e => { st.B = +e.target.value; upd(); }; upd(); } },
 ]},
 { id: "shield", num: "II", title: "A shield made of nothing", invisible: "the field", scenes: [
-  cover("II", "the field", 2, () => `${hull(575, 235, 15)}${halbach(575, 235, 15, { op: .9 })}`,
-    (svg, ctx, room) => requestAnimationFrame(() => paintFilings(room.cv, "niac", 575, 235, 15, { fadeFrom: 12, rmax: 18, fadeIn: true }))),
+  cover("II", "the field", 2, () => `${hull(575, 122, 11)}${halbach(575, 122, 11, { op: .9 })}`,
+    (svg, ctx, room) => requestAnimationFrame(() => paintFilings(room.cv, "niac", 575, 122, 11, { fadeFrom: 12, rmax: 18, fadeIn: true }))),
   { t: "Eight coils, one torus", box: [0, 30, 800, 460], sub: "CREW HaT, NASA Innovative Advanced Concepts",
     cap: "Eight elliptical coils, 8 m long and 4 m across, on an 8 m ring around the ship: four face the ship, four stand edge-on. Drag to turn it.",
     say: "Our shield is CREW HaT, from NASA's Innovative Advanced Concepts program: eight elliptical coils on a ring around the habitat, each eight meters long and four across, carrying ten million amp-turns. Four coils face the ship and four stand edge-on, and their magnetic polarity turns around the ring.",
