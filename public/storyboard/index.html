@@ -374,21 +374,67 @@ function eAxis(y = 400) {
 const pills = (name, items, cur) => `<div class="grp" role="group" aria-label="${name}">${items.map(([k, l]) => `<button type="button" data-k="${k}" aria-pressed="${k === cur}">${l}</button>`).join("")}</div>`;
 const bindPills = (root, fn) => root.querySelectorAll(".grp").forEach(g => g.querySelectorAll("[data-k]").forEach(b => b.onclick = e => { e.stopPropagation(); g.querySelectorAll("[data-k]").forEach(x => x.setAttribute("aria-pressed", x === b)); fn(b.dataset.k, g); }));
 
+/* ---------- room covers ----------
+   The first scene of each box. The iPoster preview shows only the top half of the iframe, so the cover keeps its text
+   and its animation there. It does not repeat the box title (the iPoster shows it); it says what the room makes visible. */
+const coverText = (num, thing) => `${plate(30, 46, 300, 168)}<text x="48" y="128" class="f-dim" style="font-family:var(--font-display);font-size:88px">${num}</text>
+  <text x="48" y="160" class="vd" style="font-size:13px">What this room makes visible</text><text x="48" y="196" class="vbig" style="font-size:32px">${thing}</text>`;
+const coverIndex = titles => `${plate(30, 222, 300, 22 + 17 * titles.length)}<text x="48" y="242" class="vs" style="letter-spacing:.06em">IN THIS ROOM</text>` +
+  titles.map((t, i) => `<text x="48" y="${262 + 17 * i}" class="vs">${i + 1}</text><text x="64" y="${262 + 17 * i}" class="vd" style="font-size:12.5px">${t}</text>`).join("");
+const cover = (num, thing, box, draw, after) => { const sc = { cover: true, bleed: true, t: "", sub: "", say: "", titles: [],
+  cap: "Tap anywhere to begin.", note: `[CLICK: Box ${box}] The box opens on this cover. One tap starts the room.`,
+  draw: (anim, f) => draw(anim, f) + coverText(num, thing) + coverIndex(sc.titles), after }; return sc; };
+/* room III cover: six tissues as six detectors. Each event that leaves energy in a tissue raises its meter (dose = energy / mass)
+   and writes a line to a Geant4-style log. Particles, energies and deposits are illustrative. */
+function meterLoop(svg, ctx) {
+  const g = svg.querySelector("#meters"), r = rng(17), T = [["colon", .34], ["lung", 1.21], ["stomach", .15], ["breast", .025], ["marrow", 1.17], ["remainder", 30.9]];
+  const P = [.13, .2, .07, .04, .18, .38], lvl = T.map(() => .15 + r() * .35), log = []; let evn = 18204, hit = -1;
+  const X = i => 440 + i * 56, mono = "font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px";
+  const draw = () => { let s = `<text x="430" y="40" class="vs" style="letter-spacing:.06em">DOSE SO FAR, PER TISSUE</text>`;
+    T.forEach(([n], i) => { const h = 140 * lvl[i], on = i === hit;
+      s += `<rect x="${X(i)}" y="56" width="34" height="140" class="nofill s-line"/><rect x="${X(i)}" y="${f1(196 - h)}" width="34" height="${f1(h)}" class="f-film" opacity="${on ? 1 : .55}"/>
+        <text x="${X(i) + 17}" y="214" text-anchor="middle" class="vs" style="${on ? "fill:var(--film)" : ""}">${n}</text>`; });
+    s += `<text x="430" y="250" class="vs" style="letter-spacing:.06em">GEANT4, EVENT BY EVENT</text>`;
+    log.forEach((l, i) => { const k = log.length - 1 - i; s += `<text x="430" y="${396 - 17 * k}" class="vd" style="${mono};${k === 0 ? "fill:var(--film)" : ""}" opacity="${Math.max(.15, 1 - k * .12).toFixed(2)}">${l}</text>`; });
+    g.innerHTML = s; };
+  const step = () => { let u = r(), i = 0; while (u > P[i] && i < 5) u -= P[i++];
+    const alpha = r() < .25, E = alpha ? `alpha ${Math.round(80 + r() * 900)} MeV/n` : `proton ${(.05 + -Math.log(1 - r() * .97) * .9).toFixed(2)} GeV`, dep = .05 + -Math.log(1 - r() * .97) * (alpha ? 2.4 : .6);
+    evn += 1 + Math.floor(r() * 40); hit = i; lvl[i] += Math.min(.3, dep * .015 / Math.sqrt(T[i][1])); if (lvl[i] > 1) lvl[i] = .15;
+    log.push(`#${evn.toLocaleString("en").replace(/,/g, " ")} · ${E} → ${T[i][0]} ${dep.toFixed(2)} MeV`); if (log.length > 8) log.shift(); draw(); };
+  for (let k = 0; k < 6; k++) step();
+  if (!ctx.live || reduce) return;
+  ctx.every(step, 750);
+}
+function convergeLoop(svg, ctx) { // room IV cover
+  const g = svg.querySelector("#conv"), r = rng(3), X = i => 420 + i * 28, Y0 = 120, BASE = 392, ev = []; let pts = [];
+  const draw = () => { g.innerHTML = `<line x1="410" y1="${Y0}" x2="770" y2="${Y0}" class="s-film" stroke-dasharray="5 4" opacity=".8"/><text x="770" y="${Y0 - 8}" text-anchor="end" class="vs">true value</text>` +
+    pts.map(([y, e, big], i) => { const c = big ? "s-film" : "s-ink"; return `<line x1="${X(i)}" y1="${f1(y - e)}" x2="${X(i)}" y2="${f1(y + e)}" class="${c}" stroke-width="1.4"/><line x1="${X(i) - 4}" y1="${f1(y - e)}" x2="${X(i) + 4}" y2="${f1(y - e)}" class="${c}"/><line x1="${X(i) - 4}" y1="${f1(y + e)}" x2="${X(i) + 4}" y2="${f1(y + e)}" class="${c}"/><circle cx="${X(i)}" cy="${f1(y)}" r="4" class="${big ? "f-film" : "f-plus"}"/>`; }).join("") +
+    `<text x="770" y="214" text-anchor="end" class="vs">more particles →</text>` +
+    ev.map(([h, big], i) => `<line x1="${f1(420 + i * 5)}" y1="${BASE}" x2="${f1(420 + i * 5)}" y2="${f1(BASE - h)}" class="${big ? "s-film" : "s-plus"}" stroke-width="${big ? 2.4 : 1.6}" opacity="${big ? 1 : .7}"/>`).join("") +
+    `<line x1="416" y1="${BASE}" x2="772" y2="${BASE}" class="s-dim"/><text x="420" y="${BASE + 18}" class="vs">energy left by each particle</text>${ev.some(e => e[1]) ? `<text x="770" y="${BASE + 18}" text-anchor="end" class="vs" style="fill:var(--film)">a rare, huge one</text>` : ""}`; };
+  const add = () => { if (pts.length >= 13) pts = []; let big = false;
+    for (let k = 0; k < 10; k++) { const huge = r() < .012; big = big || huge; ev.push([huge ? 130 + r() * 40 : 4 + 26 * -Math.log(1 - r() * .93) / 2.7, huge]); } while (ev.length > 71) ev.shift();
+    const n = 2 ** pts.length, e = Math.min(60, 55 / Math.sqrt(n) * (big ? 2.4 : 1)); pts.push([Y0 + (r() - .5) * 1.2 * e + (big ? -e * .3 : 0), e, big]); draw(); };
+  if (!ctx.live || reduce) { for (let i = 0; i < 13; i++) add(); return; }
+  for (let i = 0; i < 6; i++) { for (let k = 0; k < 10; k++) ev.push([4 + 26 * -Math.log(1 - r() * .93) / 2.7, false]); }
+  add(); ctx.every(add, 650);
+}
 /* ---------- the rooms ---------- */
 const S = {}; // per-scene state
 const SCALE = .8; // drawing units → slide units, shared by every scene
 const ROOMS = [
 { id: "rain", num: "I", title: "The rain that never stops", invisible: "the radiation", scenes: [
+  cover("I", "the radiation", 1, () => `<g class="rain" data-kind="iso" data-n="40"></g>`, rain),
   { t: "1.8 mSv a day", bleed: true, sub: "measured by RAD on Curiosity, cruise to Mars",
     cap: "Deep space is never dark for an astronaut: particles cross the body from every direction, all the time.",
     say: "On the way to Mars, the RAD instrument on Curiosity measured 1.8 millisieverts a day. Over a 900-day mission that is 0.6 to 0.7 sievert, a whole career limit, spent before anyone lands. For cancer, there is no safe threshold.",
-    note: "[CLICK: Box 1] The case opens with rain: the radiation nobody sees.",
-    draw: (a, f) => `<g class="rain" data-kind="iso" data-n="110" data-y0="${f.top - 20}" data-y1="${f.bot}"></g>${person(400, (f.top + f.bot) / 2 - 72, 150)}`, after: rain },
+    note: "The case opens with rain: the radiation nobody sees.",
+    draw: (a, f) => `<g class="rain" data-kind="iso" data-n="40" data-y0="0" data-y1="450"></g>${person(400, (f.top + f.bot) / 2 - 72, 150)}`, after: rain },
   { t: "Two weathers", bleed: true, sub: "storms and rain",
     cap: "Solar storms arrive from one side, in bursts you can see coming. Cosmic rays arrive from everywhere, always.",
     say: "Space radiation comes in two weathers. Solar particle events are storms: mostly protons of a few hundred MeV, lasting hours to days. You can see them coming and take shelter. Galactic cosmic rays are a rain that never stops. They arrive from every direction, up to a thousand GeV per nucleon.",
     note: "Orange = Sun, blue = cosmic rays. That colour code holds for the whole room.",
-    draw: (a, f) => `<line x1="400" y1="${f.top}" x2="400" y2="${f.bot - 34}" class="s-line"/><g class="rain" data-kind="storm" data-n="60" data-x0="0" data-x1="400" data-y0="${f.top}" data-y1="${f.bot - 34}"></g><g class="rain" data-kind="iso" data-n="50" data-x0="400" data-x1="800" data-y0="${f.top}" data-y1="${f.bot - 34}" data-cls="s-plus"></g>
+    draw: (a, f) => `<line x1="400" y1="${f.top}" x2="400" y2="${f.bot - 34}" class="s-line"/><g class="rain" data-kind="storm" data-n="30" data-x0="0" data-x1="400" data-y0="${f.top}" data-y1="${f.bot - 34}"></g><g class="rain" data-kind="iso" data-n="22" data-x0="400" data-x1="800" data-y0="${f.top}" data-y1="${f.bot - 34}" data-cls="s-plus"></g>
       <text x="200" y="${f.bot - 6}" text-anchor="middle" class="vt" style="font-size:13px">Solar particle events</text><text x="600" y="${f.bot - 6}" text-anchor="middle" class="vt" style="font-size:13px">Galactic cosmic rays</text>`, after: rain },
   { t: "What a magnet sees", box: [0, 40, 800, 440], sub: "rigidity = momentum per unit charge",
     cap: "Two particles with the same rigidity follow the same path in a magnetic field, whatever their energy. Change the particle or its energy.",
@@ -428,10 +474,12 @@ const ROOMS = [
       bar.querySelector("#sel-b").oninput = e => { st.B = +e.target.value; upd(); }; upd(); } },
 ]},
 { id: "shield", num: "II", title: "A shield made of nothing", invisible: "the field", scenes: [
+  cover("II", "the field", 2, () => `${hull(575, 235, 15)}${halbach(575, 235, 15, { op: .9 })}`,
+    (svg, ctx, room) => requestAnimationFrame(() => paintFilings(room.cv, "niac", 575, 235, 15, { fadeFrom: 12, rmax: 18, fadeIn: true }))),
   { t: "Eight coils, one torus", box: [0, 30, 800, 460], sub: "CREW HaT, NASA Innovative Advanced Concepts",
     cap: "Eight elliptical coils, 8 m long and 4 m across, on an 8 m ring around the ship: four face the ship, four stand edge-on. Drag to turn it.",
     say: "Our shield is CREW HaT, from NASA's Innovative Advanced Concepts program: eight elliptical coils on a ring around the habitat, each eight meters long and four across, carrying ten million amp-turns. Four coils face the ship and four stand edge-on, and their magnetic polarity turns around the ring.",
-    note: "[CLICK: Box 2] Layout from the NIAC report (fig. 3.1(b) and §2). The report does not give each coil’s current sense: we use θ = 90° − φ, a declared assumption (D9). The “First sweep” button shows the K=1 layout used in v1 (finding A4); use it only if asked.",
+    note: "Layout from the NIAC report (fig. 3.1(b) and §2). The report does not give each coil’s current sense: we use θ = 90° − φ, a declared assumption (D9). The “First sweep” button shows the K=1 layout used in v1 (finding A4); use it only if asked.",
     init: () => { S.view = S.view || { az: .5, el: .5 }; S.layout = S.layout || "niac"; },
     draw: () => person(400, 230, 40, "f-ink"),
     after: (svg, ctx, room) => coils3d(room, ctx),
@@ -497,10 +545,11 @@ const ROOMS = [
       return s + `<text x="604" y="${f1(y + 18)}" class="vs">one tape, 95 µm</text>`; } },
 ]},
 { id: "dose", num: "III", title: "The body as an instrument", invisible: "the dose", scenes: [
+  cover("III", "the dose", 3, () => `<g id="meters"></g>`, meterLoop),
   { t: "The sky, as weights", box: [63, 78, 740, 445], sub: "OLTARIS spectra, integrated by trapezoids",
     cap: "Real cosmic-ray proton spectrum at solar minimum. We simulate a few energies (eight in the first sweep); the trapezoids between them carry each energy's share of the flux.",
     say: "Then we sent the sky through it. NASA's OLTARIS gave us the spectra: cosmic-ray protons and helium at solar minimum, and the October 1989 solar storm. We simulate a few energies, and each one is weighted by the real flux around it.",
-    note: "[CLICK: Box 3] Real spectrum (E·Φ, log scale). Eight energies, as in v1; in v2 the grid is set by P4 (scene “How many energies?” in room IV).",
+    note: "Real spectrum (E·Φ, log scale). Eight energies, as in v1; in v2 the grid is set by P4 (scene “How many energies?” in room IV).",
     draw: anim => { const key = "GCR_H_min", N = 8; let s = eAxis(400), pts = [];
       for (let lg = 1.05; lg <= 5.0001; lg += .02) pts.push([PX(lg), ePlotY(specAt(key, lg))]);
       for (let i = 0; i < N; i++) { const a = 1.05 + i * (3.95 / N), b = a + 3.95 / N, ya = specAt(key, a), yb = specAt(key, b);
@@ -551,10 +600,11 @@ const ROOMS = [
       return s + `<text x="${X(16.4)}" y="160" text-anchor="middle" class="vbig ${A}" style="--dl:1.6s">83 times higher?</text>`; } },
 ]},
 { id: "error", num: "IV", title: "Measuring the measurer", invisible: "the error", scenes: [
+  cover("IV", "the error", 4, () => `<g id="conv"></g>`, convergeLoop),
   { t: "The patient walked away", box: [76, 96, 760, 474], sub: "what the audit found, 30 September 2026",
     cap: "Dose is counted on a grid laid over the body. In the first sweep the grid stayed at the center while the astronaut moved. Move the astronaut.",
     say: "Geant4 counts dose on a grid laid over the body. When we moved the astronaut off-axis, the grid stayed where it was. We were scoring cabin air and calling it organs. The steep drop off-axis wasn't the magnet. It was an instrument that stayed still while the patient walked away.",
-    note: "[CLICK: Box 4] The phantom walks to 4 m on its own; then move it with the slider and switch between “grid stays” and “grid follows”. Told calmly, it is a good story, not an embarrassing one.",
+    note: "The phantom walks to 4 m on its own; then move it with the slider and switch between “grid stays” and “grid follows”. Told calmly, it is a good story, not an embarrassing one.",
     init: () => S.walk = S.walk || { x: 0, fixed: false },
     draw: () => { const st = S.walk, P = m => 120 + m * 150, gx = st.fixed ? P(st.x) : P(0), ok = st.fixed || st.x < .2; let s = `<line x1="100" y1="420" x2="740" y2="420" class="s-dim"/>`;
       for (let m = 0; m <= 4; m++) s += `<line x1="${P(m)}" y1="414" x2="${P(m)}" y2="426" class="s-dim"/><text x="${P(m)}" y="446" text-anchor="middle" class="vd">${m} m</text>`;
@@ -696,21 +746,28 @@ function coils3d(room, ctx) {
   ctx.loop(now => { const dt = Math.min(.05, (now - last) / 1000); last = now; if (drag) return; // the spin pauses while dragging
     st.az += dt * .25; if (st.elT !== undefined) st.el += (st.elT - st.el) * Math.min(1, dt * 4); draw(); });
 }
+/* Particles as streaks: a bright head and a long fading tail, clipped to the group's region.
+   data-kind "iso": from every direction (cosmic rays, mixed with some solar protons unless data-cls fixes the colour);
+   "storm": from the upper left, in bursts (a solar particle event). */
 function rain(svg, ctx) {
   const sets = [...svg.querySelectorAll(".rain")].map((g, gi) => {
-    g.innerHTML = ""; const kind = g.dataset.kind, n = +g.dataset.n, x0 = +(g.dataset.x0 || 0), x1 = +(g.dataset.x1 || 800), y0 = +(g.dataset.y0 || 40), y1 = +(g.dataset.y1 || 440), r = rng(20 + gi), drops = [];
-    for (let i = 0; i < n; i++) { const el = document.createElementNS(NS, "line"); el.setAttribute("stroke-width", "1.5"); el.setAttribute("stroke-linecap", "round");
-      const d = { el, t: r() }; if (kind === "storm") { d.a = Math.PI / 4 + (r() - .5) * .5; d.v = .5 + r() * .35; d.burst = r() < .7; el.setAttribute("class", "s-sun"); }
-      else { d.a = r() * Math.PI * 2; d.cx = x0 + r() * (x1 - x0); d.cy = y0 + 30 + r() * (y1 - y0 - 60); d.v = .12 + r() * .18; el.setAttribute("class", g.dataset.cls || (r() < .3 ? "s-sun" : "s-plus")); }
-      g.appendChild(el); drops.push(d); }
-    return { kind, drops, x0, x1, y0, y1 }; });
+    const kind = g.dataset.kind, n = +g.dataset.n, x0 = +(g.dataset.x0 || 0), x1 = +(g.dataset.x1 || 800), y0 = +(g.dataset.y0 || 0), y1 = +(g.dataset.y1 || 450), r = rng(20 + gi), id = `rc${gi}${Math.floor(Math.random() * 1e6)}`;
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, D = Math.hypot(x1 - x0, y1 - y0) / 2 + 200;
+    g.innerHTML = `<clipPath id="${id}"><rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}"/></clipPath>`; g.setAttribute("clip-path", `url(#${id})`);
+    const spawn = d => { const storm = kind === "storm", a = storm ? Math.PI / 4 + (r() - .5) * .45 : r() * 2 * Math.PI, off = (r() - .5) * 2 * (D - 200);
+      const cls = storm ? "s-sun" : g.dataset.cls || (r() < .3 ? "s-sun" : "s-plus");
+      Object.assign(d, { a, x: cx - Math.cos(a) * D - Math.sin(a) * off, y: cy - Math.sin(a) * D + Math.cos(a) * off, v: storm ? 420 + r() * 300 : 240 + r() * 380, L: 80 + r() * 160, s: -r() * 300, burst: storm && r() < .75 });
+      d.tail.setAttribute("class", cls); d.head.setAttribute("class", cls); return d; };
+    const drops = Array.from({ length: n }, () => { const tail = document.createElementNS(NS, "line"), head = document.createElementNS(NS, "line");
+      tail.setAttribute("stroke-width", "2"); tail.setAttribute("stroke-linecap", "round"); head.setAttribute("stroke-width", "2.6"); head.setAttribute("stroke-linecap", "round");
+      g.append(tail, head); const d = spawn({ tail, head }); d.s = r() * 2 * D; return d; });
+    return { kind, drops, spawn, D }; });
   let last = performance.now();
-  ctx.loop(now => { const dt = Math.min(.05, (now - last) / 1000); last = now; const on = (now / 1000) % 4 < 1.6;
-    sets.forEach(({ kind, drops, x0, x1, y0, y1 }) => drops.forEach(d => { d.t = (d.t + dt * d.v) % 1; let x, y, L = 14, o;
-      if (kind === "storm") { const dist = d.t * 640; x = x0 - 20 + Math.cos(d.a) * dist; y = -20 + Math.sin(d.a) * dist; L = 20; o = d.burst ? (on ? .95 : .08) : .3; }
-      else { const s = (d.t - .5) * 220; x = d.cx + Math.cos(d.a) * s; y = d.cy + Math.sin(d.a) * s; o = Math.sin(d.t * Math.PI) * .85; }
-      if (x < x0 || x > x1 || y < y0 || y > y1) o = 0;
-      d.el.setAttribute("opacity", o.toFixed(2)); d.el.setAttribute("x1", f1(x)); d.el.setAttribute("y1", f1(y)); d.el.setAttribute("x2", f1(x - Math.cos(d.a) * L)); d.el.setAttribute("y2", f1(y - Math.sin(d.a) * L)); })); });
+  ctx.loop((now, once) => { const dt = once ? 0 : Math.min(.05, (now - last) / 1000); last = now; const on = (now / 1000) % 4 < 1.6;
+    sets.forEach(({ kind, drops, spawn, D }) => drops.forEach(d => { d.s += dt * d.v; if (d.s > 2 * D) spawn(d);
+      const c = Math.cos(d.a), sn = Math.sin(d.a), hx = d.x + c * d.s, hy = d.y + sn * d.s, op = kind === "storm" && d.burst ? (on ? 1 : .12) : 1;
+      d.tail.setAttribute("x1", f1(hx - c * d.L)); d.tail.setAttribute("y1", f1(hy - sn * d.L)); d.tail.setAttribute("x2", f1(hx)); d.tail.setAttribute("y2", f1(hy)); d.tail.setAttribute("opacity", (.4 * op).toFixed(2));
+      d.head.setAttribute("x1", f1(hx - c * 16)); d.head.setAttribute("y1", f1(hy - sn * 16)); d.head.setAttribute("x2", f1(hx)); d.head.setAttribute("y2", f1(hy)); d.head.setAttribute("opacity", op.toFixed(2)); })); });
 }
 function eventLoop(svg, ctx, capEl) {
   const g = svg.querySelector("#ev"), c = 400, cy = 250, sc = 19, r = rng(31);
@@ -810,17 +867,18 @@ function refineLoop(svg, ctx) {
 }
 
 /* ---------- build the page ---------- */
-const words = s => s.trim().split(/\s+/).length, WPM = 125, CLICK_S = 2;
+const words = s => s.trim() ? s.trim().split(/\s+/).length : 0, WPM = 125, CLICK_S = 2;
 const mmss = sec => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, "0")}`;
 let clock = words(OPENING) / WPM * 60;
 ROOMS.forEach(r => { r.start = clock; clock += r.scenes.reduce((a, s) => a + words(s.say) / WPM * 60 + CLICK_S, 0); r.end = clock; });
 const TOTAL = clock + words(CLOSING) / WPM * 60 + CLICK_S;
 
+ROOMS.forEach(r => r.scenes[0].cover && (r.scenes[0].titles = r.scenes.slice(1).map(s => s.t)));
 const roomsEl = document.getElementById("rooms"), players = [];
 let active = null;
 ROOMS.forEach((room, ri) => {
   if (KIOSK && room.id !== KIOSK) return;
-  const w = room.scenes.reduce((a, s) => a + words(s.say), 0), errStart = 2;
+  const w = room.scenes.reduce((a, s) => a + words(s.say), 0), errStart = 3;
   const sec = document.createElement("section");
   sec.className = "room" + (ri % 2 ? " flip" : ""); sec.id = room.id; sec.setAttribute("aria-labelledby", room.id + "-h");
   sec.innerHTML = `<div class="case">
@@ -861,7 +919,7 @@ ROOMS.forEach((room, ri) => {
     const rerender = () => { if (R.cv._fit) { paint(sc, false); svg.classList.add("still"); } };
     svg.classList.toggle("still", !live);
     svg.onpointermove = svg.onpointerdown = svg.onpointerup = svg.onpointercancel = null; svg.setAttribute("aria-label", `${sc.t}. ${sc.cap}`);
-    title.innerHTML = `${sc.t}<small>${sc.sub}</small>`; R.capEl.textContent = sc.cap;
+    title.innerHTML = sc.t ? `${sc.t}<small>${sc.sub}</small>` : ""; title.hidden = !sc.t; R.capEl.textContent = sc.cap;
     say.textContent = sc.say; note.textContent = sc.note;
     dots.forEach((d, j) => d.setAttribute("aria-current", j === cur ? "true" : "false"));
     prev.disabled = cur === 0; next.disabled = cur === room.scenes.length - 1;
@@ -907,7 +965,7 @@ const list = document.getElementById("script-list");
 let total = words(OPENING) + words(CLOSING);
 const li = (h, sub, paras) => { const el = document.createElement("li"); el.innerHTML = `<h3>${h}<small>${sub}</small></h3>` + paras.map(([c, t]) => `<p>${c ? `<span class="clk">${c}</span>` : ""}${t}</p>`).join(""); list.appendChild(el); };
 li("Opening", "full poster, 0:00", [["", OPENING]]);
-ROOMS.forEach((r, ri) => { total += r.scenes.reduce((a, s) => a + words(s.say), 0); li(`${r.num}. ${r.title}`, `Box ${ri + 1}, ${mmss(r.start)}–${mmss(r.end)}`, r.scenes.map((s, i) => [i === 0 ? `CLICK: Box ${ri + 1}` : "CLICK", s.say])); });
+ROOMS.forEach((r, ri) => { total += r.scenes.reduce((a, s) => a + words(s.say), 0); li(`${r.num}. ${r.title}`, `Box ${ri + 1}, ${mmss(r.start)}–${mmss(r.end)}`, r.scenes.filter(s => !s.cover).map((s, i) => [i === 0 ? `CLICK: Box ${ri + 1}, then CLICK` : "CLICK", s.say])); });
 li("Closing", `full poster, ${mmss(clock)}–${mmss(TOTAL)}`, [["CLICK: overview", CLOSING]]);
 document.getElementById("totals").textContent = `${total} spoken words. At ${WPM} words per minute plus ${CLICK_S} s per click, the talk runs ≈ ${mmss(TOTAL)} (limit 10:00). If a rehearsal runs past 9:40, cut “A cold machine” and “One response, six skies” first.`;
 
