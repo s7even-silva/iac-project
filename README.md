@@ -20,7 +20,8 @@ The storyboard and the four rooms are static files in `public/` (copied
 as they are into `docs/` by `npm run build`). They are generated from one
 template: each `room<N>/index.html` is the storyboard page with
 `window.KIOSK` set to the room id (`rain`, `shield`, `dose`, `error`).
-Edit `public/storyboard/index.html` only, then run `python3 tools/build_rooms.py`
+The field slices drawn as iron filings are precomputed by `tools/field_slice.py`
+(Biot-Savart, embedded in the page). Edit `public/storyboard/index.html` only, then run `python3 tools/build_rooms.py`
 and `npm run build`.
 
 ## Work on it
