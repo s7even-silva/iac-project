@@ -375,50 +375,55 @@ const pills = (name, items, cur) => `<div class="grp" role="group" aria-label="$
 const bindPills = (root, fn) => root.querySelectorAll(".grp").forEach(g => g.querySelectorAll("[data-k]").forEach(b => b.onclick = e => { e.stopPropagation(); g.querySelectorAll("[data-k]").forEach(x => x.setAttribute("aria-pressed", x === b)); fn(b.dataset.k, g); }));
 
 /* ---------- room covers ----------
-   PREVIEW_CUT: the iPoster preview shows only the top of the iframe, about 240 px of a ~785 px wide box, i.e. y ≈ 245 of 450
-   slide units. Cover content sits wholly above y = 235 or wholly below y = 262, so nothing appears half cut in the preview.
+   PREVIEW_CUT: the iPoster preview shows only the top of the iframe. Measured on the poster: the upper boxes (I, II) show down to
+   y ≈ 241 of 450 slide units, the lower boxes (III, IV) down to y ≈ 285. Cover content sits wholly above the cut or wholly below it:
+   upper boxes above 235 / below 262, lower boxes above 275 / below 300, so nothing appears half cut in the preview.
    The first scene of each box. The iPoster preview shows only the top half of the iframe, so the cover keeps its text
    and its animation there. It does not repeat the box title (the iPoster shows it); it says what the room makes visible. */
 const coverText = (num, thing) => `${plate(30, 46, 300, 168)}<text x="48" y="128" class="f-dim" style="font-family:var(--font-display);font-size:88px">${num}</text>
   <text x="48" y="160" class="vd" style="font-size:13px">What this room makes visible</text><text x="48" y="196" class="vbig" style="font-size:32px">${thing}</text>`;
-const coverIndex = titles => `${plate(30, 262, 300, 22 + 15 * titles.length)}<text x="48" y="280" class="vs" style="letter-spacing:.06em">IN THIS ROOM</text>` +
-  titles.map((t, i) => `<text x="48" y="${298 + 15 * i}" class="vs">${i + 1}</text><text x="64" y="${298 + 15 * i}" class="vd" style="font-size:12px">${t}</text>`).join("");
-const cover = (num, thing, box, draw, after) => { const sc = { cover: true, bleed: true, t: "", sub: "", say: "", titles: [],
+/* index of the room's scenes, below the preview cut; long lists (room IV) go in two columns */
+const coverIndex = (titles, low) => { const y0 = low ? 314 : 280, cols = titles.length > 5 ? 2 : 1, rows = Math.ceil(titles.length / cols);
+  return `<text x="48" y="${y0}" class="vs" style="letter-spacing:.06em">IN THIS ROOM</text>` + titles.map((t, i) => { const x = 48 + Math.floor(i / rows) * 190, y = y0 + 18 + 15 * (i % rows);
+    return `<text x="${x}" y="${y}" class="vs">${i + 1}</text><text x="${x + 14}" y="${y}" class="vd" style="font-size:${cols > 1 ? 11 : 12}px">${t}</text>`; }).join(""); };
+const cover = (num, thing, box, draw, after, low = false) => { const sc = { cover: true, bleed: true, t: "", sub: "", say: "", titles: [],
   cap: "Tap anywhere to begin.", note: `[CLICK: Box ${box}] The box opens on this cover. One tap starts the room.`,
-  draw: (anim, f) => draw(anim, f) + coverText(num, thing) + coverIndex(sc.titles), after }; return sc; };
+  draw: (anim, f) => draw(anim, f) + coverText(num, thing) + coverIndex(sc.titles, low), after }; return sc; };
 /* room III cover: six tissues as six detectors. Each event that leaves energy in a tissue raises its meter (dose = energy / mass)
    and writes a line to a Geant4-style log. Particles, energies and deposits are illustrative. */
 function meterLoop(svg, ctx) {
   const g = svg.querySelector("#meters"), r = rng(17), T = [["colon", .34], ["lung", 1.21], ["stomach", .15], ["breast", .025], ["marrow", 1.17], ["remainder", 30.9]];
   const P = [.13, .2, .07, .04, .18, .38], lvl = T.map(() => .15 + r() * .35), log = []; let evn = 18204, hit = -1;
-  const X = i => 440 + i * 56, mono = "font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px";
-  const draw = () => { let s = `<text x="430" y="40" class="vs" style="letter-spacing:.06em">DOSE SO FAR, PER TISSUE</text>`;
-    T.forEach(([n], i) => { const h = 140 * lvl[i], on = i === hit;
-      s += `<rect x="${X(i)}" y="56" width="34" height="140" class="nofill s-line"/><rect x="${X(i)}" y="${f1(196 - h)}" width="34" height="${f1(h)}" class="f-film" opacity="${on ? 1 : .55}"/>
-        <text x="${X(i) + 17}" y="214" text-anchor="middle" class="vs" style="${on ? "fill:var(--film)" : ""}">${n}</text>`; });
-    s += `<text x="430" y="276" class="vs" style="letter-spacing:.06em">GEANT4, EVENT BY EVENT</text>`;
-    log.forEach((l, i) => { const k = log.length - 1 - i; s += `<text x="430" y="${392 - 16 * k}" class="vd" style="${mono};${k === 0 ? "fill:var(--film)" : ""}" opacity="${Math.max(.15, 1 - k * .12).toFixed(2)}">${l}</text>`; });
+  const X = i => 404 + i * 63, mono = "font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px";
+  const draw = () => { let s = `<text x="404" y="40" class="vd" style="letter-spacing:.06em">DOSE SO FAR, PER TISSUE</text>`;
+    T.forEach(([n], i) => { const h = 186 * lvl[i], on = i === hit;
+      s += `<rect x="${X(i)}" y="54" width="46" height="186" class="nofill s-line"/><rect x="${X(i)}" y="${f1(240 - h)}" width="46" height="${f1(h)}" class="f-film" opacity="${on ? 1 : .55}"/>
+        <text x="${X(i) + 23}" y="258" text-anchor="middle" class="vd" style="font-size:12px;${on ? "fill:var(--film)" : ""}">${n}</text>`; });
+    s += `<text x="404" y="314" class="vs" style="letter-spacing:.06em">GEANT4, EVENT BY EVENT</text>`;
+    log.forEach((l, i) => { const k = log.length - 1 - i; s += `<text x="404" y="${398 - 16 * k}" class="vd" style="${mono};${k === 0 ? "fill:var(--film)" : ""}" opacity="${Math.max(.15, 1 - k * .18).toFixed(2)}">${l}</text>`; });
     g.innerHTML = s; };
   const step = () => { let u = r(), i = 0; while (u > P[i] && i < 5) u -= P[i++];
     const alpha = r() < .25, E = alpha ? `alpha ${Math.round(80 + r() * 900)} MeV/n` : `proton ${(.05 + -Math.log(1 - r() * .97) * .9).toFixed(2)} GeV`, dep = .05 + -Math.log(1 - r() * .97) * (alpha ? 2.4 : .6);
-    evn += 300 + Math.floor(r() * 4000); if (evn > 9.9e6) evn = 18204; // only a small share of primaries leaves energy in the body hit = i; lvl[i] += Math.min(.3, dep * .015 / Math.sqrt(T[i][1])); if (lvl[i] > 1) lvl[i] = .15;
-    log.push(`#${evn.toLocaleString("en").replace(/,/g, " ")} · ${E} → ${T[i][0]} ${dep.toFixed(2)} MeV`); if (log.length > 7) log.shift(); draw(); };
-  for (let k = 0; k < 6; k++) step();
+    evn += 300 + Math.floor(r() * 4000); if (evn > 9.9e6) evn = 18204; // only a small share of primaries leaves energy in the body
+    hit = i; lvl[i] += Math.min(.3, dep * .015 / Math.sqrt(T[i][1])); if (lvl[i] > 1) lvl[i] = .15;
+    log.push(`#${evn.toLocaleString("en").replace(/,/g, " ")} · ${E} → ${T[i][0]} ${dep.toFixed(2)} MeV`); if (log.length > 5) log.shift(); draw(); };
+  for (let k = 0; k < 5; k++) step();
   if (!ctx.live || reduce) return;
   ctx.every(step, 750);
 }
 function convergeLoop(svg, ctx) { // room IV cover
-  const g = svg.querySelector("#conv"), r = rng(3), X = i => 420 + i * 28, Y0 = 120, BASE = 392, ev = []; let pts = [];
-  const draw = () => { g.innerHTML = `<line x1="410" y1="${Y0}" x2="770" y2="${Y0}" class="s-film" stroke-dasharray="5 4" opacity=".8"/><text x="770" y="${Y0 - 8}" text-anchor="end" class="vs">true value</text>` +
-    pts.map(([y, e, big], i) => { const c = big ? "s-film" : "s-ink"; return `<line x1="${X(i)}" y1="${f1(y - e)}" x2="${X(i)}" y2="${f1(y + e)}" class="${c}" stroke-width="1.4"/><line x1="${X(i) - 4}" y1="${f1(y - e)}" x2="${X(i) + 4}" y2="${f1(y - e)}" class="${c}"/><line x1="${X(i) - 4}" y1="${f1(y + e)}" x2="${X(i) + 4}" y2="${f1(y + e)}" class="${c}"/><circle cx="${X(i)}" cy="${f1(y)}" r="4" class="${big ? "f-film" : "f-plus"}"/>`; }).join("") +
-    `<text x="770" y="214" text-anchor="end" class="vs">more particles →</text>` +
-    ev.map(([h, big], i) => `<line x1="${f1(420 + i * 5)}" y1="${BASE}" x2="${f1(420 + i * 5)}" y2="${f1(BASE - h)}" class="${big ? "s-film" : "s-plus"}" stroke-width="${big ? 2.4 : 1.6}" opacity="${big ? 1 : .7}"/>`).join("") +
-    `<line x1="416" y1="${BASE}" x2="772" y2="${BASE}" class="s-dim"/><text x="420" y="${BASE + 18}" class="vs">energy left by each particle</text>${ev.some(e => e[1]) ? `<text x="770" y="${BASE + 18}" text-anchor="end" class="vs" style="fill:var(--film)">a rare, huge one</text>` : ""}`; };
+  const g = svg.querySelector("#conv"), r = rng(3), X = i => 410 + i * 28, Y0 = 150, BASE = 392, ev = []; let pts = [];
+  const bar = (x, y, e, c, w) => `<line x1="${x}" y1="${f1(y - e)}" x2="${x}" y2="${f1(y + e)}" class="${c}" stroke-width="${w}"/><line x1="${x - 5}" y1="${f1(y - e)}" x2="${x + 5}" y2="${f1(y - e)}" class="${c}" stroke-width="${w}"/><line x1="${x - 5}" y1="${f1(y + e)}" x2="${x + 5}" y2="${f1(y + e)}" class="${c}" stroke-width="${w}"/>`;
+  const draw = () => { g.innerHTML = `<line x1="400" y1="${Y0}" x2="776" y2="${Y0}" class="s-film" stroke-dasharray="5 4" opacity=".8"/><text x="776" y="${Y0 - 9}" text-anchor="end" class="vd" style="font-size:12px">true value</text>` +
+    pts.map(([y, e, big], i) => bar(X(i), y, e, big ? "s-film" : "s-ink", 1.6) + `<circle cx="${X(i)}" cy="${f1(y)}" r="5" class="${big ? "f-film" : "f-plus"}"/>`).join("") +
+    `<text x="776" y="262" text-anchor="end" class="vd" style="font-size:12px">more particles →</text>` +
+    ev.map(([h, big], i) => `<line x1="${f1(440 + i * 5)}" y1="${BASE}" x2="${f1(440 + i * 5)}" y2="${f1(BASE - h)}" class="${big ? "s-film" : "s-plus"}" stroke-width="${big ? 2.4 : 1.6}" opacity="${big ? 1 : .7}"/>`).join("") +
+    `<line x1="436" y1="${BASE}" x2="776" y2="${BASE}" class="s-dim"/><text x="440" y="${BASE + 16}" class="vs">energy left by each particle</text>${ev.some(e => e[1]) ? `<text x="776" y="${BASE + 16}" text-anchor="end" class="vs" style="fill:var(--film)">a rare, huge one</text>` : ""}`; };
   const add = () => { if (pts.length >= 13) pts = []; let big = false;
-    for (let k = 0; k < 10; k++) { const huge = r() < .012; big = big || huge; ev.push([huge ? 100 + r() * 25 : 4 + 22 * -Math.log(1 - r() * .93) / 2.7, huge]); } while (ev.length > 71) ev.shift();
-    const n = 2 ** pts.length, e = Math.min(60, 55 / Math.sqrt(n) * (big ? 2.4 : 1)); pts.push([Y0 + (r() - .5) * 1.2 * e + (big ? -e * .3 : 0), e, big]); draw(); };
+    for (let k = 0; k < 10; k++) { const huge = r() < .012; big = big || huge; ev.push([huge ? 72 + r() * 18 : 3 + 16 * -Math.log(1 - r() * .93) / 2.7, huge]); } while (ev.length > 68) ev.shift();
+    const n = 2 ** pts.length, e = Math.min(78, 66 / Math.sqrt(n) * (big ? 2.4 : 1)); pts.push([Y0 + (r() - .5) * 1.2 * e + (big ? -e * .3 : 0), e, big]); draw(); };
   if (!ctx.live || reduce) { for (let i = 0; i < 13; i++) add(); return; }
-  for (let i = 0; i < 6; i++) { for (let k = 0; k < 10; k++) ev.push([4 + 22 * -Math.log(1 - r() * .93) / 2.7, false]); }
+  for (let i = 0; i < 6; i++) { for (let k = 0; k < 10; k++) ev.push([3 + 16 * -Math.log(1 - r() * .93) / 2.7, false]); }
   add(); ctx.every(add, 650);
 }
 /* ---------- the rooms ---------- */
@@ -547,7 +552,7 @@ const ROOMS = [
       return s + `<text x="604" y="${f1(y + 18)}" class="vs">one tape, 95 µm</text>`; } },
 ]},
 { id: "dose", num: "III", title: "The body as an instrument", invisible: "the dose", scenes: [
-  cover("III", "the dose", 3, () => `<g id="meters"></g>`, meterLoop),
+  cover("III", "the dose", 3, () => `<g id="meters"></g>`, meterLoop, true),
   { t: "The sky, as weights", box: [63, 78, 740, 445], sub: "OLTARIS spectra, integrated by trapezoids",
     cap: "Real cosmic-ray proton spectrum at solar minimum. We simulate a few energies (eight in the first sweep); the trapezoids between them carry each energy's share of the flux.",
     say: "Then we sent the sky through it. NASA's OLTARIS gave us the spectra: cosmic-ray protons and helium at solar minimum, and the October 1989 solar storm. We simulate a few energies, and each one is weighted by the real flux around it.",
@@ -602,7 +607,7 @@ const ROOMS = [
       return s + `<text x="${X(16.4)}" y="160" text-anchor="middle" class="vbig ${A}" style="--dl:1.6s">83 times higher?</text>`; } },
 ]},
 { id: "error", num: "IV", title: "Measuring the measurer", invisible: "the error", scenes: [
-  cover("IV", "the error", 4, () => `<g id="conv"></g>`, convergeLoop),
+  cover("IV", "the error", 4, () => `<g id="conv"></g>`, convergeLoop, true),
   { t: "The patient walked away", box: [76, 96, 760, 474], sub: "what the audit found, 30 September 2026",
     cap: "Dose is counted on a grid laid over the body. In the first sweep the grid stayed at the center while the astronaut moved. Move the astronaut.",
     say: "Geant4 counts dose on a grid laid over the body. When we moved the astronaut off-axis, the grid stayed where it was. We were scoring cabin air and calling it organs. The steep drop off-axis wasn't the magnet. It was an instrument that stayed still while the patient walked away.",
