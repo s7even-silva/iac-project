@@ -898,7 +898,8 @@ const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting
 players.forEach(p => io.observe(p.sec));
 if (KIOSK && players[0]) { players[0].render(true); document.addEventListener("keydown", e => { if (e.target.matches("input")) return; if (e.key === "ArrowRight" || e.key === " ") { e.preventDefault(); players[0].sec.querySelector(".next").click(); } if (e.key === "ArrowLeft") players[0].sec.querySelector(".prev").click(); }); }
 /* canvases follow the stage size */
-let rsT = 0, lastW = ""; new ResizeObserver(es => { const r = es[0].contentRect, w = Math.round(r.width) + "x" + Math.round(r.height); if (w === lastW) return; const first = !lastW; lastW = w; if (first) return; clearTimeout(rsT); rsT = setTimeout(() => players.forEach(p => p.rerenderCurrent()), 150); }).observe(document.querySelector(".stage") || document.body);
+const stage0 = (document.querySelector(".stage") || document.body).getBoundingClientRect();
+let rsT = 0, lastW = Math.round(stage0.width) + "x" + Math.round(stage0.height); new ResizeObserver(es => { const r = es[0].contentRect, w = Math.round(r.width) + "x" + Math.round(r.height); if (w === lastW) return; lastW = w; clearTimeout(rsT); rsT = setTimeout(() => players.forEach(p => p.rerenderCurrent()), 150); }).observe(document.querySelector(".stage") || document.body);
 
 document.getElementById("opening-say").textContent = OPENING;
 document.getElementById("closing-say").textContent = CLOSING;
