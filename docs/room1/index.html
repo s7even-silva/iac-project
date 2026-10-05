@@ -96,15 +96,16 @@ button,input{font:inherit;color:inherit}
 .label .note{font-size:12.5px;color:var(--dim);margin:0}
 .label .meta{font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums;display:flex;gap:16px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:12px;margin-top:auto;width:100%}
 
-.closing{padding-block:56px;border-bottom:1px solid var(--line);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:40px}
+.closing{padding-block:56px;border-bottom:1px solid var(--line);display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:56px;align-items:center}
 .closing h2,.script h2,.howto h2{font-size:clamp(26px,3vw,36px);margin-bottom:14px}
 .script{padding-block:56px;border-bottom:1px solid var(--line)}
-.script ol{list-style:none;padding:0;margin:0;display:grid;gap:22px;max-width:72ch}
+.script ol{list-style:none;padding:0;margin:0 auto;display:grid;gap:22px;max-width:72ch}
+.script h2{max-width:72ch;margin-inline:auto}
 .script li h3{font-size:20px;margin-bottom:4px}
 .script li h3 small{font-family:var(--font-ui);font-size:13px;color:var(--dim);margin-left:8px}
 .script li p{font-family:var(--font-display);font-size:18px;margin:6px 0 0}
 .clk{font-family:var(--font-ui);font-size:12px;color:var(--dim);border:1px solid var(--line);border-radius:4px;padding:1px 6px;margin-right:6px;white-space:nowrap}
-.totals{font-variant-numeric:tabular-nums;color:var(--dim);font-size:14px;margin:0 0 24px;max-width:72ch}
+.totals{font-variant-numeric:tabular-nums;color:var(--dim);font-size:14px;margin:0 auto 24px;max-width:72ch}
 .howto{padding-block:56px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:32px}
 .howto h2{grid-column:1/-1}
 .howto h3{font-size:20px;margin-bottom:6px}
@@ -135,6 +136,8 @@ button,input{font:inherit;color:inherit}
 .kiosk .slide{border-radius:0;box-shadow:none}
 .kiosk .slide{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(100vw, calc(100vh * 16 / 9))}
 .kiosk .controls{display:none}
+.turn{display:none}
+@media (orientation:portrait) and (max-width:700px){ .kiosk .turn{display:block;position:fixed;left:0;right:0;bottom:24px;text-align:center;color:var(--vdim);font-size:14px} }
 
 @media (max-width:860px){
   .top,.plan,.room,.room.flip,.closing{grid-template-columns:minmax(0,1fr)}
@@ -175,6 +178,7 @@ button,input{font:inherit;color:inherit}
   </section>
 
   <div id="rooms"></div>
+  <p class="turn">Turn the phone sideways to see the slide larger.</p>
 
   <section class="closing" aria-labelledby="close-h">
     <div>
@@ -553,7 +557,7 @@ const ROOMS = [
     init: () => S.walk = S.walk || { x: 0, fixed: false },
     draw: () => { const st = S.walk, P = m => 120 + m * 150, gx = st.fixed ? P(st.x) : P(0), ok = st.fixed || st.x < .2; let s = `<line x1="100" y1="420" x2="740" y2="420" class="s-dim"/>`;
       for (let m = 0; m <= 4; m++) s += `<line x1="${P(m)}" y1="414" x2="${P(m)}" y2="426" class="s-dim"/><text x="${P(m)}" y="446" text-anchor="middle" class="vd">${m} m</text>`;
-      s += `${person(P(st.x), 180, 225)}<rect x="${gx - 24}" y="170" width="48" height="236" class="nofill s-film" stroke-width="1.8" stroke-dasharray="5 4"/><text x="${gx}" y="158" text-anchor="middle" class="vt">scoring grid</text>`;
+      s += `${person(P(st.x), 180, 225)}<rect x="${gx - 40}" y="170" width="80" height="236" class="nofill s-film" stroke-width="1.8" stroke-dasharray="5 4"/><text x="${gx}" y="158" text-anchor="middle" class="vt">scoring grid</text>`;
       return s + `<text x="760" y="110" text-anchor="end" class="vt">${ok ? "grid on the body" : "grid on empty air"}</text><text x="760" y="128" text-anchor="end" class="vd">distance from the ship axis: ${st.x.toFixed(1)} m</text>${st.fixed && Math.abs(st.x - 1) < .05 ? `<text x="760" y="146" text-anchor="end" class="vd" style="fill:var(--film)">measured, field off: 0.91 × the center dose</text>` : ""}
         <text x="100" y="472" class="vs">distance from the ship axis</text>`; },
     after: (svg, ctx, room) => { const st = S.walk; if (!ctx.live || st.played) return; st.played = true; const t0 = performance.now();
@@ -571,7 +575,6 @@ const ROOMS = [
     note: "One scene for three errors (A2, the missing control, and A4). The launch sphere (6.94 m) sat inside the coil ring. In the third group, the fill is the field inside each layout.",
     draw: anim => { const sc = 10; let s = "";
       { const cx = 135, cy = 220; s += `${halbach(cx, cy, sc, { layout: "k1", cls: "f-dim", op: .6 })}${hull(cx, cy, sc)}${person(cx, cy - 12, 22)}<circle cx="${cx}" cy="${cy}" r="${f1(6.94 * sc)}" class="nofill s-sun" stroke-width="1.4" stroke-dasharray="5 4"/>`;
-        for (let i = 0; i < 12; i++) { const a = i / 12 * 2 * Math.PI, R = 6.94 * sc; s += `<line x1="${f1(cx + R * Math.cos(a))}" y1="${f1(cy + R * Math.sin(a))}" x2="${f1(cx + 6 * Math.cos(a))}" y2="${f1(cy + 6 * Math.sin(a))}" class="s-sun" stroke-width="1" opacity=".25"/>`; }
         s += `<g id="aim"></g>`;
         s += `<text x="${cx}" y="350" text-anchor="middle" class="vt">aimed at the astronaut</text><text x="${cx}" y="368" text-anchor="middle" class="vd">dashed: launch sphere</text>`; }
       { const tw = (x, on) => `<circle cx="${x}" cy="220" r="46" class="nofill s-ink" stroke-width="1.5" ${on ? "" : 'stroke-dasharray="5 5" opacity=".55"'}/>${person(x, 201, 36, on ? "f-ink" : "f-dim")}`;
@@ -590,12 +593,13 @@ const ROOMS = [
   { t: "Every run has a twin", box: [112, 72, 692, 472], sub: "same particles, field on and off",
     cap: "Each shielded run has a twin with the field off, fed the same random numbers. Only the field differs, so the difference is the shield.",
     say: "Every shielded run has a twin with the field switched off, driven by the same random numbers. Their difference is the shield, and its effectiveness comes with its own error bar.",
-    note: "Same entry points in both ships: on the left they bend, on the right they go straight.",
-    draw: anim => { let s = ""; const r = rng(9), entries = Array.from({ length: 7 }, () => [r() * Math.PI * 2, (r() - .5) * .9]);
+    note: "Same entry points in both ships: on the left they bend, on the right they go straight. Orange = solar protons, which the field turns away; blue = cosmic rays, which it only bends (the colour code of room I).",
+    draw: anim => { let s = ""; const r = rng(9), entries = Array.from({ length: 9 }, (_, i) => [r() * Math.PI * 2, (r() - .5) * .9, i % 3 === 1]); // every third: a solar proton
       [[220, 1], [580, 0]].forEach(([cx, on]) => { s += `<circle cx="${cx}" cy="215" r="47" class="nofill s-ink" stroke-width="1.5"/>${person(cx, 195, 40, "f-dim")}${halbach(cx, 215, 10.5, { cls: "f-dim", op: on ? .6 : .22 })}`;
-        entries.forEach(([a, off], i) => { const R = 145, x = cx + R * Math.cos(a), y = 215 + R * Math.sin(a), dx = -Math.cos(a + off), dy = -Math.sin(a + off);
-          const ex = x + dx * 250, ey = y + dy * 250, bend = on ? 70 : 0, mx = (x + ex) / 2 - dy * bend, my = (y + ey) / 2 + dx * bend;
-          s += `<path d="M${f1(x)} ${f1(y)} Q${f1(mx)} ${f1(my)} ${f1(ex)} ${f1(ey)}" class="nofill s-plus ${anim ? "draw" : ""}" pathLength="1" stroke-width="1.5" style="--dl:${(i * .15).toFixed(2)}s"/>`; }); });
+        entries.forEach(([a, off, sun], i) => { const R = 145, x = cx + R * Math.cos(a), y = 215 + R * Math.sin(a), dx = -Math.cos(a + off), dy = -Math.sin(a + off);
+          const turn = on && sun, ex = turn ? x + dx * 20 - dy * 70 : x + dx * 250, ey = turn ? y + dy * 20 + dx * 70 : y + dy * 250; // field on: solar protons turn back at the coils
+          const bend = on && !sun ? 70 : 0, mx = turn ? x + dx * 110 : (x + ex) / 2 - dy * bend, my = turn ? y + dy * 110 : (y + ey) / 2 + dx * bend;
+          s += `<path d="M${f1(x)} ${f1(y)} Q${f1(mx)} ${f1(my)} ${f1(ex)} ${f1(ey)}" class="nofill ${sun ? "s-sun" : "s-plus"} ${anim ? "draw" : ""}" pathLength="1" stroke-width="1.5" style="--dl:${(i * .12).toFixed(2)}s"/>`; }); });
       return s + `${plate(150, 368, 500, 104)}<text x="220" y="390" text-anchor="middle" class="vt">field on, dose D₁</text><text x="580" y="390" text-anchor="middle" class="vt">field off, dose D₀</text>
         <text x="400" y="440" text-anchor="middle" class="vbig">η = 1 − D₁ / D₀</text><text x="400" y="462" text-anchor="middle" class="vd">with its own error bar</text>`; },
     after: (svg, ctx, room) => paintFilings(room.cv, "niac", 220, 215, 10.5, { alpha: .32, len: 1.4 }) },
@@ -720,13 +724,16 @@ function eventLoop(svg, ctx, capEl) {
   if (!ctx.live || reduce) { g.innerHTML = EV.map(e => e[1]).join(""); g.classList.add("still"); return; }
   show(0); ctx.every(() => { i = (i + 1) % EV.length; show(i); }, 3200);
 }
-/* v1 source: every primary starts on the 6.94 m sphere and flies straight at the astronaut */
+/* v1 source: every primary starts somewhere on the 6.94 m sphere and flies straight at the astronaut; arrivals are random */
 function aimLoop(svg, ctx) {
-  const g = svg.querySelector("#aim"), cx = 135, cy = 220, R = 69.4, n = 12, els = [];
-  for (let i = 0; i < n; i++) { const el = document.createElementNS(NS, "line"); el.setAttribute("class", "s-sun"); el.setAttribute("stroke-width", "2"); el.setAttribute("stroke-linecap", "round"); g.appendChild(el); els.push(el); }
-  ctx.loop(now => els.forEach((el, i) => { const a = i / n * 2 * Math.PI, t = (now / 1000 * .55 + (i * 7 % n) / n) % 1, r1 = R - t * (R - 10), r2 = Math.min(R, r1 + 12);
-    el.setAttribute("x1", f1(cx + r1 * Math.cos(a))); el.setAttribute("y1", f1(cy + r1 * Math.sin(a))); el.setAttribute("x2", f1(cx + r2 * Math.cos(a))); el.setAttribute("y2", f1(cy + r2 * Math.sin(a)));
-    el.setAttribute("opacity", (Math.min(1, t * 8) * Math.min(1, (1 - t) * 6)).toFixed(2)); }));
+  const g = svg.querySelector("#aim"), cx = 135, cy = 220, R = 69.4, r = rng(5), ps = [];
+  const spawn = p => Object.assign(p, { a: r() * 2 * Math.PI, t: -r() * 1.2, v: .45 + r() * .5 });
+  for (let i = 0; i < 9; i++) { const el = document.createElementNS(NS, "line"); el.setAttribute("class", "s-sun"); el.setAttribute("stroke-width", "1.8"); el.setAttribute("stroke-linecap", "round"); g.appendChild(el); const p = spawn({ el }); p.t = r(); ps.push(p); }
+  let last = performance.now();
+  ctx.loop((now, once) => { const dt = once ? 0 : Math.min(.05, (now - last) / 1000); last = now;
+    ps.forEach(p => { p.t += dt * p.v; if (p.t > 1) spawn(p); const t = Math.max(0, p.t), r1 = R - t * (R - 9), r2 = Math.min(R, r1 + 14);
+      p.el.setAttribute("x1", f1(cx + r1 * Math.cos(p.a))); p.el.setAttribute("y1", f1(cy + r1 * Math.sin(p.a))); p.el.setAttribute("x2", f1(cx + r2 * Math.cos(p.a))); p.el.setAttribute("y2", f1(cy + r2 * Math.sin(p.a)));
+      p.el.setAttribute("opacity", p.t < 0 ? "0" : (Math.min(1, t * 8) * Math.min(1, (1 - t) * 6)).toFixed(2)); }); });
 }
 function skyLoop(svg, ctx) {
   const g = svg.querySelector("#sky"), R = 14 * 13, r = rng(12), parts = [];
