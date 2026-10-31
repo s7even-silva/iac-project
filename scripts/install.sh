@@ -394,10 +394,13 @@ log "Verificando: compilando ActiveShield_Sim"
 set +u
 conda activate "$GEANT4_ENV_NAME"
 set -u
+# Con la salida visible: antes iba a /dev/null y una descarga de ICRPdata
+# trabada en algunas PCs parecía un cuelgue sin causa. Si cern.ch no responde
+# desde esta máquina, ver ICRPDATA_URL en geant4/ActiveShield_Sim/README.md.
 (
   cd "$REPO_ROOT/geant4/ActiveShield_Sim"
-  cmake -S . -B build -DCMAKE_CXX_COMPILER=g++ -DCMAKE_PREFIX_PATH="$GEANT4_ENV_PREFIX" >/dev/null
-  cmake --build build -j"$(nproc)" >/dev/null
+  cmake -S . -B build -DCMAKE_CXX_COMPILER=g++ -DCMAKE_PREFIX_PATH="$GEANT4_ENV_PREFIX"
+  cmake --build build -j"$(nproc)"
 )
 ok "ActiveShield_Sim compila"
 set +u

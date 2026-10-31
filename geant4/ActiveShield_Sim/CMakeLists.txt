@@ -109,10 +109,18 @@ file(COPY ${ICRPphantoms_OLTARIS_CSV} DESTINATION ${PROJECT_BINARY_DIR}/data)
 #     ${PROJECT_BINARY_DIR})
 
 include(ExternalProject)
+# From some WSL machines the download from cern.ch stalls with no output and
+# no error (2026-10-31). The inactivity timeout turns that into a visible
+# failure, and ICRPDATA_URL accepts a local copy of the same 1.5 MB tarball
+# (the MD5 is still checked): -DICRPDATA_URL=/path/to/ICRPdata.tar.gz
+set(ICRPDATA_URL
+  "https://cern.ch/geant4-data/datasets/examples/advanced/ICRP110Phantoms/ICRPdata.tar.gz"
+  CACHE STRING "URL or local path of ICRPdata.tar.gz (ICRP110 phantom data)")
 ExternalProject_Add(ICRPdata
   SOURCE_DIR ${PROJECT_BINARY_DIR}/ICRPdata
-  URL https://cern.ch/geant4-data/datasets/examples/advanced/ICRP110Phantoms/ICRPdata.tar.gz
+  URL ${ICRPDATA_URL}
   URL_MD5 2aba5409d4e7b7a2f0328e7d3402f187
+  INACTIVITY_TIMEOUT 60
   CONFIGURE_COMMAND ""
   BUILD_COMMAND ""
   INSTALL_COMMAND ""

@@ -91,6 +91,18 @@ cd build
 ./ICRP110phantoms male.in
 ```
 
+**Datos del fantoma (`ICRPdata`).** El build los descarga de cern.ch, un
+tarball de 1.5 MB. Desde algunas PCs con WSL esa descarga se quedó trabada
+sin mostrar nada (2026-10-31); desde entonces se corta tras 60 s sin
+progreso. Si pasa, descarga el archivo desde otra máquina (o cópialo de
+`build/ICRPdata-prefix/src/ICRPdata.tar.gz` de una PC donde sí compiló) y
+pásalo como copia local; el MD5 se comprueba igual:
+
+```bash
+cmake -S . -B build -DCMAKE_CXX_COMPILER=g++ -DCMAKE_PREFIX_PATH="$CONDA_PREFIX" \
+  -DICRPDATA_URL=$HOME/ICRPdata.tar.gz
+```
+
 `male.in` y `female.in` mantienen el scorer original por órgano, sin
 modificar. `primary.mac` (2026-09-10) ya **no** usa `/gps/...` —
 `ICRP110PhantomPrimaryGeneratorAction` dejó de envolver un
