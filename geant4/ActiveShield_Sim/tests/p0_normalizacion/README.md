@@ -5,12 +5,10 @@ coseno) en las energías candidatas de P0 y calcula el coeficiente de dosis
 absorbida por unidad de fluencia de cada categoría, en pGy·cm², con su SE.
 Usa el scorer por evento (`/eventStats/*`).
 
-**No se corre hasta tener (estado al 2026-10-31):**
-- **Las energías, eventos y semillas**, fijados de antemano. Las de
-  `POINTS` en el script son candidatas.
-
-D7 ya está decidido: ±10% en órganos grandes y ±30% en mama y tiroides
-(`plan_piloto.md`, D7).
+**Listo para correr (2026-10-31).** D7 está decidido: ±10% en órganos
+grandes y ±30% en mama y tiroides. También están fijadas las 8 energías de
+`POINTS`, 3·10⁶ eventos por energía y una semilla
+(`plan_piloto.md`, P0).
 
 ```bash
 python3 p0_icrp116.py run --out-dir DIR --events 3000000 --seeds 1 --threads 20

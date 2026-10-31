@@ -319,6 +319,11 @@ Pendientes:
     impresa: pulmones a 1 GeV, 579 pGy·cm².
   - **Dosis efectiva** (Tablas A.6 y A.11): transcrita como control
     secundario. Necesita el fantoma AF (D5).
+  - **Parámetros fijados (2026-10-31), antes de correr:** las 8 energías de
+    `POINTS` en `p0_icrp116.py` (protones de 100, 300, 1000, 3000 y
+    10 000 MeV; helio de 100, 1000 y 10 000 MeV/n), 3·10⁶ eventos por
+    energía y una semilla por energía. En el laboratorio va una energía por
+    PC (`--points`).
   - **Costo estimado de P0** (8 energías, esta máquina de 8 núcleos):
     ~4–5 h. Lo fijan los órganos grandes: con ±30%, mama y tiroides no
     piden eventos extra (con ±15% eran ~9–10 h).
@@ -603,8 +608,17 @@ Repite la Fase 7 con el scorer nuevo.
     umbrales. Cambiarlos exige una corrida confirmatoria nueva, de tamaño
     fijo (regla 3).
 - **Costo:** del orden de 10³ núcleo-hora para los 4 casos (la sonda lo
-  precisa), una sesión del laboratorio. Falta el script de P2; parte de
-  `tests/scorer_por_evento/prueba_lotes.py`.
+  precisa), una sesión del laboratorio. Script: `tests/scorer_por_evento/p2_estimador.py` (2026-10-31),
+  con un test sintético (`test_p2_analisis.py`). Cada caso puede ir en su
+  PC:
+  - `sonda` mide f y fija M;
+  - `run` corre los 40·M eventos;
+  - `analyze` aplica D4 y los criterios a y b, con los umbrales de
+    `design_parameters.py`.
+
+  En b, la SD entre lotes se calcula con todos los lotes y el SE solo con
+  los que pasan D4: la SD es la dispersión real de una corrida de M
+  eventos, y quitar los lotes con eventos grandes la achicaría.
 - **Resultado esperado:** compatibilidad con 1. S2 por evento permite un
   estimador insesgado de la varianza bajo independencia y varianza finita;
   no hace exacta la varianza estimada ni valida automáticamente un IC normal.

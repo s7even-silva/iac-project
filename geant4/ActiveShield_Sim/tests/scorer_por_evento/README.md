@@ -17,6 +17,11 @@ que en el barrido.
 /eventStats/perEventFile EventCategories.tsv    # opcional (R12, CRN)
 ```
 
+**P2** (`plan_piloto.md`): `p2_estimador.py` corre y analiza el piloto con el
+diseño y los criterios fijados el 2026-10-31 (`sonda`, `run` y `analyze`; una
+PC por caso). `test_p2_analisis.py` comprueba el análisis con datos
+sintéticos.
+
 `EventStats.tsv` tiene una fila por (checkpoint, órgano o categoría), con
 estas columnas:
 - `S1_J`, `S2_J2`, `n_nonzero`;
