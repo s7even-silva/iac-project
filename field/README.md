@@ -513,6 +513,15 @@ proceso evalúa 1.5·10⁷ pares segmento-punto por segundo, y cada nodo suma
 - paso de 0.25 m (4.2 M nodos): ~2.8 h en un proceso, unos 10–20 min en
   una PC del laboratorio con 20 procesos.
 
+**Avance y reanudación.** El cálculo se reparte en filas de x, así que el
+avance (porcentaje, minutos transcurridos y estimación de lo que falta)
+aparece cada 5 s desde el principio. Cada plano z terminado se guarda en
+`<salida>.planos/`. Si la corrida se corta (Ctrl+C, apagón, fin de la
+sesión), el mismo comando la retoma desde los planos ya hechos, y el
+resultado es idéntico al de una corrida sin cortes (comprobado). La carpeta
+solo se reusa para el mismo mapa (mismas trayectorias, grilla y filamentos)
+y se borra al terminar.
+
 **Repartir entre PCs.** Con `--part K N`, cada PC calcula un bloque
 contiguo de planos z y lo guarda en un `.npz` (~84 MB por parte con 4 PCs).
 `--merge` comprueba que todas las partes vengan del mismo mapa (mismas
