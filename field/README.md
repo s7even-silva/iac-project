@@ -630,21 +630,47 @@ por tetraedro medidos:
 | D | 8 | 0.20 | ~4.3 M | ~13 GB | ~45 min |
 
 **Resultados del laboratorio (2026-10-31)**, error relativo de Elmer frente
-a Biot-Savart (mediana / p95):
+a Biot-Savart (mediana / p95; sondas comunes a los niveles comparados):
 
-| Nivel | Tetraedros de aire | Iteraciones | Solve | Junto a la bobina | Líneas radiales | Grilla del hábitat |
+| Nivel | Tetraedros de aire | Iteraciones | Solve (real) | Junto a la bobina | Líneas radiales | Grilla del hábitat |
 |---|---|---|---|---|---|---|
-| A (margen 4 m, aire 0.20 m) | 0.88 M | 96 | 86 s | 7.8% / 21% | 42% / 130% | 63% / 100% |
-| D (margen 8 m, aire 0.20 m) | 4.1 M | 182 | 633 s | 5.8% / 16% | 9.4% / 29% | 20% / 33% |
+| A (margen 4 m, aire 0.20 m) | 0.88 M | 96 | 1.4 min | 7.8% / 21% | 42% / 130% | 63% / 100% |
+| B (margen 6 m, aire 0.20 m) | 2.1 M | 165 | 4.0 min | 6.2% / 19% | 19% / 51% | 38% / 56% |
+| C (margen 6 m, aire 0.15 m) | 5.0 M | 262 | 15 min | 4.1% / 13% | 28% / 101%* | 57% / 114%* |
+| D (margen 8 m, aire 0.20 m) | 4.1 M | 182 | 10.5 min | 5.8% / 16% | 9.4% / 29% | 20% / 33% |
 
-- **Al agrandar la caja, Elmer se acerca a Biot-Savart en todas las
-  zonas.** El cambio de A a D (7%, 30% y 48% de mediana) es mayor que lo
-  que a D le falta para llegar a Biot-Savart, como pide el criterio.
-- **En el laboratorio, OpenMP sí rinde:** ~10 veces más tiempo de CPU que
-  tiempo real.
-- **Falta B (margen 6 m)** para un tercer punto de la serie de la caja.
-- **Falta C (aire 0.15 m)** para ver la malla. Cerca del bobinado, lo que
-  queda (5.8%) debería bajar al refinar.
+\* C usa otras sondas comunes (las que caben en la caja de 6 m): frente a B
+cambia menos de 1% en esas zonas.
+
+**Junto a la bobina, por distancia al bobinado** (mediana):
+
+| Distancia | A | B | C | D |
+|---|---|---|---|---|
+| 5 cm | 12% | 16% | 8.1% | 12% |
+| 10 cm | 8.2% | 9.4% | 5.1% | 10% |
+| 20 cm | 4.4% | 2.9% | 3.0% | 3.0% |
+| 50 cm | 5.7% | 3.3% | 1.9% | 4.4% |
+| 1 m | 8.8% | 4.1% | 3.6% | 1.9% |
+| 2 m | 20% | 8.3% | 8.0% | 4.2% |
+
+- **Cada fuente de error de Elmer baja al refinar su parámetro:**
+  - la malla domina hasta ~10 cm del bobinado: de B a C (aire de 0.20 a
+    0.15 m), el error baja de 9–16% a 5–8%;
+  - la caja domina desde ~1 m: de 4 a 8 m de margen, baja de 9–20% a
+    2–4%;
+  - donde ninguna de las dos pesa (20–50 cm), Elmer y Biot-Savart
+    coinciden en 2–3%.
+- **Criterio literal:** «en la corrida más fina, la diferencia queda dentro
+  del cambio entre las dos más finas».
+  - Se cumple en las líneas radiales: 9.4% frente a un cambio de 9.6%.
+  - Por poco no se cumple en la grilla del hábitat (20.1% frente a 16.8%)
+    ni junto a la bobina (4.1% frente a 3.8%).
+  - La convergencia es monótona, pero con dos o tres niveles por
+    dirección no alcanza para cerrarla formalmente.
+
+**Tiempos reales en el laboratorio.** OpenMP rinde ~10 veces más tiempo de
+CPU que tiempo real. Las estimaciones de abajo, de 10–60 min por nivel,
+quedaron largas.
 
 El tiempo está extrapolado de lo medido en la laptop: ElmerSolver tarda 45 s
 con 270 mil tetraedros, y se supuso que las iteraciones crecen con el tamaño

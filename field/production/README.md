@@ -19,9 +19,28 @@ por bobina), generada desde `field/examples/crewhat_niac_array.json` (ver
 `crewhat_niac_array_current_paths.json` son sus trayectorias de corriente
 (SHA256 `705de9e8…71e53`), la entrada de `compute_field_volumetric.py`:
 con ella, todas las PCs calculan el mismo mapa sin correr Gmsh.
-**Todavía no tiene mapa de campo versionado:** el mapa (Biot-Savart
-volumétrico) pesa cientos de MB y se regenera o se copia; solo se versiona
-su manifiesto cuando P1 lo apruebe.
+**Mapa de campo de la v2, candidato (2026-10-31):**
+`crewhat_niac_bs_30m_0.25.field-manifest.json` es el manifiesto del mapa
+de Biot-Savart volumétrico.
+- **Características:** ±30 m, paso de 0.25 m, 6 × 3 filamentos, generado
+  en una PC del laboratorio en 208 s.
+- **El mapa no está en el repositorio:** pesa 609 MB (171 MB comprimido) y
+  supera el límite de GitHub. Hay una copia en el Drive del equipo (carpeta
+  «version 2»).
+- **SHA256 del mapa:**
+  `3e0cd3aee094cc91075aa957585a9ef5311a524357f1c2bb71fa68f9e7d300ed`.
+- **Comprobado en la laptop:**
+  - la copia descargada tiene ese hash;
+  - 1000 nodos al azar coinciden con un recálculo directo en 5·10⁻⁸ (el
+    redondeo a 7 cifras);
+  - Geant4 lo carga en 42 s, con 1.05 GB de RAM y una esfera de 18 m.
+- **Para regenerarlo** (idéntico salvo el redondeo):
+  ```bash
+  field/.venv/bin/python field/compute_field_volumetric.py field/production/crewhat_niac_array_current_paths.json \
+    niac_bs_30m_0.25.map --half-size 30 --spacing 0.25 --filaments 6 3
+  ```
+
+Pasa a producción cuando P1 cierre los pasos 2 y 3.
 
 **Aviso (2026-10-04): los demás archivos no son la geometría de la v2.**
 El arreglo `crewhat_corc_array` y sus mapas usan el patrón Halbach K=1, que

@@ -1,0 +1,94 @@
+{
+  "model": "volumetric_biot_savart",
+  "production_validated": false,
+  "array_report_sha256": "705de9e81e160dfd1421063777bb76b4f48f881331961201f9ac401f1e571e53",
+  "generator_sha256": "7e5a57bc3faab0e4118f693fb27e94f4a0b4f01806875b5de99bbadf2d9eba3f",
+  "map_sha256": "3e0cd3aee094cc91075aa957585a9ef5311a524357f1c2bb71fa68f9e7d300ed",
+  "python": "3.13.18",
+  "numpy": "2.3.3",
+  "platform": "Linux-6.18.40.1-microsoft-standard-WSL2-x86_64-with-glibc2.43",
+  "half_size_m": [
+    30.0,
+    30.0,
+    30.0
+  ],
+  "spacing_m": [
+    0.25,
+    0.25,
+    0.25
+  ],
+  "shape": [
+    241,
+    241,
+    241
+  ],
+  "filaments_radial_axial": [
+    6,
+    3
+  ],
+  "filament_core_radius_m": 0.06157454362072254,
+  "segments_total": 36864,
+  "currents_A": [
+    10000000.0,
+    10000000.0,
+    10000000.0,
+    10000000.0,
+    10000000.0,
+    10000000.0,
+    10000000.0,
+    10000000.0
+  ],
+  "boundary_max_T": 0.006284311251241646,
+  "processes": 20,
+  "compute_seconds": 208.43527481599995,
+  "interpolation_check": {
+    "habitat (r<4.5 m, |z|<5 m)": {
+      "points": 1000,
+      "error_mT_p50_p95_max": [
+        0.11533694356844333,
+        1.0267739357986165,
+        5.2756085814152875
+      ],
+      "field_mT_p50_p95": [
+        39.647507858685586,
+        236.00526517866138
+      ],
+      "relative_where_B_ge_10mT_p50_p95": [
+        0.0030770167295716537,
+        0.011732872636081925
+      ]
+    },
+    "coils (|p|<12 m, outside habitat)": {
+      "points": 1000,
+      "error_mT_p50_p95_max": [
+        0.2916240245106634,
+        15.458613525070582,
+        2811.7786811550463
+      ],
+      "field_mT_p50_p95": [
+        348.8514160802828,
+        2776.6063008851793
+      ],
+      "relative_where_B_ge_10mT_p50_p95": [
+        0.0008588883539563482,
+        0.007901047232253988
+      ]
+    },
+    "outer (|p|>=12 m)": {
+      "points": 1000,
+      "error_mT_p50_p95_max": [
+        0.00020980696299462538,
+        0.009488388169716262,
+        0.29094772812755826
+      ],
+      "field_mT_p50_p95": [
+        5.41727700766827,
+        59.39432334094878
+      ],
+      "relative_where_B_ge_10mT_p50_p95": [
+        8.084507379948766e-05,
+        0.0003203659954984472
+      ]
+    }
+  }
+}

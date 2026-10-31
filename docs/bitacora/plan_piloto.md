@@ -374,14 +374,31 @@ Decidido: se amplían. El piloto fija cuánto. Herramienta disponible
      - En dos niveles gruesos de la laptop, la mediana del error de Elmer
        bajó de 22% a 15% junto a la bobina y de 82% a 29% en las líneas
        radiales: va hacia Biot-Savart y todavía no convergió.
-     - **Laboratorio (2026-10-31), niveles A (margen 4 m) y D (margen 8 m),
-       aire de 0.20 m:**
-       - la mediana del error bajó de 7.8% a 5.8% junto a la bobina y de
-         42% a 9.4% en las líneas radiales;
-       - el cambio de A a D es mayor que lo que le falta a D: cumple el
-         criterio para la caja.
-       - Faltan B (margen 6 m) y C (aire 0.15 m) para cerrar la caja con
-         tres puntos y probar la malla.
+     - **Laboratorio (2026-10-31), cuatro niveles** (detalle en
+       `field/README.md`): A, B y D con márgenes de 4, 6 y 8 m y aire de
+       0.20 m; C con margen de 6 m y aire de 0.15 m.
+       - **Cada fuente de error de Elmer baja al refinar su parámetro:**
+         - la malla domina a menos de ~10 cm del bobinado: el error baja de
+           9–16% a 5–8%;
+         - la caja domina desde ~1 m: baja de 9–20% a 2–4%;
+         - entre 20 y 50 cm, Elmer y Biot-Savart coinciden en 2–3%.
+       - **Criterio literal** («en la corrida más fina, la diferencia queda
+         dentro del cambio entre las dos más finas»):
+         - se cumple en las líneas radiales;
+         - por poco no se cumple en la grilla del hábitat (20.1% frente a
+           16.8%) ni junto a la bobina (4.1% frente a 3.8%).
+       - **Lectura:** la convergencia es monótona y sin señales de un error
+         de Biot-Savart, pero el paso 2 no cierra formalmente.
+       - **Opciones del equipo:**
+         - un nivel más en el próximo laboratorio (margen 10 m, aire
+           0.20 m: ~20 min, ~23 GB), que sí podría cerrarlo;
+         - o aceptar el mapa declarando ese límite.
+       - **En cualquiera de los dos casos, el mapa no cambia:** Elmer solo
+         valida. El paso 3 puede avanzar con él.
+     - **Mapa candidato verificado en la laptop:** el SHA256 coincide con
+       el manifiesto; 1000 nodos al azar coinciden con el recálculo directo
+       en 5·10⁻⁸; Geant4 lo carga con una esfera de 18 m en 42 s y 1 GB.
+       El manifiesto está en `field/production/`.
    - **Criterio, fijado antes:** la diferencia con Biot-Savart se achica al
      refinar Elmer y, en la corrida más fina, queda dentro del cambio entre
      las dos corridas más finas de Elmer.
