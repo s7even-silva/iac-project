@@ -516,6 +516,24 @@ lo lee al inicializar e interpola igual que cualquier `.map`. Cada nodo suma
   del laboratorio con 20 procesos hacía ~1.7·10⁷ pares por segundo en
   total, unas 3 h por cuarto de mapa.
 
+**Mapa candidato generado en el laboratorio (2026-10-31):** ±30 m con paso
+de 0.25 m (241³ nodos), 6 × 3 filamentos.
+- Tardó 208 s en una PC con 20 hilos.
+- |B| máximo en las caras del mapa: 6.3 mT.
+- Interpolación trilineal frente a evaluación directa (1000 puntos por
+  zona; relativo donde |B| ≥ 10 mT, mediana / p95):
+
+  | Zona | Error relativo | Error máximo |
+  |---|---|---|
+  | Hábitat | 0.31% / 1.2% | 5.3 mT |
+  | Junto a las bobinas | 0.09% / 0.8% | dentro de los bobinados |
+  | Fuera de 12 m | 0.008% / 0.03% | — |
+
+  Con 0.5 m, el p95 en el hábitat era 4.7%.
+
+El mapa queda candidato hasta que la validación con Elmer y el paso 3 de P1
+lo aprueben.
+
 Un mapa de **±30 m con paso de 0.25 m** (14 M nodos, ~630 MB) deja margen
 para esferas fuente de hasta 30 m. Con el núcleo compilado son unos 20 min
 en la laptop, y menos en una PC del laboratorio, así que alcanza con una

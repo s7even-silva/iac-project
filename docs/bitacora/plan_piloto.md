@@ -378,9 +378,13 @@ Decidido: se amplían. El piloto fija cuánto. Herramienta disponible
      refinar Elmer y, en la corrida más fina, queda dentro del cambio entre
      las dos corridas más finas de Elmer.
    - **Paso del mapa:** con 0.5 m, la interpolación se equivoca en 4.7%
-     (p95) en el hábitat; se propone 0.25 m. Con ±30 m (margen para
-     esferas de hasta 30 m) son 14 M nodos, ~630 MB y 30–45 min en una PC
-     del laboratorio.
+     (p95) en el hábitat; se propone 0.25 m.
+   - **Mapa candidato generado (2026-10-31):** ±30 m, paso de 0.25 m, en
+     208 s con 20 hilos en el laboratorio.
+     - Error de interpolación en el hábitat: 1.2% (p95); fuera de 12 m,
+       0.03%.
+     - Campo máximo en las caras: 6.3 mT.
+     - Falta la validación con Elmer y el paso 3.
    - **Antecedente** (frontera `AV=0`): Biot-Savart y Elmer diferían hasta
      un 40% hacia los extremos en z. Ensayo grueso con NIAC en la
    laptop (2026-10-31; `field/README.md`, «Elmer en el laboratorio»): los
