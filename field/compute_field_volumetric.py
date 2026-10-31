@@ -25,6 +25,7 @@ import multiprocessing as mp
 import os
 from pathlib import Path
 import platform
+import shutil
 import sys
 import time
 
@@ -120,10 +121,9 @@ def _init(seg):
     _SEGMENTS = seg
 
 
-def _plane(args):
-    xs, ys, z = args
-    x, y = np.meshgrid(xs, ys)  # x fastest, as the map format expects
-    return field(np.column_stack((x.ravel(), y.ravel(), np.full(x.size, z))), _SEGMENTS)
+def _row(args):
+    xs, y, z = args  # one row of x at fixed (y, z): x fastest, as the map format expects
+    return field(np.column_stack((xs, np.full(len(xs), y), np.full(len(xs), z))), _SEGMENTS)
 
 
 def interpolation_check(values, origin, step, seg, n, seed=20261031):
@@ -169,22 +169,46 @@ def grid(data, half_size, spacing, max_points):
     return half, sizes, steps
 
 
-def compute_planes(seg, half, sizes, steps, z_indices, processes):
-    """B on the z planes z_indices (ascending), as len(z_indices) x ny x nx x 3."""
+def compute_planes(seg, half, sizes, steps, z_indices, processes, checkpoint=None, key=None):
+    """B on the z planes z_indices (ascending), as len(z_indices) x ny x nx x 3.
+
+    Work is split into rows of x, so progress shows within seconds. With a
+    checkpoint folder every finished plane is saved there, and a run stopped
+    with Ctrl+C resumes from the planes already done (only if `key`, the
+    inputs that fix the values, is the same)."""
     axes = [-h+s*np.arange(n) for h, s, n in zip(half, steps, sizes)]
+    planes = {}
+    if checkpoint:
+        checkpoint.mkdir(parents=True, exist_ok=True)
+        stamp = checkpoint/'key.json'
+        if stamp.is_file() and json.loads(stamp.read_text()) != key:
+            raise ValueError(f'{checkpoint} holds planes of a different map; delete it or change the output')
+        stamp.write_text(json.dumps(key))
+        planes = {i: np.load(checkpoint/f'z{i:04d}.npy') for i in z_indices
+                  if (checkpoint/f'z{i:04d}.npy').is_file()}
+    todo = [i for i in z_indices if i not in planes]
     print(f'[campo] {len(z_indices)*sizes[0]*sizes[1]:,} nodos ({sizes[0]}x{sizes[1]}x{len(z_indices)} '
-          f'de {sizes[2]} planos z), {len(seg.length):,} segmentos, {processes} procesos',
-          file=sys.stderr, flush=True)
-    start = time.monotonic()
-    planes = []
+          f'de {sizes[2]} planos z), {len(seg.length):,} segmentos, {processes} procesos'
+          + (f'; se retoman {len(planes)} planos ya calculados' if planes else ''), file=sys.stderr, flush=True)
+    tasks = [(axes[0], y, axes[2][i]) for i in todo for y in axes[1]]
+    start = last = time.monotonic()
+    rows = []
     with mp.Pool(processes, initializer=_init, initargs=(seg,)) as pool:
-        for k, plane in enumerate(pool.imap(_plane, [(axes[0], axes[1], axes[2][i]) for i in z_indices]), 1):
-            planes.append(plane)
-            elapsed = time.monotonic()-start
-            print(f'\r[campo] plano z {k}/{len(z_indices)} ({100*k/len(z_indices):.0f}%), {elapsed/60:.1f} min, '
-                  f'faltan ~{elapsed*(len(z_indices)/k-1)/60:.1f} min ', end='', file=sys.stderr, flush=True)
+        for k, row in enumerate(pool.imap(_row, tasks), 1):
+            rows.append(row)
+            if len(rows) == sizes[1]:  # a whole plane is done
+                i = todo[(k-1)//sizes[1]]
+                planes[i] = np.stack(rows)
+                rows = []
+                if checkpoint:
+                    np.save(checkpoint/f'z{i:04d}.npy', planes[i])
+            now = time.monotonic()
+            if now-last >= 5 or k == len(tasks):
+                last = now
+                print(f'\r[campo] {100*k/len(tasks):.1f}% ({k:,}/{len(tasks):,} filas), {(now-start)/60:.1f} min, '
+                      f'faltan ~{(now-start)*(len(tasks)/k-1)/60:.1f} min ', end='', file=sys.stderr, flush=True)
     print(file=sys.stderr)
-    return np.stack(planes).reshape(len(z_indices), sizes[1], sizes[0], 3), time.monotonic()-start
+    return np.stack([planes[i] for i in z_indices]), time.monotonic()-start
 
 
 def write_map(source, output, data, seg, values, half, steps, n_radial, n_axial, check_points, extra):
@@ -232,23 +256,31 @@ def generate(source, output, half_size, spacing, n_radial, n_axial, processes, m
     data = json.loads(source.read_text())
     half, sizes, steps = grid(data, half_size, spacing, max_points)
     seg = Segments(data, n_radial, n_axial)
+    # What fixes the values of every plane: a checkpoint is only reused if it matches.
+    key = {'array_report_sha256': digest(source), 'half_size_m': half.tolist(), 'spacing_m': list(steps),
+           'filaments_radial_axial': [n_radial, n_axial]}
     if part is None:
         if output.suffix != '.map' or output.resolve() == source.resolve():
             raise ValueError('Use a distinct .map output')
-        values, elapsed = compute_planes(seg, half, sizes, steps, list(range(sizes[2])), processes)
+        checkpoint = output.with_name(output.name+'.planos')
+        values, elapsed = compute_planes(seg, half, sizes, steps, list(range(sizes[2])), processes,
+                                         checkpoint, key)
         write_map(source, output, data, seg, values, half, steps, n_radial, n_axial, check_points,
                   {'processes': processes, 'compute_seconds': elapsed})
+        shutil.rmtree(checkpoint)
         return
     k, n = part
     if not 1 <= k <= n or output.suffix != '.npz':
         raise ValueError('--part K N needs 1 <= K <= N and a .npz output')
     z_indices = np.array_split(np.arange(sizes[2]), n)[k-1].tolist()
-    values, elapsed = compute_planes(seg, half, sizes, steps, z_indices, processes)
+    checkpoint = output.with_name(output.name+'.planos')
+    values, elapsed = compute_planes(seg, half, sizes, steps, z_indices, processes, checkpoint, key)
     meta = {**part_meta(source, half, steps, sizes, n_radial, n_axial), 'part': [k, n],
             'z_indices': [z_indices[0], z_indices[-1]], 'processes': processes, 'compute_seconds': elapsed,
             'platform': platform.platform()}
     output.parent.mkdir(parents=True, exist_ok=True)
     np.savez(output, values=values, meta=np.array(json.dumps(meta)))
+    shutil.rmtree(checkpoint)
     print(f'[campo] parte {k}/{n} (planos z {z_indices[0]}-{z_indices[-1]}) en {output}', file=sys.stderr)
 
 

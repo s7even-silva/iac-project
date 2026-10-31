@@ -77,6 +77,12 @@ class VolumetricTests(unittest.TestCase):
             self.assertEqual((tmp/'whole.map').read_bytes(), (tmp/'merged.map').read_bytes())
             with self.assertRaises(ValueError):
                 merge(report, tmp/'gap.map', [tmp/'part1.npz', tmp/'part3.npz'], 0)
+            # A stopped run's planes are reused only for the same map.
+            stale = tmp/'whole2.map.planos'
+            stale.mkdir()
+            (stale/'key.json').write_text(json.dumps({'other': 'map'}))
+            with self.assertRaises(ValueError):
+                generate(report, tmp/'whole2.map', **args)
 
 
 if __name__ == '__main__':
