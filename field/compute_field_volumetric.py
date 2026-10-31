@@ -25,6 +25,7 @@ import multiprocessing as mp
 import os
 from pathlib import Path
 import platform
+import sys
 import time
 
 import numpy as np
@@ -170,11 +171,20 @@ def generate(source, output, half_size, spacing, n_radial, n_axial, processes, m
         raise ValueError(f'{math.prod(sizes):,} nodes exceed --max-points={max_points:,}')
     seg = Segments(data, n_radial, n_axial)
     axes = [-h+s*np.arange(n) for h, s, n in zip(half, steps, sizes)]
+    print(f'[campo] {math.prod(sizes):,} nodos ({sizes[0]}x{sizes[1]}x{sizes[2]}), '
+          f'{len(seg.length):,} segmentos, {processes} procesos', file=sys.stderr, flush=True)
     start = time.monotonic()
+    planes = []
     with mp.Pool(processes, initializer=_init, initargs=(seg,)) as pool:
-        planes = pool.map(_plane, [(axes[0], axes[1], z) for z in axes[2]])
+        for k, plane in enumerate(pool.imap(_plane, [(axes[0], axes[1], z) for z in axes[2]]), 1):
+            planes.append(plane)
+            elapsed = time.monotonic()-start
+            print(f'\r[campo] plano z {k}/{sizes[2]} ({100*k/sizes[2]:.0f}%), {elapsed/60:.1f} min, '
+                  f'faltan ~{elapsed*(sizes[2]/k-1)/60:.1f} min ', end='', file=sys.stderr, flush=True)
+    print(file=sys.stderr)
     elapsed = time.monotonic()-start
     values = np.stack(planes).reshape(sizes[2], sizes[1], sizes[0], 3)
+    print(f'[campo] escribiendo {output}', file=sys.stderr, flush=True)
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_suffix(output.suffix+'.tmp')
     try:
@@ -199,6 +209,7 @@ def generate(source, output, half_size, spacing, n_radial, n_axial, processes, m
               'boundary_max_T': float(np.linalg.norm(values[edge], axis=1).max()),
               'processes': processes, 'compute_seconds': elapsed}
     if check_points:
+        print('[campo] comparando la interpolación con el cálculo directo', file=sys.stderr, flush=True)
         report['interpolation_check'] = interpolation_check(values, -half, np.array(steps), seg, check_points)
     output.with_suffix('.field-manifest.json').write_text(json.dumps(report, indent=2)+'\n')
     print(json.dumps(report, indent=2))
@@ -212,7 +223,8 @@ if __name__ == '__main__':
     p.add_argument('--spacing', type=float, required=True, help='maximum grid step in metres')
     p.add_argument('--filaments', type=int, nargs=2, required=True, metavar=('RADIAL', 'AXIAL'))
     p.add_argument('--processes', type=int, default=os.cpu_count())
-    p.add_argument('--max-points', type=int, default=5000000)
+    p.add_argument('--max-points', type=int, default=20000000,
+                   help='guard against accidental huge maps (±30 m at 0.25 m is 14 M nodes, ~630 MB)')
     p.add_argument('--check-points', type=int, default=0,
                    help='random points per region where the trilinear map is compared with direct evaluation')
     a = p.parse_args()

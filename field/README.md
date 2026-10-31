@@ -497,6 +497,13 @@ proceso evalúa 1.5·10⁷ pares segmento-punto por segundo, y cada nodo suma
 - paso de 0.25 m (4.2 M nodos): ~2.8 h en un proceso, unos 10–20 min en
   una PC del laboratorio con 20 procesos.
 
+Un mapa de **±30 m con paso de 0.25 m** (14 M nodos, ~630 MB) deja margen
+para esferas fuente de hasta 30 m. Tarda unos 30–45 min en una PC del
+laboratorio y necesita `--max-points` de al menos 14 M (el valor por
+defecto es 20 M). El script muestra el avance por plano z, con el tiempo
+que falta. En Geant4 se carga una vez por corrida: ~1 GB de RAM al leerlo
+y del orden de un minuto de inicialización.
+
 **Interpolación del mapa** (`--check-points`: trilineal como Geant4, frente
 a evaluación directa, 1000 puntos por zona). Mapa de ±20 m con paso de
 0.5 m (`generated/mapa_bs_niac/`):
