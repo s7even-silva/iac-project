@@ -75,6 +75,15 @@ Plan vigente: [`docs/bitacora/plan_piloto.md`](docs/bitacora/plan_piloto.md)
   de bobina de vueltas (`Normalize Coil Current = True`) y
   `field/validate_volumetric_field.py --coil 0`. Paso del mapa propuesto:
   0.25 m. Detalle en `field/README.md`, «Biot-Savart volumétrico».
+- **Mapa candidato (2026-10-31):** ±30 m con paso de 0.25 m, verificado.
+  Pesa 609 MB, no está en git: está en el Drive del equipo, con su
+  manifiesto y SHA256 en `field/production/`.
+- **Validación con Elmer (4 niveles en el laboratorio):** la malla y la
+  caja convergen hacia Biot-Savart, pero el criterio literal del paso 2 no
+  cierra por poco.
+  - Opciones: un nivel más en el próximo laboratorio, o aceptar el mapa
+    declarándolo (`plan_piloto.md`, P1 paso 2).
+  - El paso 3 puede avanzar con este mapa.
 - **P1, paso 0 hecho (2026-10-31):** geometría de NIAC con 15.6 t por
   bobina en `field/production/crewhat_niac_array.gdml`, desde
   `field/examples/crewhat_niac_array.json`. Sentido de corriente y sección
