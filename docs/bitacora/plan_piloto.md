@@ -574,10 +574,15 @@ Repite la Fase 7 con el scorer nuevo.
     independiente (método de la prueba por lotes, más abajo). Con 40 lotes,
     la dispersión real entre lotes se conoce con ±22% (IC95); con 20 sería
     ±30%.
-  - **M** se fija antes con una sonda de 10⁴ eventos que solo mide la
-    fracción f de eventos con depósito en cuerpo entero (no mira el SE):
-    M = 400/f, es decir unos 400 eventos con depósito por lote en cuerpo
-    entero. Las categorías chicas tendrán menos; ahí decide D4.
+  - **M** se fija antes con una sonda que solo mide la fracción f de
+    eventos con depósito en cuerpo entero (no mira el SE): M = 400/f, es
+    decir unos 400 eventos con depósito por lote en cuerpo entero. Las
+    categorías chicas tendrán menos; ahí decide D4.
+  - **La sonda es de 2·10⁵ eventos (2026-10-31).** Con 10⁴, como decía
+    antes este punto, la esfera de 16 m daba solo ~4 eventos con depósito
+    en SEP de 150 MeV. Con 2·10⁵ hubo 113 (f = 5.7·10⁻⁴), así que M = 7·10⁵
+    y N = 2.8·10⁷: 1.5 h en 6 hilos de la laptop. Es un cambio de
+    dimensionamiento, no de criterio.
   - La misma corrida se reparte también en 160 lotes de M/4 (~100 eventos
     con depósito), sin costo extra, para ver que D4 rechaza esos lotes y
     que sin D4 la cobertura cae.

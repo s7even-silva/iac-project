@@ -10,8 +10,11 @@ espera el mapa. P2b repite SEP_p 150 MeV con el mapa final (--field-map).
 Una corrida larga por caso se parte por event_id en K = 40 lotes de M eventos
 (cada lote equivale a una corrida independiente de M eventos, como en
 prueba_lotes.py), y además en 160 lotes de M/4 para ver que D4 rechaza esos
-lotes. M sale de una sonda de 10⁴ eventos que solo mide la fracción f de
-eventos con depósito en cuerpo entero: M = ceil(400/f).
+lotes. M sale de una sonda que solo mide la fracción f de eventos con
+depósito en cuerpo entero: M = ceil(400/f). El plan decía 10⁴ eventos, pero
+con la esfera de 16 m eso da ~4 eventos con depósito (f ~ 4·10⁻⁴ en SEP de
+150 MeV); la sonda usa 2·10⁵ para que f tenga error de ~10%. Es solo
+dimensionamiento: no mira el SE ni los criterios.
 
 D4, por lote y categoría: al menos 200 eventos con depósito, VOV < 0.1 y el
 mayor evento <= 10% de S1. Aprobación por caso, con los lotes que pasan D4:
@@ -33,6 +36,7 @@ import argparse
 import json
 import math
 import os
+import re
 import statistics
 import subprocess
 import sys
@@ -56,7 +60,7 @@ CASES = {
 }
 SEEDS = {name: 2026103100+10*i for i, name in enumerate(CASES)}  # solo P2
 SOURCE_RADIUS_M = 16.0
-PROBE_EVENTS = 10000
+PROBE_EVENTS = 200000
 TARGET_NONZERO = 400  # eventos con depósito en cuerpo entero por lote
 
 MACRO = """\
@@ -73,6 +77,7 @@ MACRO = """\
 /run/initialize
 /random/setSeeds {seed1} {seed2}
 /run/printProgress {progress}
+/run/verbose 1
 /gun/species {species}
 /gun/phase {phase}
 /gun/angularDistribution cosine
@@ -115,7 +120,9 @@ def simulate(a, work, events, seed_offset):
     with open(work/"run.log", "w") as log:
         subprocess.run([str(build/"ICRP110phantoms"), "run.mac"], cwd=work, stdout=log,
                        stderr=subprocess.STDOUT, check=True)
-    return time.time()-start
+    # Tiempo de los eventos sin la inicialización: "Real=...s" del resumen de la corrida.
+    real = re.findall(r"Real=([0-9.]+)s", (work/"run.log").read_text())
+    return float(real[-1]) if real else time.time()-start
 
 
 def read_events(path):
@@ -141,12 +148,13 @@ def sonda(a):
     if f == 0:
         sys.exit("Ningún evento depositó en cuerpo entero: agrandar la sonda (--events) antes de seguir")
     m = math.ceil(TARGET_NONZERO/f)
-    report = {"case": a.case, "probe_events": n_total, "fraction_with_deposit": f, "M": m,
-              "N": dp.P2_BATCHES*m, "probe_seconds": seconds, "threads": a.threads,
-              "estimated_run_hours": seconds/n_total*dp.P2_BATCHES*m/3600}
+    nonzero = len(values["total_body"])
+    report = {"case": a.case, "probe_events": n_total, "events_with_deposit": nonzero,
+              "fraction_with_deposit": f, "M": m, "N": dp.P2_BATCHES*m, "probe_event_seconds": seconds,
+              "threads": a.threads, "estimated_run_hours": seconds/n_total*dp.P2_BATCHES*m/3600}
     (a.out_dir/a.case/"sonda.json").write_text(json.dumps(report, indent=2)+"\n")
     print(json.dumps(report, indent=2))
-    print("La estimación de horas incluye la inicialización de la sonda: es una cota alta.")
+    print(f"Horas estimadas con {a.threads} hilos, sin contar la inicialización.")
 
 
 def run(a):
