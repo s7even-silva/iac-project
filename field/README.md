@@ -245,8 +245,13 @@ El equipo recrea su entorno; no copia ni versiona el directorio virtual.
 **Alcance de reproducibilidad:** aislar Python y fijar versiones evita cambios
 accidentales de paquetes, pero no garantiza resultados idénticos entre sistemas.
 Gmsh usa bibliotecas nativas, incluida su geometría OpenCASCADE, y en Linux
-puede requerir GLU (`libGLU.so.1`, paquete del sistema). El wheel de Gmsh trae
-su biblioteca propia; estas dependencias del sistema no las instala `venv`.
+requiere GLU (`libGLU.so.1`) y las librerías X11 libXrender, libXcursor, libXft
+y libXinerama, paquetes del sistema. Una instalación mínima de Ubuntu (WSL) no
+las trae, y entonces `import gmsh` falla con «libXrender.so.1: cannot open
+shared object file». En Ubuntu: `sudo apt install libglu1-mesa libgl1
+libxcursor1 libxft2 libxinerama1 libxrender1` (`scripts/install.sh` ya lo
+hace). El wheel de Gmsh trae su biblioteca propia; estas dependencias del
+sistema no las instala `venv`.
 Los manifiestos registran plataforma, Python y Gmsh; conservarlos junto con
 los resultados y fijar sistema/contenedor si se necesita identidad entre máquinas.
 **Elmer no forma parte de este venv.** `scripts/install.sh --with-elmer`

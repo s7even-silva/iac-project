@@ -55,7 +55,8 @@ cargue las mismas instrucciones sin duplicar su contenido.
     bash scripts/install.sh
 
 Instala y configura todo lo necesario desde cero: dependencias de sistema
-(compilador, `libGLU` que requiere Gmsh en tiempo de ejecución — detecta
+(compilador, y `libGLU` y las librerías X11 que requiere Gmsh en tiempo de
+ejecución, que una instalación mínima de Ubuntu en WSL no trae — detecta
 apt/dnf/yum/pacman/zypper/apk automáticamente), Miniconda si no está
 presente, el entorno `geant4_env` (Geant4 11.4.2 + CMake + gcc/g++ de
 conda-forge, vía `environment.yml`), un entorno conda auxiliar

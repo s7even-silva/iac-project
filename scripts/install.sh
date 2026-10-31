@@ -42,8 +42,10 @@ if [[ "$(uname -s)" != "Linux" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 1. Dependencias de sistema: compilador base y libGLU (requerido por Gmsh
-#    en tiempo de ejecución, ver field/README.md). Detecta el gestor de
+# 1. Dependencias de sistema: compilador base, libGLU y las librerías X11 que
+#    carga Gmsh en tiempo de ejecución (ver field/README.md). Una instalación
+#    mínima de Ubuntu (WSL) no trae libXrender/libXcursor/libXft/libXinerama:
+#    sin ellas 'import gmsh' falla (comprobado en ubuntu:24.04, 2026-10-31). Detecta el gestor de
 #    paquetes de la distro; si no reconoce ninguno, avisa y continúa (el
 #    resto del script puede seguir funcionando si esas libs ya existen).
 # ---------------------------------------------------------------------------
@@ -51,22 +53,26 @@ install_system_packages() {
   log "Instalando dependencias de sistema (requiere sudo)"
   if command -v apt-get >/dev/null 2>&1; then
     sudo apt-get update -y
-    sudo apt-get install -y build-essential curl ca-certificates libglu1-mesa libgl1
+    sudo apt-get install -y build-essential curl ca-certificates libglu1-mesa libgl1 \
+      libxcursor1 libxft2 libxinerama1 libxrender1
   elif command -v dnf >/dev/null 2>&1; then
-    sudo dnf install -y gcc gcc-c++ make curl ca-certificates freeglut mesa-libGLU mesa-libGL
+    sudo dnf install -y gcc gcc-c++ make curl ca-certificates freeglut mesa-libGLU mesa-libGL \
+      libXcursor libXft libXinerama libXrender
   elif command -v yum >/dev/null 2>&1; then
-    sudo yum install -y gcc gcc-c++ make curl ca-certificates freeglut mesa-libGLU mesa-libGL
+    sudo yum install -y gcc gcc-c++ make curl ca-certificates freeglut mesa-libGLU mesa-libGL \
+      libXcursor libXft libXinerama libXrender
   elif command -v pacman >/dev/null 2>&1; then
-    sudo pacman -Sy --noconfirm --needed base-devel curl ca-certificates glu mesa
+    sudo pacman -Sy --noconfirm --needed base-devel curl ca-certificates glu mesa \
+      libxcursor libxft libxinerama libxrender
   elif command -v zypper >/dev/null 2>&1; then
     sudo zypper install -y -t pattern devel_basis
-    sudo zypper install -y curl ca-certificates glu Mesa-libGL1
+    sudo zypper install -y curl ca-certificates glu Mesa-libGL1 libXcursor1 libXft2 libXinerama1 libXrender1
   elif command -v apk >/dev/null 2>&1; then
-    sudo apk add --no-cache build-base curl ca-certificates glu mesa-gl
+    sudo apk add --no-cache build-base curl ca-certificates glu mesa-gl libxcursor libxft libxinerama libxrender
   else
     warn "No se reconoce el gestor de paquetes de esta distro (apt/dnf/yum/pacman/zypper/apk)."
-    warn "Instala manualmente: un compilador de C/C++, curl, y la librería del sistema libGLU.so.1"
-    warn "(necesaria para que Gmsh funcione, ver field/README.md)."
+    warn "Instala manualmente: un compilador de C/C++, curl, libGLU.so.1 y libXrender, libXcursor,"
+    warn "libXft y libXinerama (necesarias para que Gmsh funcione, ver field/README.md)."
   fi
 }
 
@@ -208,12 +214,15 @@ PY313_BIN="$MINICONDA_DIR/envs/$PY313_ENV_NAME/bin/python3"
 #    ejecutarse con Python 3.13 exacto -- se lo damos explícitamente.
 # ---------------------------------------------------------------------------
 log "Comprobando field/.venv"
-if [[ -x "$REPO_ROOT/field/.venv/bin/python" ]]; then
-  ok "field/.venv ya existe"
+VENV_PY="$REPO_ROOT/field/.venv/bin/python"
+if [[ -x "$VENV_PY" ]] && "$VENV_PY" -c 'import gmsh, numpy' >/dev/null 2>&1; then
+  ok "field/.venv ya existe y carga Gmsh y NumPy"
 else
-  log "Creando field/.venv con $PY313_BIN"
+  # También repara un venv a medias: si 'import gmsh' fallaba en la primera
+  # corrida, la segunda veía el venv y lo daba por bueno sin comprobarlo.
+  log "Creando o reparando field/.venv con $PY313_BIN"
   (cd "$REPO_ROOT" && "$PY313_BIN" field/bootstrap.py)
-  ok "field/.venv creado"
+  ok "field/.venv listo"
 fi
 
 # ---------------------------------------------------------------------------
