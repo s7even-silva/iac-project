@@ -588,7 +588,9 @@ El arreglo completo en Elmer queda solo como chequeo de orientación y
 signos, que ya pasó (dirección igual en el casco).
 
 **Cómo correrlo.** `elmer_una_bobina.sh` hace todo el nivel en una PC:
-- malla del conductor, con lado de la mitad del aire y como mucho 0.15 m;
+- malla del conductor de la bobina 0 sola (las otras siete se borran del
+  CAD antes de mallar: ~2 s en vez de ~2 min), con lado de la mitad del
+  aire y como mucho 0.15 m;
 - módulo local de Elmer;
 - aire alrededor de la bobina 0 sola (`mesh_exterior.py --groups
   crewhat_coil_0`), con `examples/crewhat_niac_single_coil.sif`;
@@ -602,12 +604,18 @@ bash field/elmer_una_bobina.sh MARGEN_M AIRE_M          # en cada PC, un nivel
 Niveles propuestos para 4 PCs. La memoria está estimada con los 3.1 KB
 por tetraedro medidos:
 
-| PC | Margen (m) | Aire (m) | Tetraedros de aire | RAM |
-|---|---|---|---|---|
-| A | 4 | 0.20 | ~0.9 M | ~3 GB |
-| B | 6 | 0.20 | ~2.2 M | ~7 GB |
-| C | 6 | 0.15 | ~5.2 M | ~16 GB |
-| D | 8 | 0.20 | ~4.3 M | ~13 GB |
+| PC | Margen (m) | Aire (m) | Tetraedros de aire | RAM | Tiempo estimado |
+|---|---|---|---|---|---|
+| A | 4 | 0.20 | ~0.9 M | ~3 GB | ~10 min |
+| B | 6 | 0.20 | ~2.2 M | ~7 GB | ~20 min |
+| C | 6 | 0.15 | ~5.2 M | ~16 GB | ~1 h |
+| D | 8 | 0.20 | ~4.3 M | ~13 GB | ~45 min |
+
+El tiempo está extrapolado de lo medido en la laptop: ElmerSolver tarda 45 s
+con 270 mil tetraedros, y se supuso que las iteraciones crecen con el tamaño
+lineal. La parte de Biot-Savart de la comparación usa el núcleo compilado y
+tarda segundos. Lo que domina es Elmer, que corre en un proceso; OpenMP lo
+acelera solo ~12%.
 
 A → B → D cambia solo la caja; B → C, solo la malla.
 

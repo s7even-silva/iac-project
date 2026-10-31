@@ -19,9 +19,10 @@ PY="$F/.venv/bin/python"
 ELMER_BIN="$(cat "$F/.elmer-prefix" 2>/dev/null || echo "$HOME/.local/elmerfem/bin")"
 COND=$("$PY" -c "print(min(float('$AIRE')/2, 0.15))")
 
-# 1. Malla del conductor (una vez por tamaño y PC).
+# 1. Malla del conductor de la bobina 0 sola (una vez por tamaño y PC): las
+#    otras siete se borran del CAD antes de mallar, en vez de mallar las ocho.
 G="$F/generated/niac_conductor_$COND"
-if [[ ! -f "$G/halbach_array.msh" ]]; then
+if [[ ! -f "$G/bobina0.msh" ]]; then
   mkdir -p "$G"
   "$PY" - "$F/examples/crewhat_niac_array.json" "$G/config.json" "$COND" <<'EOF'
 import json, sys
@@ -31,7 +32,15 @@ c['coil_template']['mesh_size_m'], c['coil_template']['mesh_min_size_m'] = h, h/
 json.dump(c, open(sys.argv[2], 'w'), indent=1)
 EOF
   "$PY" "$F/generate_ellipse_array.py" "$G/config.json" "$G" > "$G/cad.log" 2>&1
-  "$PY" "$F/generate_mesh.py" "$G/halbach_array.geo" "$G/halbach_array.msh" \
+  {
+    echo 'SetFactory("OpenCASCADE");'
+    echo 'Merge "halbach_array.brep";'
+    echo 'Recursive Delete { Volume{2:8}; }'
+    echo 'Physical Volume("crewhat_coil_0") = {1};'
+    grep '^Mesh\.' "$G/halbach_array.geo"
+  } > "$G/bobina0.geo"
+  echo "[elmer] mallando el conductor (lado $COND m)"
+  "$PY" "$F/generate_mesh.py" "$G/bobina0.geo" "$G/bobina0.msh" \
     --dependency "$G/halbach_array.brep" --dependency "$G/config.json" > "$G/malla.log" 2>&1
 fi
 
@@ -43,15 +52,17 @@ fi
 D="$F/generated/elmer_una_bobina_m${MARGEN}_a${AIRE}"
 mkdir -p "$D" && cd "$D"
 echo "[elmer] mallando el aire (margen $MARGEN m, aire $AIRE m, conductor $COND m)"
-"$PY" "$F/mesh_exterior.py" "$G/halbach_array.msh" domain.msh --groups crewhat_coil_0 \
+"$PY" "$F/mesh_exterior.py" "$G/bobina0.msh" domain.msh --groups crewhat_coil_0 \
   --padding "$MARGEN" --air-size "$AIRE" --threads "$HILOS" > malla.log 2>&1
 "$PY" -c "import json; m = json.load(open('domain.mesh-manifest.json')); print('[elmer]', m['air_tetrahedra'], 'tetraedros de aire')"
 "$ELMER_BIN/ElmerGrid" 14 2 domain.msh -out elmer_mesh > grid.log 2>&1
 cat elmer_mesh/mesh.names
 cp "$F/examples/crewhat_niac_single_coil.sif" case.sif
 cp "$F/generated/elmer_plugin/CoilSolverRestricted.so" .
-echo "[elmer] resolviendo (un proceso; ver solver.log)"
-OMP_NUM_THREADS=1 "$ELMER_BIN/ElmerSolver" case.sif > solver.log 2>&1
+# OpenMP le da a Elmer solo ~12% (45 s -> 40 s con 8 hilos en la laptop, mismo
+# campo en 6e-7), pero no cuesta nada.
+echo "[elmer] resolviendo con $HILOS hilos (ver solver.log)"
+OMP_NUM_THREADS="$HILOS" "$ELMER_BIN/ElmerSolver" case.sif > solver.log 2>&1
 grep -E "BiCGStabl robust|ALL DONE" solver.log
 
 # 4. Comparación con Biot-Savart volumétrico de la misma bobina.
