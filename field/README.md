@@ -254,7 +254,11 @@ los resultados y fijar sistema/contenedor si se necesita identidad entre máquin
 (configurable con `ELMER_PREFIX`) — no hay paquete Elmer en conda-forge, y
 el PPA oficial solo cubre versiones específicas de Ubuntu/Debian, no
 "cualquier distro" como el resto de este instalador. Es un paso opcional
-(15-30+ min de compilación). Después se compila el módulo local con
+(15-30+ min de compilación). Elmer se compila con el toolchain de conda-forge
+de `geant4_env`, que no puede enlazar el BLAS/LAPACK del sistema: los toma
+del propio entorno (`libblas`/`liblapack` en `environment.yml`; el
+instalador los agrega a entornos creados antes). Sin ellos, CMake falla con
+"Could NOT find BLAS". Después se compila el módulo local con
 `python3 field/build_coilsolver.py`; el instalador no lo ejecuta automáticamente.
 Ver [flujo FEM del piloto](ELMER_VALIDATION.md). Los parámetros y la validación
 del arreglo de producción siguen pendientes.

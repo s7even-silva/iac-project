@@ -22,6 +22,13 @@ dependencies:
   # machine. Pinned to the same 15.2.0 as gcc/gxx_linux-64 above so all
   # three compilers come from one consistent conda-forge toolchain.
   - gfortran_linux-64=15.2.0
+  # BLAS/LAPACK for Elmer (scripts/install.sh --with-elmer): the conda-forge
+  # toolchain links against its own sysroot and cannot use the system's
+  # libblas/liblapack, so CMake reported "Could NOT find BLAS" on a fresh
+  # Ubuntu 24.04 (WSL) install (2026-10-31). conda-forge's default variant is
+  # OpenBLAS, the same one the working development environment had.
+  - libblas
+  - liblapack
   # Geant4Config.cmake calls find_dependency() on all of these
   # unconditionally in this conda-forge build (confirmed by reading the
   # installed Geant4Config.cmake directly: CLHEP, EXPAT, ZLIB, XercesC,

@@ -286,6 +286,12 @@ EOF
     if "$GFORTRAN_BIN" "$ELMER_ISA_PROBE/probe.f90" -o "$ELMER_ISA_PROBE/probe" >/dev/null 2>&1 \
        && "$ELMER_ISA_PROBE/probe" >/dev/null 2>&1; then
       ok "Toolchain de conda-forge ejecuta binarios correctamente (usado para Elmer)"
+      # El toolchain de conda-forge enlaza contra su propio sysroot: no puede
+      # usar el BLAS/LAPACK del sistema (Ubuntu 24.04 en WSL, 2026-10-31:
+      # "Could NOT find BLAS"). Elmer los toma del propio entorno. Los entornos
+      # nuevos ya los traen desde environment.yml; esto cubre los creados antes.
+      log "Asegurando BLAS/LAPACK de conda-forge en '$GEANT4_ENV_NAME' (para Elmer)"
+      conda install -y -n "$GEANT4_ENV_NAME" -c conda-forge libblas liblapack >/dev/null
     else
       warn "El toolchain de conda-forge no puede ejecutar binarios en esta máquina"
       warn "(síntoma típico: 'CPU ISA level is lower than required' -- el"
