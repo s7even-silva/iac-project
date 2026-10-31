@@ -504,36 +504,23 @@ por bobina, frente a 24 × 12** (`validate_volumetric_field.py`):
   usa un solo filamento (0.15%).
 
 **Tiempo (medido el 2026-10-31).** Se gasta solo al generar el mapa: Geant4
-lo lee al inicializar e interpola igual que cualquier `.map`. Con NumPy, un
-proceso evalúa 1.5·10⁷ pares segmento-punto por segundo, y cada nodo suma
-8 bobinas × 18 filamentos × 256 segmentos = 36 864 segmentos. Mapa de
-±20 m:
-- paso de 0.5 m (531 mil nodos): ~0.4 h en un proceso. En la laptop, con 7
-  procesos y la máquina ocupada, tardó 29 min;
-- paso de 0.25 m (4.2 M nodos): ~2.8 h en un proceso, unos 10–20 min en
-  una PC del laboratorio con 20 procesos.
-
-**Avance y reanudación.** El cálculo se reparte en filas de x, así que el
-avance (porcentaje, minutos transcurridos y estimación de lo que falta)
-aparece cada 5 s desde el principio. Cada plano z terminado se guarda en
-`<salida>.planos/`. Si la corrida se corta (Ctrl+C, apagón, fin de la
-sesión), el mismo comando la retoma desde los planos ya hechos, y el
-resultado es idéntico al de una corrida sin cortes (comprobado). La carpeta
-solo se reusa para el mismo mapa (mismas trayectorias, grilla y filamentos)
-y se borra al terminar.
-
-**Repartir entre PCs.** Con `--part K N`, cada PC calcula un bloque
-contiguo de planos z y lo guarda en un `.npz` (~84 MB por parte con 4 PCs).
-`--merge` comprueba que todas las partes vengan del mismo mapa (mismas
-trayectorias de corriente, misma versión del script, misma grilla y mismos
-filamentos) y que cubran cada plano z una sola vez; si falta o sobra
-alguno, se niega a juntar. El `.map` resultante es idéntico byte a byte al
-calculado en una sola PC (`tests/test_field_volumetric.py`).
+lo lee al inicializar e interpola igual que cualquier `.map`. Cada nodo suma
+8 bobinas × 18 filamentos × 256 segmentos = 36 864 segmentos.
+- **Núcleo compilado (`bs_kernel.c`).** Se compila solo con gcc y OpenMP la
+  primera vez en cada máquina, queda en `generated/` y reparte los nodos
+  entre hilos. En la laptop, con 8 hilos, hace 6.2·10⁸ pares segmento-nodo
+  por segundo y un cuarto del mapa de ±30 m con paso de 0.25 m tarda
+  5 min. Coincide con NumPy en 6·10⁻¹⁴.
+- **NumPy, la versión de respaldo** si no hay gcc (o con `BS_KERNEL=numpy`).
+  Está limitada por la memoria y casi no mejora con más procesos: una PC
+  del laboratorio con 20 procesos hacía ~1.7·10⁷ pares por segundo en
+  total, unas 3 h por cuarto de mapa.
 
 Un mapa de **±30 m con paso de 0.25 m** (14 M nodos, ~630 MB) deja margen
-para esferas fuente de hasta 30 m. Tarda unos 30–45 min en una PC del
-laboratorio y necesita `--max-points` de al menos 14 M (el valor por
-defecto es 20 M). El script muestra el avance por plano z, con el tiempo
+para esferas fuente de hasta 30 m. Con el núcleo compilado son unos 20 min
+en la laptop, y menos en una PC del laboratorio, así que alcanza con una
+sola PC. Necesita `--max-points` de al menos 14 M (el valor por defecto es
+20 M). El script muestra el avance por plano z, con el tiempo
 que falta. En Geant4 se carga una vez por corrida: ~1 GB de RAM al leerlo
 y del orden de un minuto de inicialización.
 

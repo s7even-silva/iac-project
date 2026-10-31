@@ -170,10 +170,11 @@ hay permisos de administrador):
 - **Mapa de campo (P1, paso 2):** Biot-Savart volumétrico
   (`field/compute_field_volumetric.py`), decidido el 2026-10-31. No tiene
   dominio finito, así que cubre los radios de 14–18 m sin problema de
-  memoria. Un mapa de ±20 m con paso de 0.25 m tarda unos 10–20 min en una
-  PC con 20 procesos; uno de ±30 m (margen para esferas de hasta 30 m,
-  ~630 MB), unos 30–45 min, o la cuarta parte repartido entre 4 PCs con
-  `--part K 4` y `--merge` (`field/README.md`).
+  memoria. Con el núcleo compilado (gcc, que instala `scripts/install.sh`),
+  el mapa de ±30 m con paso de 0.25 m (margen para esferas de hasta 30 m,
+  ~630 MB) tarda unos 20 min en la laptop y menos en una PC del
+  laboratorio. Si hace falta, se puede repartir entre PCs con
+  `--part K N` y `--merge` (`field/README.md`).
 - **Elmer, como validación de una sola bobina** (el problema es lineal):
   un nivel de malla por PC con `bash field/elmer_una_bobina.sh MARGEN AIRE`
   (niveles propuestos en `field/README.md`). Al final, las

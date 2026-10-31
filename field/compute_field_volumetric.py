@@ -19,6 +19,7 @@ inside it, so the field stays finite inside the pack (solid conductor, where
 the value matters little for transport).
 """
 import argparse
+import ctypes
 import json
 import math
 import multiprocessing as mp
@@ -26,6 +27,7 @@ import os
 from pathlib import Path
 import platform
 import shutil
+import subprocess
 import sys
 import time
 
@@ -74,9 +76,48 @@ class Segments:
         self.current = np.concatenate(current)
 
 
+_KERNEL = []  # [ctypes library or None], loaded once per process
+
+
+def compiled_kernel():
+    """bs_kernel.c built with gcc and OpenMP (once per machine, cached under
+    generated/ by source hash), or None if there is no compiler or
+    BS_KERNEL=numpy; then field() uses the NumPy version."""
+    if not _KERNEL:
+        lib = None
+        source = Path(__file__).with_name('bs_kernel.c')
+        if os.environ.get('BS_KERNEL') != 'numpy' and shutil.which('gcc'):
+            path = Path(__file__).parent/'generated'/f'bs_kernel_{digest(source)[:12]}.so'
+            try:
+                if not path.is_file():
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    partial = path.with_name(path.name+'.partial')
+                    subprocess.run(['gcc', '-O3', '-fopenmp', '-shared', '-fPIC', str(source), '-o', str(partial),
+                                    '-lm'], check=True, capture_output=True)
+                    partial.replace(path)
+                lib = ctypes.CDLL(str(path))
+                array = np.ctypeslib.ndpointer(dtype=np.float64, flags='C_CONTIGUOUS')
+                lib.bs_field.argtypes = [ctypes.c_long, array, ctypes.c_long, array, array, array, array,
+                                         ctypes.c_double, array]
+                lib.bs_set_threads.argtypes = [ctypes.c_int]
+            except (OSError, subprocess.CalledProcessError) as error:
+                print(f'[campo] sin núcleo compilado ({error}); se usa NumPy, mucho más lento',
+                      file=sys.stderr)
+                lib = None
+        _KERNEL.append(lib)
+    return _KERNEL[0]
+
+
 def field(points, seg, chunk_points=4096, chunk_segments=256):
     """B in tesla at points (N x 3, metres)."""
-    points = np.asarray(points, dtype=float)
+    points = np.ascontiguousarray(points, dtype=float)
+    kernel = compiled_kernel()
+    if kernel is not None:
+        out = np.empty_like(points)
+        kernel.bs_field(len(points), points, len(seg.length), np.ascontiguousarray(seg.start),
+                        np.ascontiguousarray(seg.dir), np.ascontiguousarray(seg.length),
+                        np.ascontiguousarray(seg.current), float(seg.core**2), out)
+        return out
     out = np.zeros_like(points)
     core2 = seg.core**2
     for i in range(0, len(points), chunk_points):
@@ -188,10 +229,27 @@ def compute_planes(seg, half, sizes, steps, z_indices, processes, checkpoint=Non
                   if (checkpoint/f'z{i:04d}.npy').is_file()}
     todo = [i for i in z_indices if i not in planes]
     print(f'[campo] {len(z_indices)*sizes[0]*sizes[1]:,} nodos ({sizes[0]}x{sizes[1]}x{len(z_indices)} '
-          f'de {sizes[2]} planos z), {len(seg.length):,} segmentos, {processes} procesos'
+          f'de {sizes[2]} planos z), {len(seg.length):,} segmentos, {processes} '
+          + ('hilos (núcleo compilado)' if compiled_kernel() is not None else 'procesos (NumPy)')
           + (f'; se retoman {len(planes)} planos ya calculados' if planes else ''), file=sys.stderr, flush=True)
-    tasks = [(axes[0], y, axes[2][i]) for i in todo for y in axes[1]]
     start = last = time.monotonic()
+    kernel = compiled_kernel()
+    if kernel is not None:  # one call per plane, threads inside the kernel
+        kernel.bs_set_threads(processes)
+        x, y = np.meshgrid(axes[0], axes[1])
+        for k, i in enumerate(todo, 1):
+            plane = field(np.column_stack((x.ravel(), y.ravel(), np.full(x.size, axes[2][i]))), seg)
+            planes[i] = plane.reshape(sizes[1], sizes[0], 3)
+            if checkpoint:
+                np.save(checkpoint/f'z{i:04d}.npy', planes[i])
+            now = time.monotonic()
+            if now-last >= 5 or k == len(todo):
+                last = now
+                print(f'\r[campo] {100*k/len(todo):.1f}% ({k}/{len(todo)} planos z), {(now-start)/60:.1f} min, '
+                      f'faltan ~{(now-start)*(len(todo)/k-1)/60:.1f} min ', end='', file=sys.stderr, flush=True)
+        print(file=sys.stderr)
+        return np.stack([planes[i] for i in z_indices]), time.monotonic()-start
+    tasks = [(axes[0], y, axes[2][i]) for i in todo for y in axes[1]]
     rows = []
     with mp.Pool(processes, initializer=_init, initargs=(seg,)) as pool:
         for k, row in enumerate(pool.imap(_row, tasks), 1):

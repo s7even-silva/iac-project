@@ -62,6 +62,20 @@ class VolumetricTests(unittest.TestCase):
         self.assertAlmostEqual(inside[1]/(MU0*0.05/(2*np.pi*0.1**2)), 1., places=6)
         np.testing.assert_array_equal(axis, 0.)
 
+    def test_compiled_kernel_matches_numpy(self):
+        import compute_field_volumetric as cfv
+        if cfv.compiled_kernel() is None:
+            self.skipTest('no gcc: the NumPy kernel is the only one')
+        seg = Segments(circle_report(4.0, 0.67, 0.32, 1e7, segments=256), 6, 3)
+        points = np.random.default_rng(5).uniform(-8, 8, size=(500, 3))
+        compiled = field(points, seg)
+        cfv._KERNEL[:] = [None]  # force NumPy for this comparison
+        try:
+            numpy_version = field(points, seg)
+        finally:
+            cfv._KERNEL[:] = []
+        np.testing.assert_allclose(compiled, numpy_version, rtol=1e-11, atol=1e-15)
+
     def test_parts_merge_into_the_same_map(self):
         """Splitting the z planes across PCs and merging gives the identical file."""
         with tempfile.TemporaryDirectory() as tmp:
