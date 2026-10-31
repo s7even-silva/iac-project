@@ -591,6 +591,46 @@ Criterio, fijado antes:
 El arreglo completo en Elmer queda solo como chequeo de orientación y
 signos, que ya pasó (dirección igual en el casco).
 
+**Cómo correrlo.** `elmer_una_bobina.sh` hace todo el nivel en una PC:
+- malla del conductor, con lado de la mitad del aire y como mucho 0.15 m;
+- módulo local de Elmer;
+- aire alrededor de la bobina 0 sola (`mesh_exterior.py --groups
+  crewhat_coil_0`), con `examples/crewhat_niac_single_coil.sif`;
+- solve y comparación con Biot-Savart.
+
+```bash
+bash field/elmer_una_bobina.sh MARGEN_M AIRE_M          # en cada PC, un nivel
+.venv/bin/python validate_volumetric_field.py --tendencia a.json b.json c.json   # al final, de grueso a fino
+```
+
+Niveles propuestos para 4 PCs. La memoria está estimada con los 3.1 KB
+por tetraedro medidos:
+
+| PC | Margen (m) | Aire (m) | Tetraedros de aire | RAM |
+|---|---|---|---|---|
+| A | 4 | 0.20 | ~0.9 M | ~3 GB |
+| B | 6 | 0.20 | ~2.2 M | ~7 GB |
+| C | 6 | 0.15 | ~5.2 M | ~16 GB |
+| D | 8 | 0.20 | ~4.3 M | ~13 GB |
+
+A → B → D cambia solo la caja; B → C, solo la malla.
+
+**Ensayo en la laptop (2026-10-31), error relativo de Elmer frente a
+Biot-Savart (mediana / p95):**
+
+| Nivel | Junto a la bobina | Líneas radiales |
+|---|---|---|
+| Margen 2 m, aire 0.4 m | 22% / 83% | 82% / 115% |
+| Margen 4 m, aire 0.3 m (269 mil tetraedros) | 15% / 32% | 29% / 68% |
+
+- La dirección coincide (coseno ≥ 0.98).
+- Elmer se acerca a Biot-Savart al refinar, y el cambio entre esos dos
+  niveles (15% y 36% de mediana) es del tamaño de la distancia que le
+  falta: todavía no convergió.
+- Cerca del bobinado, la malla gruesa lo deja 10–30% por debajo. Junto a
+  las caras de una caja chica, la frontera `AV=0` encierra el flujo y lo
+  deja por encima.
+
 ## Elmer en el laboratorio (32 GB por PC)
 
 Estrategia general en el `README.md` raíz («Cómputo en el laboratorio de

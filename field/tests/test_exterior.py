@@ -87,6 +87,11 @@ class ExteriorTests(unittest.TestCase):
                 self.assertEqual(gmsh.model.getPhysicalName(2, 4), 'outer_boundary')
             finally:
                 gmsh.finalize()
+            # Keeping one conductor (single-coil Elmer check): the other becomes air.
+            single = generate(source, Path(tmp)/'single.msh', padding=.3, air_size=.2, groups=['coil_1'])
+            self.assertEqual([c['name'] for c in single['conductors']], ['coil_1'])
+            with self.assertRaises(ValueError):
+                generate(source, Path(tmp)/'none.msh', padding=.3, air_size=.2, groups=['coil_9'])
 
 
 if __name__ == '__main__':

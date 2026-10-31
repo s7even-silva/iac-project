@@ -175,9 +175,10 @@ hay permisos de administrador):
   ~630 MB), unos 30–45 min, o la cuarta parte repartido entre 4 PCs con
   `--part K 4` y `--merge` (`field/README.md`).
 - **Elmer, como validación de una sola bobina** (el problema es lineal):
-  2–3 mallas crecientes, cada una en su PC, comparadas con Biot-Savart
-  mediante `field/validate_volumetric_field.py`. Detalle en
-  `field/README.md`.
+  un nivel de malla por PC con `bash field/elmer_una_bobina.sh MARGEN AIRE`
+  (niveles propuestos en `field/README.md`). Al final, las
+  `validacion.json` de cada PC se juntan con
+  `validate_volumetric_field.py --tendencia`.
 - **Geant4 (P0 y después P2):** un punto de energía o una semilla por PC.
   En `p0_icrp116.py run`, `--points` elige qué puntos corre cada PC, y los
   puntos ya terminados se saltan, así que una corrida cortada se retoma con

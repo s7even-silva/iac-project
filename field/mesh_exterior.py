@@ -19,7 +19,7 @@ def face_keys(faces):
     return sorted(map(tuple, np.sort(np.asarray(faces).reshape(-1, 3), axis=1)))
 
 
-def generate(source, output, padding=1., air_size=.3, optimize_threshold=.01, threads=1):
+def generate(source, output, padding=1., air_size=.3, optimize_threshold=.01, threads=1, groups=None):
     if source.resolve() == output.resolve() or output.suffix != '.msh':
         raise ValueError('Use a distinct .msh output')
     # One margin for every axis, or one per axis (x, y, z): the array is flat in z,
@@ -40,11 +40,16 @@ def generate(source, output, padding=1., air_size=.3, optimize_threshold=.01, th
         ids, xyz, _ = gmsh.model.mesh.getNodes()
         points = dict(zip(map(int, ids), np.asarray(xyz).reshape(-1, 3)))
         components = []
-        entities_seen = set()
+        entities_seen, skipped = set(), set()
         for dim, physical in gmsh.model.getPhysicalGroups(3):
             name = gmsh.model.getPhysicalName(dim, physical)
             if name.lower() in ('air', 'vacuum'):
                 raise ValueError('Input must contain conductors only; regenerate with mesh_swept.py')
+            if groups and name not in groups:
+                # Left out (e.g. one coil of the array for a single-coil Elmer
+                # check): its volume becomes air.
+                skipped.update(int(e) for e in gmsh.model.getEntitiesForPhysicalGroup(3, physical))
+                continue
             chunks = []
             for entity in gmsh.model.getEntitiesForPhysicalGroup(3, physical):
                 if int(entity) in entities_seen:
@@ -59,7 +64,9 @@ def generate(source, output, padding=1., air_size=.3, optimize_threshold=.01, th
             components.append((name or f'conductor_{physical}', tetra, np.asarray(faces), volume))
         if not components:
             raise ValueError('No physical conductor volumes found')
-        if entities_seen != {tag for _, tag in gmsh.model.getEntities(3)}:
+        if groups and set(groups) != {c[0] for c in components}:
+            raise ValueError(f'Groups not found in the input: {sorted(set(groups)-{c[0] for c in components})}')
+        if entities_seen | skipped != {tag for _, tag in gmsh.model.getEntities(3)}:
             raise ValueError('Every input volume must belong to a physical conductor group')
         used = np.unique(np.concatenate([t.ravel() for _, t, _, _ in components]))
         coords = np.array([points[int(i)] for i in used])
@@ -139,7 +146,7 @@ def generate(source, output, padding=1., air_size=.3, optimize_threshold=.01, th
         report = {'method': 'discrete_conductor_global_air', 'production_validated': False,
                   'source_sha256': digest(source), 'mesh_sha256': digest(output),
                   'generator_sha256': digest(Path(__file__)), 'gmsh': gmsh.__version__,
-                  'padding_m': padding.tolist(), 'air_size_m': air_size,
+                  'padding_m': padding.tolist(), 'air_size_m': air_size, 'groups': groups,
                   'optimization_threshold': optimize_threshold, 'threads': threads,
                   'bounds_m': [lower.tolist(), upper.tolist()], 'air_volume_m3': air_volume,
                   'air_tetrahedra': len(air_tetra), 'interface_preserved': True,
@@ -163,8 +170,10 @@ if __name__ == '__main__':
     parser.add_argument('--optimize-threshold', type=float, default=.01,
                         help='Gmsh quality optimization target, not an accuracy tolerance')
     parser.add_argument('--threads', type=int, default=1)
+    parser.add_argument('--groups', nargs='+', metavar='NAME',
+                        help='keep only these conductor groups (e.g. crewhat_coil_0); the rest becomes air')
     args = parser.parse_args()
     if len(args.padding) not in (1, 3):
         parser.error('--padding takes one value or three (x y z)')
     print(json.dumps(generate(args.source, args.output, args.padding, args.air_size,
-                              args.optimize_threshold, args.threads), indent=2))
+                              args.optimize_threshold, args.threads, args.groups), indent=2))

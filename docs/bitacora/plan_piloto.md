@@ -364,7 +364,11 @@ Decidido: se amplían. El piloto fija cuánto. Herramienta disponible
      - 2–3 corridas por PC con malla y caja crecientes, con corriente
        uniforme (`Normalize Coil Current = True`);
      - se comparan con Biot-Savart junto a la bobina y en líneas radiales
-       (`field/validate_volumetric_field.py`).
+       (`field/validate_volumetric_field.py`). Cada PC corre un nivel con
+       `field/elmer_una_bobina.sh`.
+     - En dos niveles gruesos de la laptop, la mediana del error de Elmer
+       bajó de 22% a 15% junto a la bobina y de 82% a 29% en las líneas
+       radiales: va hacia Biot-Savart y todavía no convergió.
    - **Criterio, fijado antes:** la diferencia con Biot-Savart se achica al
      refinar Elmer y, en la corrida más fina, queda dentro del cambio entre
      las dos corridas más finas de Elmer.

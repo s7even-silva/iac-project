@@ -21,9 +21,13 @@ Comparisons, each against the finest Biot-Savart (the last --filaments pair):
 2. optional Elmer results (--vtu, coarse to fine), plus each Elmer result
    against the next one (Elmer's own refinement change).
 Errors are |dB| in mT, and |dB|/|B| where |B| >= 1% of the group maximum.
+
+To join the levels run on different PCs (coarse to fine):
+    validate_volumetric_field.py --tendencia nivel_a.json nivel_b.json ...
 """
 import argparse
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -63,6 +67,9 @@ def probes(data, radial_max):
 
 def stats(value, reference):
     valid = np.isfinite(value).all(axis=1)
+    if not valid.any():  # the whole group lies outside the Elmer mesh
+        return {'points': 0, 'outside_mesh': int(len(value)),
+                'error_mT_p50_p95_max': [np.nan]*3, 'relative_p50_p95_max': [np.nan]*3}
     error = np.linalg.norm(value[valid]-reference[valid], axis=1)*1e3
     magnitude = np.linalg.norm(reference[valid], axis=1)*1e3
     keep = magnitude >= 0.01*magnitude.max()
@@ -72,7 +79,36 @@ def stats(value, reference):
             'relative_p50_p95_max': np.percentile(relative, [50, 95, 100]).tolist()}
 
 
+def trend(json_paths):
+    """Elmer levels from several PCs (each its own validacion.json), on the
+    probes valid in all of them: error against Biot-Savart per level, and the
+    change between consecutive levels (Elmer's own refinement error)."""
+    runs = [json.loads(Path(path).read_text()) for path in json_paths]
+    reference = np.array(runs[0]['fields_T'][runs[0]['reference']])
+    elmer = [np.array(next(v for k, v in run['fields_T'].items() if k.startswith('elmer:'))) for run in runs]
+    valid = np.all([np.isfinite(e).all(axis=1) for e in elmer], axis=0)
+    first = 0
+    for group, block in runs[0]['probes'].items():
+        rows = slice(first, first+len(block))
+        first += len(block)
+        keep = valid[rows]
+        if not keep.any():
+            continue
+        ref = reference[rows][keep]
+        scale = np.linalg.norm(ref, axis=1)
+        print(f'{group} ({keep.sum()} sondas comunes): mediana / p95 del error relativo')
+        for path, e in zip(json_paths, elmer):
+            rel = np.linalg.norm(e[rows][keep]-ref, axis=1)/scale
+            print(f'  {path}: frente a Biot-Savart {np.median(rel):.2%} / {np.percentile(rel, 95):.2%}')
+        for (a, ea), (b, eb) in zip(zip(json_paths, elmer), list(zip(json_paths, elmer))[1:]):
+            rel = np.linalg.norm(eb[rows][keep]-ea[rows][keep], axis=1)/scale
+            print(f'  cambio {a} -> {b}: {np.median(rel):.2%} / {np.percentile(rel, 95):.2%}')
+
+
 def main():
+    if len(sys.argv) > 2 and sys.argv[1] == '--tendencia':
+        trend(sys.argv[2:])
+        return
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('array_report', type=Path)
     p.add_argument('output', type=Path)
