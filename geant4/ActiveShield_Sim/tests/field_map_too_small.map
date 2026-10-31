@@ -1,0 +1,14 @@
+# Fixture for the field_map_covers_source ctest: +-1.2 m covers the habitat of
+# tests/field_map_covers_source.mac (r = 0.6 m, half-length 1 m) but not its
+# source sphere (~1.37 m). 2x2x2 nodes, m and T, zero field.
+2 2 2
+-1.2 -1.2 -1.2
+2.4 2.4 2.4
+0 0 0
+0 0 0
+0 0 0
+0 0 0
+0 0 0
+0 0 0
+0 0 0
+0 0 0

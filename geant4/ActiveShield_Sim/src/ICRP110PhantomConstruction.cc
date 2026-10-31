@@ -318,9 +318,15 @@ G4VPhysicalVolume* ICRP110PhantomConstruction::Construct()
       const auto low = fFieldMap->Minimum();
       const auto high = fFieldMap->Maximum();
       const G4ThreeVector hullHalf(shipRadius, shipRadius, shipHalfLength);
+      const G4double sourceRadius = GetSourceSphereRadius();
       for (int axis = 0; axis < 3; ++axis) {
         if (low[axis] >= -hullHalf[axis] || high[axis] <= hullHalf[axis])
           throw std::runtime_error("Field map must extend beyond the entire habitat on every axis");
+        // The field is zero outside the map: a primary born where the map does
+        // not reach would see a truncated field (plan_piloto.md, P1).
+        if (low[axis] > -sourceRadius || high[axis] < sourceRadius)
+          throw std::runtime_error("Field map must contain the whole source sphere on every axis; "
+                                   "enlarge the map or reduce /spacecraft/sourceSphereRadius");
         worldHalf[axis] = std::max(worldHalf[axis],
                                   std::max(std::abs(low[axis]), std::abs(high[axis])) + 1.*m);
       }

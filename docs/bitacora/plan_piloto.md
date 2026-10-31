@@ -45,14 +45,14 @@ otro sistema y exige un contraste separado.
 | # | Decisión | Qué bloquea |
 |---|---|---|
 | D1 | Ley coseno como modo de producción | Todo |
-| D2 | Endpoint primario (por ejemplo, dosis efectiva o una categoría) y δ_η (el plan propone 10 pp) | P5, P6 |
-| D3 | Presupuesto B de error de dosis por caso especie/fase y por categoría, para las pruebas de equivalencia | P1, P4, P5 |
-| D4 | Umbrales de los diagnósticos de convergencia (fracción máxima de un solo evento, mínimo de eventos con depósito, rango aceptable de SE_within/s_between) | P2, P3 |
-| D5 | Fantoma AF sí o no (dosis efectiva completa) | Diseño del barrido |
+| D2 | Endpoint primario y δ_η. **Decidido (2026-10-31): δ_η = 10 pp; primario, la dosis equivalente efectiva con Q(L) (ICRP 123); secundario, la médula roja.** Ver «Endpoint (D2)» abajo | P5, P6 |
+| D3 | Presupuesto B de error de dosis por caso especie/fase y por categoría, para las pruebas de equivalencia. **Decidido (2026-10-31): B = δ_η/4 = 2.5% de la dosis sin escudo** | P1, P4, P5 |
+| D4 | Umbrales de los diagnósticos de convergencia. **Decidido (2026-10-31): al menos 200 eventos con depósito, VOV < 0.1 y ningún evento con más del 10% del total**, por categoría. Criterio de P2 en P2 | P2, P3 |
+| D5 | Fantoma AF sí o no (dosis efectiva completa). **Sí (2026-10-31)**, lo pide el endpoint de D2. Cómo correrlo sin duplicar todo: propuesta de simulación en dos etapas (P7) | Diseño del barrido |
 | D6 | Posiciones (las 5 actuales u otra elección) | P1, P6, barrido |
-| D7 | Tolerancia con ICRP 116 para P0. **Propuesta con fuentes (2026-10-01): ±10% en órganos grandes y ±15% en mama y tiroides, a ≥100 MeV/n.** Ver «Base de la tolerancia D7» en P0 | P0 |
+| D7 | Tolerancia con ICRP 116 para P0. **Decidido (2026-10-31): ±10% en órganos grandes y ±30% en mama y tiroides, a ≥100 MeV/n**: en los dos casos, unas 2 veces el error de la propia referencia (ver «Base de la tolerancia D7» en P0) | P0 |
 | D8 | Perfil temporal de SEP: fuente de datos de cada evento (GOES para oct. 1989; feb. 1956 no tiene datos satelitales), forma del espectro variable o constante, y qué casos lo llevan (`plan_barrido.md`, sección 10) | Criterio temporal de P4 y tasa de dosis SEP; no bloquea la dosis del evento completo |
-| D9 | Disposición y masa de las bobinas. **Decidido (2026-10-04): producción con la disposición de NIAC** (hallazgo A4 de la auditoría); falta fijar el sentido de corriente de cada bobina y la sección y densidad del bobinado (B9). Ver «Disposición de las bobinas (D9)» abajo | Mapa de Elmer de P1, D6, barrido |
+| D9 | Disposición y masa de las bobinas. **Decidido (2026-10-04): producción con la disposición de NIAC** (hallazgo A4 de la auditoría). **Cerrado (2026-10-31):** el sentido de corriente de cada bobina y la sección y densidad del bobinado (B9) quedan como supuestos propios declarados; los autores de NIAC no respondieron. Geometría generada y versionada. Ver «Disposición de las bobinas (D9)» abajo | Mapa de Elmer de P1, D6, barrido |
 
 **Relación entre D2, D3 y D7.** δ_η (D2) es la diferencia mínima de
 efectividad escudo/control que el estudio tiene que poder resolver.
@@ -68,6 +68,57 @@ sin escudo.
   resultados absolutos (Gy/día, Sv, riesgo). Afecta a η solo si el error
   depende de la energía y el escudo cambia el espectro.
 
+Los valores de D2, D3 y D4 están además en
+`geant4/ActiveShield_Sim/scripts/design_parameters.py`: los scripts de
+análisis los importan de ahí y no los repiten.
+
+**Endpoint (D2, decidido 2026-10-31).**
+- **Primario:** η de la dosis equivalente efectiva,
+  E = Σ_T w_T·(H_T^AM + H_T^AF)/2, con H_T calculada con el Q(L) de ICRP 60
+  y los w_T de ICRP 103 (`plan_barrido.md`, sección 4). Es el enfoque que
+  ICRP 123 recomienda para astronautas, en lugar de los w_R de ICRP 103.
+- **Secundario:** médula roja (equivale a los órganos hematopoyéticos,
+  BFO), con su IC95 y sin garantía de precisión.
+- **A declarar en el paper:**
+  - E no es la dosis efectiva de ICRP 103 (que usa w_R);
+  - tampoco es la «NASA effective dose» de NASA-STD-3001, que usa el Q de
+    NASA y el modelo femenino de 35 años para ambos sexos. La comparación
+    con los límites de NASA (600 mSv de carrera; 250 mSv para el SEP de
+    diseño, la suma de los eventos de octubre de 1989) es aproximada;
+  - la médula roja se aproxima como Σ f_o·e_o (`plan_barrido.md`).
+- **Antecedentes** (detalle en `referencias_paper.md`): NASA-STD-3001
+  limita la dosis efectiva; Ferrone (2020, Geant4, fantomas de ambos sexos)
+  reporta dosis efectiva; Ambroglini, Battiston y Burger (2016) reportan
+  dosis equivalente en BFO y piel. Ninguno declara un δ de diseño. Sus
+  reducciones van de ~20% a ~50% según el escudo, con incertidumbres de
+  ~3–5% en la dosis. Esas incertidumbres equivalen a un IC95 de η de
+  ±6–8 pp, así que δ_η = 10 pp (IC95 de ±5 pp) está a la par o algo por
+  encima de su precisión.
+
+**Cambiar δ_η más adelante (procedimiento, 2026-10-31).** El equipo puede
+querer bajar δ_η (por ejemplo, a 5 pp). Es válido si se hace así:
+1. **Declararlo antes** de ver el resultado que decide, con fecha y
+   motivo. Lo que no vale es agregar eventos hasta que algo salga
+   significativo (regla 3).
+2. **Editar `DELTA_ETA`** en `design_parameters.py`; B = δ_η/4 se recalcula
+   solo (1.25% con 5 pp).
+3. **Revisar las equivalencias del método con el nuevo B:** radio (P1),
+   grilla de energías (P4), sesgo (P5) y resolución del mapa. **Desde hoy
+   esos pilotos reportan además el resultado con B = 1.25%**
+   (`B_SECONDARY`; chequeo secundario declarado de antemano, que no
+   decide): si ya pasan, no hay que rehacerlos.
+4. **Si todas pasan, extender el barrido:** corridas nuevas con claves de
+   trabajo nuevas al final del registro de semillas (`plan_barrido.md`,
+   «Semillas v2»), la misma clave para escudo y control (CRN). Se
+   combinan sumando S1, S2 y N. Costo: (δ_viejo/δ_nuevo)² − 1 veces lo ya
+   corrido, es decir 3 veces más para pasar de 10 a 5 pp.
+5. **Si alguna falla, cambia la configuración congelada:** un radio o un
+   mapa nuevos obligan a rehacer el barrido; una grilla más fina solo
+   agrega puntos.
+
+Para que el cambio salga barato, conviene elegir desde ahora la
+configuración con margen: por ejemplo, el radio que ya pase con 1.25%.
+
 ### Disposición de las bobinas (D9, decidido 2026-10-04)
 
 **Decisión.** La producción usa la disposición de CREW HaT tal como la
@@ -79,7 +130,10 @@ contrario, un campo suprimido en el hábitat (§2, p. 8 del reporte). K=1
 queda como variante de comparación. La masa de las bobinas se corrige a la
 vez (hallazgo B9), porque las dos cosas regeneran el GDML.
 
-**Qué falta fijar antes de generar la geometría (P1, paso 0).**
+**Supuestos de la geometría (P1, paso 0).** Se consultó por correo a los
+autores de NIAC por el sentido de corriente y la sección; sin respuesta al
+2026-10-31, los dos quedan como supuestos propios declarados, a citar así en
+el paper.
 
 - **Orientaciones:** las de la fig. 3.1(b) (p. 10), cardinales en planos
   radiales y diagonales en planos tangenciales. Dato de la fuente.
@@ -89,14 +143,25 @@ vez (hallazgo B9), porque las dos cosas regeneran el GDML.
   orientaciones. En el chequeo exploratorio con Biot-Savart
   (`field/studies/disposicion_bobinas_2026-10-04.py`) da |B| = 0 en el
   centro y 0.013 T de media a 2 m, como pide NIAC. Supuesto propio
-  declarado; se confirma contra la fig. 3.2 (p. 11) o con los autores.
+  declarado.
   `generate_ellipse_array.py` ya lo admite con `theta_deg_pattern`, sin
   cambiar código.
 - **Radio:** 8 m (§3.1, p. 12), el que ya usamos.
-- **Sección y masa (B9):** candidato 0.67 m radial × ~0.32 m axial (40
-  vueltas de cable de 8 mm por capa, 67 capas), con densidad efectiva
-  ajustada a las 15.6 t por bobina de la tabla de §4.10.2 (p. 49). La
-  sección cuadrada actual es un supuesto propio y pesa 77.9 t.
+- **Sección y masa (B9):** 0.67 m radial × 0.32 m axial (40 vueltas de
+  cable de 8 mm por capa, 67 capas), con densidad efectiva de 3.755 g/cm³,
+  ajustada a las 15.6 t por bobina de la tabla de §4.10.2 (p. 49) con el
+  volumen CAD (4.1544 m³). Supuesto propio declarado. La sección cuadrada de
+  la v1 pesa 77.9 t.
+
+**P1, paso 0: hecho (2026-10-31).** Configuración
+`field/examples/crewhat_niac_array.json`; GDML versionado en
+`field/production/crewhat_niac_array.gdml` (procedimiento en
+`field/README.md`, «Disposición de NIAC»). Verificado: 8 bobinas de
+15 599 kg en Geant4 (malla de 4.1541 m³ frente a 4.1544 m³ del CAD), sin
+solapamientos con el casco, la cabina ni entre bobinas; material hasta
+10.37 m del centro (10.34 m en x/y, ±4.34 m en z). Con Biot-Savart, |B| = 0
+en el eje (z = 0, 3 y 5 m), 0.007–0.019 T a 2 m del eje y 0.33–0.43 T junto
+al casco (4.5 m).
 
 **Qué cambia en los pilotos.**
 
@@ -131,8 +196,10 @@ producción.
 
 Antes de los pilotos que los necesitan (detalle en `plan_barrido.md`):
 
-- **Mapa de campo final (Elmer) con el dominio que fije P1. Es el
-  bloqueante del camino crítico.** La esfera fuente actual (≈6.94 m) queda
+- **Mapa de campo final con el dominio que fije P1. Es el bloqueante del
+  camino crítico.** Desde el 2026-10-31 es un mapa de Biot-Savart
+  volumétrico validado con Elmer (P1, paso 2). Lo que sigue en este punto
+  es la historia de por qué Elmer solo no alcanzaba. La esfera fuente actual (≈6.94 m) queda
   dentro del arreglo de bobinas (material hasta ≈10.5 m del centro), y el
   `.map` de producción se trunca en ±11.3/±13.3/±7.6 m con 0.16–0.40 T en
   sus caras. Para encerrar las bobinas, la esfera tiene que medir más de
@@ -143,8 +210,11 @@ Antes de los pilotos que los necesitan (detalle en `plan_barrido.md`):
   **Requiere hardware que hoy no está asegurado:** el solve a escala real
   con padding 3.5 m tuvo un pico de 7.3 GB, y un dominio mayor necesitará
   más. La máquina de desarrollo actual tiene ~5 GB; los solves anteriores
-  se hicieron en una de 15 GB + 11 GB de swap. Hay que asignar una máquina
-  (o una VM temporal de memoria alta) antes de que P1 pueda cerrar.
+  se hicieron en una de 15 GB + 11 GB de swap. **Desde el 2026-10-31 hay
+  acceso al laboratorio de la facultad** (más de 30 PCs de 32 GB, sin red
+  entre ellas, algunas horas de día): cada solve tiene que caber en una
+  sola PC. Estrategia en el `README.md` raíz, «Cómputo en el laboratorio de
+  la facultad».
 - **Scorer por evento (R1):** S1/S2 por órgano y categoría con el total de
   cada evento, y N = todos los primarios (incluidos los que no depositan).
   Necesario para P2–P6.
@@ -213,19 +283,15 @@ Pendientes:
     - es aproximadamente 2σ del error de la propia referencia (≤5% en
       órganos grandes);
     - coincide con la banda 0.9–1.1 que obtuvo otro grupo con Geant4.
-  - **Órganos chicos (mama y tiroides): ±15%,** a pedido del equipo, para
-    tener un criterio numérico también en ellos. Hay que saber que este
-    número es más exigente que el ruido de la propia referencia:
-    - el error estadístico de PHITS por punto llegaba a 15% (1σ) en
-      órganos chicos, aunque el promediado entre códigos y el suavizado
-      lo reducen;
-    - por eso, que un órgano chico quede fuera se registra y se investiga,
-      pero por sí solo no hace fallar P0. P0 falla solo si fallan órganos
-      grandes.
-    - **Costo:** para que el IC95 quepa en ±15% hace falta un error
-      relativo de ~4% en órganos de 20–25 g. Eso pide ~4–6·10⁶ eventos por
-      energía, frente a ~3·10⁶ para los grandes, y duplica el tiempo de
-      P0 (sección «Costo» más abajo).
+  - **Órganos chicos (mama y tiroides): ±30% (decidido el 2026-10-31).**
+    Misma regla que en los órganos grandes: unas 2 veces el error de la
+    propia referencia, que en órganos chicos llega a 15% a 1σ (§4.4.2). La
+    propuesta anterior, ±15%, pedía más precisión que la de ICRP y
+    duplicaba P0. ICRP 116 no fija tolerancias por órgano; esta banda no
+    mide exactitud fina, sino que detecta errores gruesos (una definición
+    de órgano o una masa mal asignada), que en órganos chicos son el error
+    más probable. Un órgano chico fuera de ±30% también hace fallar P0
+    hasta que se explique.
   - Los demás órganos de `organos_p0.py` son descriptivos.
   - Entre el corte del casco y 100 MeV/n, todo es descriptivo.
 
@@ -254,9 +320,8 @@ Pendientes:
   - **Dosis efectiva** (Tablas A.6 y A.11): transcrita como control
     secundario. Necesita el fantoma AF (D5).
   - **Costo estimado de P0** (8 energías, esta máquina de 8 núcleos):
-    - ~4–5 h si solo se exige a los órganos grandes;
-    - ~9–10 h para que mama y tiroides también alcancen la precisión de
-      ±15%.
+    ~4–5 h. Lo fijan los órganos grandes: con ±30%, mama y tiroides no
+    piden eventos extra (con ±15% eran ~9–10 h).
 
     Achicar la esfera fuente alrededor del fantoma desnudo reduce el costo
     cerca de la mitad.
@@ -287,10 +352,32 @@ Decidido: se amplían. El piloto fija cuánto. Herramienta disponible
    rigidez de interés. **Hecha el 2026-10-01 con el patrón K=1; hay que
    repetirla con la geometría del paso 0 (hallazgo A4).** Ver «Resultado
    de la preselección» más abajo.
-2. **Elmer:** dominios crecientes. Comparar el campo interior entre ellos
-   (efecto de la frontera `AV=0`; hoy Biot-Savart y Elmer difieren hasta
-   un 40% hacia los extremos en z). Requiere una máquina con más de ~8 GB
-   de RAM.
+2. **Mapa y validación (cambiado el 2026-10-31).**
+   - **Mapa:** Biot-Savart volumétrico (`field/compute_field_volumetric.py`),
+     sin dominio finito. Cuadratura de 6 × 3 filamentos con error medido
+     ≤0.32% junto a las bobinas y ≤0.08% en el hábitat. El paso de la
+     grilla se fija con `--check-points` y con la dosis del paso 3.
+   - **Validación con Elmer, de una sola bobina.** Con μr = 1 el problema
+     es lineal y el arreglo es la suma de bobinas iguales. Además, el
+     ensayo grueso del arreglo mostró que, en el hábitat, el error de
+     Elmer (~0.1 T) tapa el campo, que es un resto de cancelaciones.
+     - 2–3 corridas por PC con malla y caja crecientes, con corriente
+       uniforme (`Normalize Coil Current = True`);
+     - se comparan con Biot-Savart junto a la bobina y en líneas radiales
+       (`field/validate_volumetric_field.py`).
+   - **Criterio, fijado antes:** la diferencia con Biot-Savart se achica al
+     refinar Elmer y, en la corrida más fina, queda dentro del cambio entre
+     las dos corridas más finas de Elmer.
+   - **Paso del mapa:** con 0.5 m, la interpolación se equivoca en 4.7%
+     (p95) en el hábitat; se propone 0.25 m, unos 10–20 min por mapa en
+     una PC del laboratorio.
+   - **Antecedente** (frontera `AV=0`): Biot-Savart y Elmer diferían hasta
+     un 40% hacia los extremos en z. Ensayo grueso con NIAC en la
+   laptop (2026-10-31; `field/README.md`, «Elmer en el laboratorio»): los
+   signos coinciden con Biot-Savart, pero |B| difiere entre 31% y 62% dentro
+   del anillo, frente a 2–15% con K=1 a igual resolución. Con NIAC, el campo
+   del hábitat es un resto de cancelaciones, así que la convergencia de
+   malla y dominio va a pesar más que con K=1.
 3. **Convergencia de la dosis:** x=0 y una posición fuera del eje, en las
    energías más sensibles al campo (cerca del corte del escudo), para
    R₁ < R₂ < R₃.
@@ -312,7 +399,25 @@ Decidido: se amplían. El piloto fija cuánto. Herramienta disponible
 
 > **Nota (2026-10-04):** esta preselección usó el patrón K=1, que dejó de
 > ser la geometría de producción (hallazgo A4). El método sigue valiendo;
-> los números se rehacen con la disposición de NIAC.
+> los números se rehacen con la disposición de NIAC (hecho el 2026-10-31,
+> ver «Preselección con la disposición de NIAC» más abajo).
+
+**Chequeo exploratorio de la cola con NIAC (2026-10-31; no es la
+preselección).** Script: `field/studies/cola_campo_niac_k1_2026-10-31.py`
+(salida en el `.txt` homónimo). Usa la misma métrica A (p90 de ∫u×B dl
+hacia atrás, 2000 pares por radio) para las dos disposiciones:
+
+| R (m) | 12 | 14 | 16 | 18 | 20 | 22 | 24 | 28 | 32 |
+|---|---|---|---|---|---|---|---|---|---|
+| K=1 (T·m) | 0.43 | 0.17 | 0.09 | 0.05 | 0.04 | 0.02 | 0.02 | 0.01 | 0.005 |
+| NIAC (T·m) | 1.38 | 0.82 | 0.56 | 0.39 | 0.28 | 0.20 | 0.16 | 0.10 | 0.06 |
+
+- NIAC llega a la cola que K=1 tiene a 12, 14 y 16 m recién hacia 18,
+  23 y 28 m.
+- **Pero la cola no predice las reentradas** (ver «Métrica», más abajo).
+  La preselección real con NIAC, con la métrica B, mueve los radios
+  bastante menos (resultado más abajo). Esta tabla queda solo como
+  registro.
 
 Script: `field/preselect_source_radius.py`. Resultados:
 `field/studies/p1_preseleccion_radio_2026-10-01.json`.
@@ -382,17 +487,119 @@ Con la sección media del fantoma, la fracción a 14 m es unas 4 veces menor
 que a 6.94 m. Esto encarece P3 y hace más relevante P5 (sesgo de fuente).
 Es una observación, no una decisión.
 
+#### Preselección con la disposición de NIAC (paso 1, 2026-10-31)
+
+Misma configuración y método que la de K=1 (1000 pares por radio y
+rigidez), sobre las trayectorias de corriente de
+`field/examples/crewhat_niac_array.json`. Resultados:
+`field/studies/p1_preseleccion_radio_niac_2026-10-31.json`. Tardó unos 45
+minutos con 7 procesos. Bobinas (material) hasta **10.37 m** del centro.
+
+```bash
+# Desde field/
+.venv/bin/python preselect_source_radius.py generated/crewhat_niac_array/array_current_paths.json \
+    studies/p1_preseleccion_radio_niac_2026-10-31.json --radii 14 16 18 20 22 24 28 32 \
+    --rigidities-gv 0.15 0.25 0.36 0.71 1.5 --n-tail 1000 --n-track 1000 --processes 7
+```
+
+| R (m) | ∫B⊥·dl mediana / p90 (T·m) | 12 MeV (0.15 GV) | 33 MeV (0.25 GV) | 67 MeV (0.36 GV) | 238 MeV (0.71 GV) | 831 MeV (1.5 GV) |
+|---|---|---|---|---|---|---|
+| 14 | 0.44 / 0.82 | 4.2% | 0.9% | 0 [0, 0.4] | 0 [0, 0.4] | 0 [0, 0.4] |
+| 16 | 0.29 / 0.55 | 0.8% | 0.1% [0.0, 0.6] | 0 [0, 0.4] | 0 [0, 0.4] | 0 [0, 0.4] |
+| 18 | 0.21 / 0.37 | 0.4% [0.2, 1.0] | 0 [0, 0.4] | 0 [0, 0.4] | 0 [0, 0.4] | 0 [0, 0.4] |
+| 20–32 | ≤0.16 / ≤0.27 | 0 [0, 0.4] | 0 [0, 0.4] | 0 [0, 0.4] | 0 [0, 0.4] | 0 [0, 0.4] |
+
+Todos los pares malos fueron reentradas; ninguno quedó atrapado.
+
+**Lectura.**
+- **Frente a K=1, NIAC corre los radios unos 2–4 m, no más.** Con K=1, a
+  12 m había 1.9%, 0.5% y 0.1% en las tres primeras columnas, y a 14 m solo
+  0.1% en la de 12 MeV. NIAC a 16 m queda algo mejor que K=1 a 12 m, y
+  NIAC a 20 m, como K=1 a 14 m.
+- **La cola ∫B⊥·dl engaña:** es 2–3 veces la de K=1 al mismo radio, pero
+  las reentradas no crecen en esa proporción. Confirma que la métrica que
+  vale es la de reentradas.
+- **Candidatos para los pasos 2–3: 14, 16 y 18 m** (R₁ < R₂ < R₃), con el
+  mismo criterio que con K=1: a 67 MeV, cerca del corte del casco, no hay
+  reentradas desde 14 m. 20 m queda como reserva si se exige la columna de
+  12 MeV. Elegir entre ellos corresponde a D3 y al paso 3.
+- **Consecuencia para Elmer:** el mapa tiene que cubrir unos ±19 m (con R₃
+  = 18 m), y la frontera `AV=0` quedar más lejos. Con aire uniforme de
+  0.30 m no cabe en una PC de 32 GB: una caja de ±22 m son unos 13 M de
+  tetraedros, unos 40 GB con los 3.1 KB por tetraedro medidos. Ver la
+  estrategia en el `README.md` raíz.
+- **Costo en Geant4:** la fracción de primarios que tocan el fantoma cae
+  como 1/R². A 16 m es unas 5 veces menor que a 6.94 m.
+
 ### P2 — Validación del estimador de incertidumbre por evento
 
 Repite la Fase 7 con el scorer nuevo.
 
-- **Diseño:** 3–4 combinaciones (incluidas SEP y una energía alta), 5
-  semillas independientes por combinación, varios M.
-- **Métrica:** para cada M por separado, `sqrt(media(SE_within²))` frente
-  a `s_between` de las respuestas **por primario**, por órgano/categoría.
-- **Criterio:** rango D4 e incertidumbre de la comparación predefinidos.
-  Cinco semillas son una exploración, no garantizan una validación precisa
-  de la varianza; dimensionar las semillas según la precisión del contraste.
+**Diseño fijado el 2026-10-31, antes de correr.**
+
+- **Objetivo:** confirmar que el SE de una sola corrida (S1/S2 por evento)
+  es confiable cuando la corrida pasa D4, para usar R=1 en el barrido.
+  Como el barrido es monoenergético por punto y D4 se revisa en cada
+  corrida, el resultado vale para todos los espectros.
+- **Dos partes** (resuelve la contradicción entre «sin campo» y «con
+  campo»):
+  - **P2a, sin esperar el mapa:** configuración de control (la misma
+    geometría sin campo, que es la mitad del barrido). Geometría de NIAC
+    (`field/production/crewhat_niac_array.gdml`), casco de 1.5 cm, esfera
+    fuente de 16 m (candidato central de P1), fantoma AM en x = 0, ley
+    coseno.
+  - **P2b, con el mapa final:** SEP_p 150 MeV con campo, mismos criterios.
+- **Casos de P2a**, uno por cada régimen de colas:
+
+  | Caso | Por qué |
+  |---|---|
+  | SEP_p 70 MeV | Justo sobre el corte del casco (~65 MeV): llegan pocos primarios y depositan mucho. Es la cola más pesada medida (un evento con el 57% del pulmón). |
+  | SEP_p 150 MeV | Régimen típico de SEP, colas moderadas. Es también el caso de P2b, que así se compara con su versión sin campo. |
+  | GCR_He 1 GeV/n | Carga 2 (4 veces la ionización) y fragmentación nuclear. |
+  | GCR_H 10 GeV | Cascadas hadrónicas: eventos raros con depósitos enormes. |
+
+- **Tamaño:**
+  - Una corrida larga por caso, partida por `event_id` en **K = 40 lotes
+    disjuntos** de M eventos. Cada lote equivale a una corrida
+    independiente (método de la prueba por lotes, más abajo). Con 40 lotes,
+    la dispersión real entre lotes se conoce con ±22% (IC95); con 20 sería
+    ±30%.
+  - **M** se fija antes con una sonda de 10⁴ eventos que solo mide la
+    fracción f de eventos con depósito en cuerpo entero (no mira el SE):
+    M = 400/f, es decir unos 400 eventos con depósito por lote en cuerpo
+    entero. Las categorías chicas tendrán menos; ahí decide D4.
+  - La misma corrida se reparte también en 160 lotes de M/4 (~100 eventos
+    con depósito), sin costo extra, para ver que D4 rechaza esos lotes y
+    que sin D4 la cobertura cae.
+- **D4 (fijado):** el SE de una corrida o lote se acepta, por categoría,
+  si se cumplen las tres condiciones:
+  1. al menos 200 eventos con depósito (cobertura de 0.90–1.00 desde ~200
+     en la prueba por lotes del 2026-10-01);
+  2. VOV < 0.1 (criterio de MCNP; con VOV < 0.1 la cobertura fue 93.5%);
+  3. ningún evento aporta más del 10% del total (`max_J/S1 ≤ 0.10`):
+     detecta un evento que domina el total, cosa que el conteo de eventos
+     no ve.
+
+  En el barrido, una corrida que no pasa D4 en una categoría recibe más
+  eventos hasta pasar, o esa categoría se reporta como no resuelta.
+- **Criterio de aprobación (fijado)**, por caso, con los lotes que pasan
+  D4:
+  - **a) Cobertura ≥ 0.90:** fracción de pares (lote, categoría) cuyo IC95
+    (media ± 1.96 SE) contiene la media de la corrida completa. Lo
+    esperado es ~0.95; 0.90 equivale a subestimar el SE en ~16%.
+  - **b) Calibración:** en cada categoría con al menos 10 lotes que pasan
+    D4, ρ = sqrt(media(SE²))/s_between ≥ 0.75. Solo se exige el lado
+    bajo, porque sobrestimar el SE es conservador. Con 40 lotes, un
+    estimador correcto queda bajo 0.75 con probabilidad ~0.2% por
+    categoría.
+  - **c) Descriptivo:** cobertura de los lotes que no pasan D4. Se espera
+    menor, y eso muestra que D4 sirve.
+  - Si P2 falla, se investigan las colas y el scorer antes de tocar los
+    umbrales. Cambiarlos exige una corrida confirmatoria nueva, de tamaño
+    fijo (regla 3).
+- **Costo:** del orden de 10³ núcleo-hora para los 4 casos (la sonda lo
+  precisa), una sesión del laboratorio. Falta el script de P2; parte de
+  `tests/scorer_por_evento/prueba_lotes.py`.
 - **Resultado esperado:** compatibilidad con 1. S2 por evento permite un
   estimador insesgado de la varianza bajo independencia y varianza finita;
   no hace exacta la varianza estimada ni valida automáticamente un IC normal.
@@ -590,14 +797,63 @@ Equivale a la Fase 10.
   reduce la varianza.
 - **Bloquea:** los M finales del barrido.
 
+### P7 — Simulación en dos etapas (propuesta, 2026-10-31)
+
+Idea del equipo para correr los dos fantomas (D5) sin duplicar todo:
+simular una vez lo costoso y reusarlo con cualquier fantoma. Es la técnica
+de fuente de superficie o espacio de fases (en MCNP, SSW/SSR; en
+radioterapia, los archivos de espacio de fases).
+
+- **Superficie de registro:** entre el casco y las bobinas, por ejemplo un
+  cilindro de 5.5 m de radio y ±5.5 m en z (las bobinas empiezan a
+  5.67 m del eje).
+  - No una esfera de 2 m alrededor del fantoma: en las posiciones cerca
+    del casco (x = 4 m) se saldría del hábitat, y obligaría a una etapa 1
+    por posición.
+  - Afuera del casco y no sobre él, para que la etapa 2 incluya el campo
+    junto al casco (0.3–0.4 T): las cargas lentas que salen del casco
+    giran y vuelven a entrar en centímetros.
+- **Etapa 1**, una por configuración (escudo o control × especie ×
+  energía): geometría completa sin fantoma. Cada partícula que cruza la
+  superficie hacia adentro se guarda (tipo, energía, posición, dirección,
+  tiempo, peso y `event_id` del primario) y se mata. También se guarda N,
+  el total de primarios.
+- **Etapa 2**, por fantoma y posición: lo que hay dentro de la superficie
+  (aire, casco, fantoma y el mapa de campo).
+  - Cada evento reproduce todas las partículas de un mismo `event_id`, y
+    los eventos vacíos también cuentan en N. Así S1, S2 y el SE por evento
+    siguen siendo válidos, porque las partículas de una misma cascada
+    están correlacionadas.
+  - Cada evento de la etapa 1 se usa una sola vez por fantoma, sin
+    reciclar, para no subestimar la varianza.
+  - CRN: la misma semilla por `event_id` en escudo y control.
+- **Qué se pierde:** lo que el fantoma manda hacia afuera de la superficie
+  y vuelve a entrar (por ejemplo, retrodispersado en las bobinas). Se
+  espera pequeño, pero hay que medirlo.
+- **Validación (criterio fijado antes):** comparar una etapa con dos
+  etapas, escudo y control, en SEP_p 150 MeV, GCR_H 1 GeV y GCR_He
+  1 GeV/n. Aprueba si el IC95 de la diferencia de dosis por categoría cae
+  dentro de ±B (D3).
+- **Ganancia:** la etapa 1 (campo, bobinas, casco y esfera de 14–18 m) se
+  paga una vez para los dos sexos y las 5 posiciones, y queda disponible
+  para cualquier fantoma futuro. La etapa 2 (el fantoma) se paga igual
+  por cada caso. Cuánto se ahorra depende de cuál de las dos etapas domina
+  el costo, y eso lo mide la validación.
+- **Costo y trabajo:**
+  - el almacenamiento (decenas a cientos de GB en todo el barrido) se mide
+    en la primera corrida;
+  - en Geant4 falta el registro en la superficie, un generador que lea el
+    archivo agrupado por evento y la geometría de la etapa 2;
+  - requiere decisión del equipo.
+
 ## Dependencias
 
 ```
 D1–D9 + scorer nuevo
    ├─ P0 (normalización, sin campo)
    ├─ P1 (dominio y radio) ─┬─ P3 (costo y convergencia) ─┬─ P6 (η)
-   │   └─ mapa Elmer final  │   P4 (energías) ────────────┤
-   │      (máquina >8 GB)   │   P5 (sesgo) ────────────────┘
+   │   └─ mapa final (BS)   │   P4 (energías) ────────────┤
+   │      (lab., 32 GB/PC)  │   P5 (sesgo) ────────────────┘
    └─ P2 (estimador, sin campo) ─┘
 ```
 
@@ -609,9 +865,11 @@ corrida con campo hecha antes del mapa final es reutilizable.
 ## Condición para empezar el barrido
 
 - [ ] D1–D7 y D8 si aplica decididas y registradas antes de los pilotos afectados.
-- [ ] Geometría de bobinas de NIAC (disposición y masa, D9; hallazgos A4 y
-      B9) generada, verificada y versionada en `field/production/`.
-- [ ] Mapa de campo Elmer final (dominio de P1) generado, versionado en
+- [x] Geometría de bobinas de NIAC (disposición y masa, D9; hallazgos A4 y
+      B9) generada, verificada y versionada en `field/production/`
+      (2026-10-31).
+- [ ] Mapa de campo final (Biot-Savart volumétrico validado con Elmer,
+      dominio de P1) generado, versionado en
       `field/production/` con su manifiesto y hash, y cargado en Geant4 sin
       truncamiento dentro de la esfera fuente ni del `MagnetEnvelope`.
 - [ ] Scorer nuevo y coordinator con procedencia, con tests.

@@ -382,8 +382,241 @@ mapa versionado.
     --n-tail 1000 --n-track 1000 --processes 6 --check-map production/crewhat_niac_max.map
 ```
 
-Resultado del 2026-10-01: `studies/p1_preseleccion_radio_2026-10-01.json`.
-La lectura está en `docs/bitacora/plan_piloto.md` (P1).
+Resultado del 2026-10-01 (K=1): `studies/p1_preseleccion_radio_2026-10-01.json`.
+Con la disposición de NIAC (2026-10-31, radios de 14 a 32 m):
+`studies/p1_preseleccion_radio_niac_2026-10-31.json`. La lectura de los dos
+está en `docs/bitacora/plan_piloto.md` (P1).
+
+## Disposición de NIAC (v2, P1 paso 0)
+
+`examples/crewhat_niac_array.json` es el arreglo de la v2 (D9 en
+`docs/bitacora/plan_piloto.md`): la misma bobina elíptica (semiejes 4 y 2 m)
+en el mismo anillo de 8 m que el arreglo K=1, con dos cambios:
+
+- **Sentido de corriente:** θ_k = 90° − φ_k (`theta_deg_pattern`), que deja
+  el hábitat casi sin campo, como pide NIAC.
+- **Bobinado rectangular** de 0.67 m radial × 0.32 m axial, con densidad
+  efectiva de 3.755 g/cm³ para que cada bobina pese 15.6 t.
+
+Los dos son supuestos propios declarados: los autores de NIAC no
+respondieron (2026-10-31). La sección rectangular se declara con
+`winding_pack_radial_m` (en el plano de la bobina) y `winding_pack_axial_m`
+(a lo largo de su normal); sin esas claves se mantiene la sección cuadrada
+`winding_pack_side_m` de la v1.
+
+```bash
+# Desde field/
+.venv/bin/python generate_ellipse_array.py examples/crewhat_niac_array.json generated/crewhat_niac_array
+.venv/bin/python generate_mesh.py generated/crewhat_niac_array/halbach_array.geo \
+  generated/crewhat_niac_array/halbach_array.msh \
+  --dependency generated/crewhat_niac_array/halbach_array.brep --dependency examples/crewhat_niac_array.json
+.venv/bin/python mesh_to_gdml.py generated/crewhat_niac_array/halbach_array.msh \
+  generated/crewhat_niac_array/materials.json generated/crewhat_niac_array/halbach_array.gdml
+# Desde geant4/ActiveShield_Sim/build: importación, masas y solapamientos
+./ICRP110phantoms ../../../field/examples/import_crewhat_niac_array.mac
+```
+
+Verificado el 2026-10-31 (unos 2 minutos en la laptop):
+
+- 8 bobinas de 4.1541 m³ de malla (4.1544 m³ de CAD) y 15 599 kg cada una
+  en Geant4;
+- sin solapamientos con el casco, la cabina ni entre bobinas;
+- material hasta 10.34 m del eje en x e y, y ±4.34 m en z;
+- |B| Biot-Savart: 0 en el eje, 0.007–0.019 T a 2 m del eje y
+  0.33–0.43 T junto al casco (4.5 m).
+
+El GDML y sus manifiestos están en `production/crewhat_niac_array.*`.
+
+**Elmer:** `examples/crewhat_niac_array.sif` es el `.sif` de este arreglo
+(`Coil Normal = −(cos θ_k, sin θ_k, 0)`, la misma regla de signo del
+piloto K=1). `mesh_exterior.py --padding X Y Z` acepta un margen por eje:
+el arreglo mide ±4.34 m en z frente a ±10.34 m en x e y, y con un margen
+único, empujar las caras z hasta ±20 m llevaría x e y a ±26 m.
+
+**Cola del campo:** `studies/cola_campo_niac_k1_2026-10-31.py` compara la
+cola Biot-Savart de NIAC y de K=1 fuera de la esfera fuente, para elegir
+los radios que hay que trazar en el paso 1 de P1.
+
+## Biot-Savart volumétrico (mapa de la v2, 2026-10-31)
+
+**Por qué.** En todo el dominio μr = 1, que es el mismo supuesto del `.sif`
+de Elmer. Con corrientes dadas y sin materiales magnéticos, el campo es
+exactamente la integral de Biot-Savart de la densidad de corriente.
+
+El error de los mapas Biot-Savart de la v1 venía de poner toda la corriente
+de cada bobina en un solo filamento con núcleo regularizado, cuando el
+bobinado mide 0.67 × 0.32 m. Lejos, eso apenas importa; cerca del bobinado,
+sí.
+
+`compute_field_volumetric.py` reparte la corriente de cada bobina en
+n_radial × n_axial filamentos paralelos con la misma corriente (vueltas en
+serie dan densidad uniforme), ubicados como el rectángulo del CAD. Cada
+segmento usa la fórmula exacta del tramo recto, salvo dentro de un núcleo
+del área del filamento, donde usa el perfil de un alambre uniforme. Así, en
+el interior del bobinado (conductor sólido) el campo queda finito.
+
+No hay caja ni frontera: el mapa puede ser tan grande como pida la esfera
+fuente.
+
+```bash
+# Desde field/. Mapa (el tiempo es solo de esta generación; Geant4 lee el
+# .map igual que antes, con la misma interpolación trilineal):
+.venv/bin/python compute_field_volumetric.py generated/crewhat_niac_array/array_current_paths.json \
+  generated/mapa_bs_niac/niac_bs_20m_0.5.map --half-size 20 --spacing 0.5 --filaments 6 3 \
+  --check-points 1000
+# Autoconvergencia y, en el laboratorio, comparación con Elmer:
+.venv/bin/python validate_volumetric_field.py generated/crewhat_niac_array/array_current_paths.json \
+  salida.json --filaments 3 2 6 3 12 6 24 12 [--vtu elmer_grueso.vtu elmer_fino.vtu]
+```
+
+**Error numérico medido (2026-10-31), 6 × 3 filamentos y 256 segmentos
+por bobina, frente a 24 × 12** (`validate_volumetric_field.py`):
+
+| Zona | Error máximo |
+|---|---|
+| Junto a la bobina 0 (5 cm–2 m del bobinado) | 0.32% |
+| Hábitat | 0.08% |
+| Líneas radiales hasta 18 m | 0.08% |
+
+- Pasar de 256 a 512 segmentos cambia ≤0.16% junto a la bobina y ≤0.03%
+  en el hábitat.
+- Un solo filamento por bobina se equivoca hasta 37% junto a la bobina y
+  hasta 16% en el hábitat (relativo al campo local).
+- **Test analítico** (`tests/test_field_volumetric.py`): una bobina
+  circular gruesa en su eje coincide con la fórmula cerrada en 2·10⁻⁵. El
+  test detecta si se invierten los lados radial y axial (0.45%) o si se
+  usa un solo filamento (0.15%).
+
+**Tiempo (medido el 2026-10-31).** Se gasta solo al generar el mapa: Geant4
+lo lee al inicializar e interpola igual que cualquier `.map`. Con NumPy, un
+proceso evalúa 1.5·10⁷ pares segmento-punto por segundo, y cada nodo suma
+8 bobinas × 18 filamentos × 256 segmentos = 36 864 segmentos. Mapa de
+±20 m:
+- paso de 0.5 m (531 mil nodos): ~0.4 h en un proceso. En la laptop, con 7
+  procesos y la máquina ocupada, tardó 29 min;
+- paso de 0.25 m (4.2 M nodos): ~2.8 h en un proceso, unos 10–20 min en
+  una PC del laboratorio con 20 procesos.
+
+**Interpolación del mapa** (`--check-points`: trilineal como Geant4, frente
+a evaluación directa, 1000 puntos por zona). Mapa de ±20 m con paso de
+0.5 m (`generated/mapa_bs_niac/`):
+
+| Zona | Mediana | p95 |
+|---|---|---|
+| Hábitat | 1.3% | 4.7% |
+| Junto a las bobinas | 0.4% | 4.9% |
+| Fuera de 12 m | 0.04% | 0.14% |
+
+Los porcentajes son del campo local, contando solo los puntos con
+|B| ≥ 10 mT. Con 0.25 m el error baja unas 4 veces y el mapa sigue siendo
+barato, así que **se propone un paso de 0.25 m**; P1 lo confirma con la
+dosis.
+
+**Materiales del bobinado.** Solo importan sus propiedades magnéticas
+(para el transporte, el material sigue en el GDML).
+- Cobre y plata son diamagnéticos (|χ| ~ 10⁻⁵).
+- El Hastelloy C-276 del sustrato es paramagnético de Curie entre 4 y
+  300 K (C = 0.091 K; Lu, Choi y Zhou, *J. Appl. Phys.* 103, 064908,
+  2008). A los 40 K de diseño de CREW HaT, χ ≈ 2·10⁻³.
+- En el bobinado homogeneizado, el Hastelloy ocupa ~19% del volumen, así
+  que χ_eff ≈ 4·10⁻⁴: cambia el campo en menos de 0.05%.
+- El mismo trabajo ve agregados ferromagnéticos bajo ~10 K y un vidrio de
+  espín bajo 3 K: no aplica a 40 K.
+- Las corrientes de apantallamiento del REBCO superconductor no las modela
+  ni este método ni el `.sif` de Elmer. Queda como supuesto declarado.
+
+**Corriente en Elmer.** El CoilSolver de Elmer resuelve un problema de
+conducción, y con `Normalize Coil Current = False` (el `.sif` K=1) reparte
+la corriente como en un conductor macizo, cargada hacia el interior de cada
+curva. Un bobinado de vueltas en serie tiene densidad uniforme
+(«stranded»), que es lo que modela Biot-Savart volumétrico.
+`examples/crewhat_niac_array.sif` usa `Normalize Coil Current = True`
+(«Normalizing current density (as for stranded coil)» en el log).
+
+**Validación con Elmer en el laboratorio (P1, paso 2): una sola bobina.**
+Con μr = 1 el problema es lineal: el campo del arreglo es exactamente la
+suma del campo de cada bobina, en Elmer y en Biot-Savart. Por eso alcanza
+con validar una bobina (las 8 son iguales salvo rotación).
+
+Validar el arreglo completo en Elmer no sirve para el hábitat. El ensayo
+grueso del arreglo (abajo, «Elmer en el laboratorio») muestra que ahí el
+campo es un resto pequeño de cancelaciones. Un error de Elmer del 10% en
+cada bobina se vuelve ~0.1 T en el hábitat, donde el campo real es de
+pocos mT a ~0.2 T.
+
+Con una sola bobina el dominio es chico, así que en 32 GB cabe una malla
+fina, con aire de ~0.10 m. Procedimiento:
+1. 2–3 corridas por PC, con malla y caja crecientes y la corriente de
+   bobina de vueltas (`Normalize Coil Current = True`).
+2. Comparar con Biot-Savart volumétrico de esa misma bobina en las zonas
+   de `validate_volumetric_field.py`: junto a la bobina (4 estaciones × 4
+   direcciones × 6 distancias, de 5 cm a 2 m) y líneas radiales.
+
+Criterio, fijado antes:
+- la diferencia tiene que achicarse al refinar Elmer;
+- en la corrida más fina, tiene que quedar dentro del cambio entre las dos
+  corridas más finas (el propio error de Elmer).
+
+El arreglo completo en Elmer queda solo como chequeo de orientación y
+signos, que ya pasó (dirección igual en el casco).
+
+## Elmer en el laboratorio (32 GB por PC)
+
+Estrategia general en el `README.md` raíz («Cómputo en el laboratorio de
+la facultad»). Desde el 2026-10-31, Elmer es la validación independiente del
+mapa de Biot-Savart volumétrico (sección anterior), no el mapa de
+producción. Aspectos de Elmer:
+
+- **Por qué crece la malla.** A tamaño de aire fijo, la cantidad de
+  tetraedros es proporcional al volumen de la caja. El solve de producción
+  de la v1 (caja de ±11.8 × ±13.8 × ±7.8 m, aire de 0.30 m) tenía 1.56 M
+  tetraedros y llegó a 7.3 GB. Una caja de ±20 m tiene 6 veces ese volumen;
+  una de ±25 m, 12 veces.
+- **Memoria.** Los solves anteriores usaron entre 3 y 5 KB por tetraedro
+  (`CREWHAT_STATUS.md` y `docs/bitacora/activeshield_sim_historia.md`); el
+  ensayo con NIAC, 3.1 KB. Con ~26 GB útiles dentro de WSL2 caben unos
+  5–8 M tetraedros: con aire uniforme de 0.30 m, una caja de hasta
+  ±16–19 m. Los candidatos de P1 con NIAC (14–18 m) piden un mapa de
+  ±19 m con la frontera más afuera: una caja de ±22 m son unos 13 M de
+  tetraedros y ~40 GB.
+- **Límite de iteraciones.** `Max Iterations` es un tope, no un costo: un
+  solve que converge se detiene al llegar a la tolerancia (1e-8). El tope
+  solo decide cuánto corre un solve que no converge antes de abortar
+  (`Abort Not Converged`). Sin precondicionador, las iteraciones crecen con
+  el tamaño lineal de la malla, y cada iteración cuesta en proporción a las
+  incógnitas. Con el tope de 1000 del piloto K=1, un dominio grande podía
+  abortar después de horas de cálculo; el `.sif` de NIAC sube el de
+  MGDynamics a 10 000. `Residual Output = 10` imprime el residuo cada 10
+  iteraciones, y un residuo estancado se detiene a mano. Medido el
+  2026-10-31: 87 iteraciones con 0.59 M tetraedros. Si crecen con el tamaño
+  lineal, una malla 10 veces mayor pediría unas 200: el tope de 1000 ya
+  alcanzaba, y 10 000 es solo un margen.
+- **Ensayo grueso con NIAC (2026-10-31, laptop).** Margen de 2 m, aire de
+  0.40 m: 0.53 M tetraedros de aire y 0.06 M de conductor.
+  - Recursos: 72 s y 0.76 GB para mallar; `ElmerSolver` en 15–25 min con
+    1.7–1.8 GB de pico (3.1 KB por tetraedro), con la laptop ocupada.
+  - **Orientación correcta:** en los 7 puntos de
+    `examples/crewhat_niac_array_validation_probes.json`, la dirección de
+    B junto al casco coincide con Biot-Savart (coseno de 0.999 a 1.000).
+  - **Magnitudes no**, comparadas con Biot-Savart volumétrico (24 × 12):
+    - en la grilla del hábitat, Elmer se equivoca en ~0.1 T (mediana de
+      92 mT). En (−0.5, −0.5, 0) m da 16 mT en otra dirección, cuando el
+      campo real es de 4 mT;
+    - junto a la bobina, el error tiene una mediana de 18%.
+
+    Es el error de malla y de una frontera a 2 m de las bobinas,
+    amplificado por las cancelaciones de NIAC.
+  - **Conductor macizo frente a bobina de vueltas** (`Normalize Coil
+    Current` False o True, misma malla): en el hábitat cambian 0.5 mT de
+    mediana (p95 de 1.5%); junto a la bobina, hasta 17%. El modelo de
+    corriente importa cerca del conductor; en el hábitat, el error de
+    malla de Elmer es ~100 veces mayor.
+  - 87 iteraciones de MGDynamics como conductor macizo y 72 como bobina de
+    vueltas.
+- **MPI.** Elmer está compilado sin MPI (`scripts/install.sh`): un solve
+  usa un solo proceso. MPI dentro de una PC acelera, pero no reduce la
+  memoria total, y obliga a leer la salida particionada. Entre PCs no se
+  usa, porque no forman un clúster.
 
 ## Validación y próximos pasos
 

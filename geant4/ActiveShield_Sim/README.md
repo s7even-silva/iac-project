@@ -158,7 +158,10 @@ de sus propios comandos `/vis/...`. Ver
 - `worldHalfSize`: mínimo solicitado, mayor de 6 m; para mapas se amplía
   por eje hasta `max(mínimo, abs(límites del mapa) + 1 m)`.
 - `fieldMap`: omitir para no cargar campo. Un mapa inválido causa error fatal;
-  debe extenderse más allá de todo el hábitat en X, Y y Z.
+  debe extenderse más allá de todo el hábitat en X, Y y Z, y contener la
+  esfera fuente completa (`sourceSphereRadius`) en los tres ejes: fuera del
+  mapa el campo es cero. CTest `field_map_covers_source` comprueba que un
+  mapa más chico que la esfera detiene la inicialización.
 - `fieldScale 0`: mismo mapa y dominio, campo apagado; útil como control.
   Un factor distinto de 1 solo representa un cambio de corriente proporcional
   si el modelo electromagnético es lineal y la geometría permanece fija.

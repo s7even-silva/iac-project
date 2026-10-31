@@ -10,9 +10,18 @@ de mallado/FEM. `field/generated/` sigue sin versionarse; esto no cambia
 ese criterio, es una carpeta aparte con una regla propia en `.gitignore`
 (`!field/production/**`).
 
-**Aviso (2026-10-04): estos archivos no son la geometría de la v2.** El
-arreglo de aquí usa el patrón Halbach K=1, que no es la disposición de
-CREW HaT descrita en el reporte NIAC, y sus bobinas pesan 77.9 t cada una
+**Geometría de la v2 (2026-10-31):** `crewhat_niac_array.gdml` y sus
+manifiestos (`crewhat_niac_array.manifest.json`, `.mesh-manifest.json`,
+`_materials.json`) son la disposición de NIAC con la masa corregida (15.6 t
+por bobina), generada desde `field/examples/crewhat_niac_array.json` (ver
+`field/README.md`, «Disposición de NIAC»). SHA256 del GDML:
+`39c6a87632342fe37fe2f30dd910861dc7c697b060937dbfa2a2eca53d5dac80`.
+**Todavía no tiene mapa de campo:** el mapa Elmer sale de P1, paso 2.
+
+**Aviso (2026-10-04): los demás archivos no son la geometría de la v2.**
+El arreglo `crewhat_corc_array` y sus mapas usan el patrón Halbach K=1, que
+no es la disposición de CREW HaT descrita en el reporte NIAC, y sus bobinas
+pesan 77.9 t cada una
 frente a las 15.6 t de NIAC (hallazgos A4 y B9 en
 [`docs/bitacora/auditoria_2026-09-30.md`](../../docs/bitacora/auditoria_2026-09-30.md)).
 Se conservan para reproducir la v1 y como variante de comparación en P1;

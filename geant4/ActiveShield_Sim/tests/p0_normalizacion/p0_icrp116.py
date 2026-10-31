@@ -19,14 +19,15 @@ proyecto (`remainder_tissues`, `total_body`) no se usan en P0.
 
 Criterio D7 (plan_piloto.md): a >= 100 MeV/n, el IC95 del cociente
 simulado/ICRP tiene que caer dentro de 1 ± tolerancia: 10% para pulmones,
-colon, pared del estómago, hígado y médula roja; 15% para mama y tiroides.
+colon, pared del estómago, hígado y médula roja; 30% para mama y tiroides
+(decidido el 2026-10-31).
 El resto de órganos y energías son descriptivos.
 
 Referencia por defecto: referencias/icrp116_organos_iso_am.csv (material
 suplementario v2 de ICRP 116, fantoma masculino, ISO).
 
 Uso:
-    python3 p0_icrp116.py run --out-dir DIR --events 3000000 [--seeds 1]
+    python3 p0_icrp116.py run --out-dir DIR --events 3000000 [--seeds 1] [--points proton_1000 ...]
     python3 p0_icrp116.py analyze --out-dir DIR
 """
 import argparse
@@ -84,7 +85,13 @@ def run(a):
     a.out_dir.mkdir(parents=True, exist_ok=True)
     categories = a.out_dir/"organos_p0.txt"
     organos_p0.write(categories, build/"ICRPdata")
+    names = [f"{particle}_{energy:g}" for particle, energy in POINTS]
+    unknown = set(a.points or []) - set(names)
+    if unknown:
+        raise SystemExit(f"Puntos desconocidos: {sorted(unknown)}; válidos: {names}")
     for i, (particle, energy) in enumerate(POINTS):
+        if a.points and names[i] not in a.points:
+            continue  # la semilla depende de i, no del filtro: repartir puntos no las cambia
         for s in range(a.seeds):
             work = a.out_dir/f"{particle}_{energy:g}"/f"seed_{s}"
             if (work/"EventStats.tsv").is_file():
@@ -165,6 +172,8 @@ def main():
     r.add_argument("--events", type=int, required=True)
     r.add_argument("--seeds", type=int, default=1)
     r.add_argument("--threads", type=int, default=4)
+    r.add_argument("--points", nargs="+", metavar="PARTICULA_ENERGIA",
+                   help="solo estos puntos (p. ej. proton_1000 alpha_100), para repartirlos entre PCs")
     s = sub.add_parser("analyze")
     s.add_argument("--out-dir", type=Path, required=True)
     s.add_argument("--reference", type=Path, default=HERE/"referencias"/"icrp116_organos_iso_am.csv")

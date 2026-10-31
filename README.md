@@ -33,14 +33,17 @@ cargue las mismas instrucciones sin duplicar su contenido.
 
 ## Estado
 
-- **Geometría y campo:** CREW HaT, 8 bobinas Halbach elípticas con conductor
-  CORC homogeneizado, nave de 4.5 m de radio, campo Elmer FEM a escala real
-  (`field/production/crewhat_elmer_fullscale.map`). Biot-Savart se conserva
-  solo para comparación; la cifra histórica "Biot-Savart da 36–48% más dosis"
-  no se reprodujo (0.93 ± 0.08 a 562 MeV). Ver
+- **Geometría:** CREW HaT, 8 bobinas elípticas con conductor CORC
+  homogeneizado, nave de 4.5 m de radio. La v2 usa la disposición de NIAC
+  con 15.6 t por bobina (`field/production/crewhat_niac_array.gdml`,
+  2026-10-31); el arreglo K=1 de la v1 queda para comparar.
+- **Campo:** el mapa Elmer de la v1
+  (`field/production/crewhat_elmer_fullscale.map`) es del arreglo K=1 y no
+  sirve para la v2. La cifra histórica "Biot-Savart da 36–48% más dosis" no
+  se reprodujo (0.93 ± 0.08 a 562 MeV). Ver
   [`modelo_realista.md`](geant4/ActiveShield_Sim/docs/modelo_realista.md).
-- **Bloqueante:** regenerar el mapa Elmer con la esfera fuente que fije P1
-  (12–16 m). Necesita una máquina con más RAM que la de desarrollo.
+- **Bloqueante:** el mapa Elmer de la disposición de NIAC, en el dominio que
+  fije P1. Se resolverá en el laboratorio de la facultad (ver abajo).
 - **Physics list:** `Shielding`.
 - **Incertidumbre:** scorer por evento con autodiagnóstico VOV (ver
   [`metodo_autodiagnostico_incertidumbre.md`](docs/bitacora/metodo_autodiagnostico_incertidumbre.md)).
@@ -116,6 +119,68 @@ sistema, así que hay que pasar el compilador y el prefijo explícitamente:
 | G4PII | 1.3 | |
 | RealSurface | 2.2 | |
 | G4CHANNELING | 2.0 | |
+
+## Cómputo en el laboratorio de la facultad
+
+Plan de trabajo vivo: se corrige a medida que se use el laboratorio.
+Última revisión: 2026-10-31.
+
+**Recursos.**
+- Más de 30 PCs de laboratorio con Windows, Intel i7 o i9 de unos 22 hilos
+  (las i9 no están garantizadas) y 32 GB de RAM cada una.
+- Hay internet y permisos de administrador; WSL2 se puede instalar.
+- No forman un clúster: no están conectadas entre sí para cálculo
+  paralelo.
+- El acceso es de algunas horas, de día y en días distintos.
+
+**Qué implica.**
+- Cada trabajo tiene que caber en una sola PC (32 GB) y terminar en una
+  sesión, o poder retomarse en la siguiente.
+- El paralelismo sale de muchos trabajos independientes: por ejemplo, un
+  dominio de Elmer por PC, o un punto de energía de Geant4 por PC.
+- No se usa MPI entre PCs (`field/README.md`, «Elmer en el laboratorio»).
+- Los resultados se copian fuera de la PC al terminar cada sesión.
+
+**Entorno: WSL2 con una imagen única.**
+1. En una PC:
+   - instalar WSL2 con Ubuntu 24.04;
+   - clonar el repo y correr `bash scripts/install.sh --with-elmer`
+     (Elmer queda fijado al commit que usa el módulo local);
+   - compilar ese módulo con `python3 field/build_coilsolver.py`;
+   - correr los tests.
+2. Exportar esa distribución (`wsl --export Ubuntu iac-wsl.tar`) y en las
+   demás PCs importarla (`wsl --import iac C:\WSL\iac iac-wsl.tar`).
+   Todas quedan con los mismos binarios y nadie recompila Elmer en cada PC.
+3. En cada PC, crear `%UserProfile%\.wslconfig`. Por defecto WSL2 usa solo
+   la mitad de la RAM (16 GB):
+
+       [wsl2]
+       memory=28GB
+       swap=16GB
+
+**Preparar el primer día** (las PCs no tienen restauración al reiniciar y
+hay permisos de administrador):
+- desactivar la suspensión y los reinicios por actualizaciones de Windows
+  durante las sesiones;
+- confirmar el espacio en disco para la imagen (unos 10–15 GB), las mallas
+  de Elmer y los resultados.
+
+**Reparto previsto.**
+- **Mapa de campo (P1, paso 2):** Biot-Savart volumétrico
+  (`field/compute_field_volumetric.py`), decidido el 2026-10-31. No tiene
+  dominio finito, así que cubre los radios de 14–18 m sin problema de
+  memoria. Un mapa de ±20 m con paso de 0.25 m tarda unos 10–20 min en una
+  PC con 20 procesos.
+- **Elmer, como validación de una sola bobina** (el problema es lineal):
+  2–3 mallas crecientes, cada una en su PC, comparadas con Biot-Savart
+  mediante `field/validate_volumetric_field.py`. Detalle en
+  `field/README.md`.
+- **Geant4 (P0 y después P2):** un punto de energía o una semilla por PC.
+  En `p0_icrp116.py run`, `--points` elige qué puntos corre cada PC, y los
+  puntos ya terminados se saltan, así que una corrida cortada se retoma con
+  el mismo comando.
+- **Coordinator:** no se usa por ahora. Se hará un refactor completo antes
+  del barrido, en lugar de agregarle funciones nuevas.
 
 ## Espectros de entrada (OLTARIS)
 

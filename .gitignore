@@ -34,6 +34,8 @@ field/maps/
 # (ver field/production/README.md). No confundir con field/generated/,
 # que sigue siendo scratch/regenerable y NO se versiona.
 !field/production/**
+# Fixture de 2x2x2 nodos del ctest field_map_covers_source.
+!geant4/ActiveShield_Sim/tests/field_map_too_small.map
 
 # ─── Resultados de simulación (usa siempre esta carpeta) ───
 output/

@@ -290,9 +290,9 @@ nuevos).
 | Uso de CRN | P6 |
 | Parámetros del sesgo de fuente | P5 |
 | Validez de R=1 | P2 |
-| Presupuesto B, umbrales de convergencia, tolerancia de P0 | D3, D4, D7 |
-| Endpoint primario y δ_η | D2 |
-| AF | D5 |
+| Presupuesto B, umbrales de convergencia, tolerancia de P0 | D3, D4, D7 (decididos el 2026-10-31; `design_parameters.py`) |
+| Endpoint primario y δ_η | D2 (decidido el 2026-10-31: E con Q(L), δ_η = 10 pp) |
+| AF | D5 (sí, 2026-10-31; cómo: P7) |
 | Posiciones | D6 |
 | Fuente del perfil temporal de cada SEP y modelo de espectro por intervalo | D8 |
 

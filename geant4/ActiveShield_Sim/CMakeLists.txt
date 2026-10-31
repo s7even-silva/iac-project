@@ -44,6 +44,13 @@ if(BUILD_TESTING)
   add_executable(test_field_map tests/test_field_map.cc src/TabulatedMagneticField.cc)
   target_link_libraries(test_field_map ${Geant4_LIBRARIES})
   add_test(NAME field_map COMMAND test_field_map)
+  # The expected outcome is a fatal G4Exception (abort); sh keeps ctest from
+  # counting the signal as a failure, so only the message decides.
+  add_test(NAME field_map_covers_source
+    COMMAND sh -c "$<TARGET_FILE:ICRP110phantoms> field_map_covers_source.mac 2>&1; true")
+  set_tests_properties(field_map_covers_source PROPERTIES
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tests
+    PASS_REGULAR_EXPRESSION "Field map must contain the whole source sphere")
   add_test(NAME passive_layers COMMAND ICRP110phantoms ${PROJECT_SOURCE_DIR}/tests/passive_layers.mac)
   set_tests_properties(passive_layers PROPERTIES
     WORKING_DIRECTORY ${PROJECT_BINARY_DIR}

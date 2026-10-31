@@ -1,0 +1,9 @@
+# ctest field_map_covers_source: initialization must stop when the field map
+# does not contain the whole source sphere (the field is zero outside the map).
+/run/numberOfThreads 1
+/spacecraft/shipRadius 0.6 m
+/spacecraft/shipHalfLength 1.0 m
+/spacecraft/fieldMap field_map_too_small.map
+/phantom/setPhantomSex male
+/phantom/setPhantomSection head
+/run/initialize

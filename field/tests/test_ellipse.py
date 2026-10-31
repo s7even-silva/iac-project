@@ -30,11 +30,11 @@ class EllipseTests(unittest.TestCase):
             dt = 2*np.pi/len(t)
             speed = np.sqrt((a*np.sin(t))**2 + (b*np.cos(t))**2)
             perimeter = np.sum(speed)*dt
-            expected = perimeter*data['winding_pack_side_m']**2
+            expected = perimeter*data['winding_pack_m'][0]**2
             self.assertLess(abs(data['cad_volume_m3']/expected-1), .01)
             self.assertEqual(data['status'], 'computational_pilot_not_crewhat')
             # Bounds must extend exactly semi-axis + half the winding pack.
-            half = data['winding_pack_side_m']/2
+            half = data['winding_pack_m'][0]/2
             self.assertAlmostEqual(data['bounds_m'][3], a+half, places=2)
             self.assertAlmostEqual(data['bounds_m'][4], b+half, places=2)
             self.assertAlmostEqual(data['bounds_m'][5], half, places=2)
@@ -48,6 +48,24 @@ class EllipseTests(unittest.TestCase):
         config['winding_pack_side_m'] = 1.9  # rho_min=1m here; half-width 0.95 >= 1/1.2
         with self.assertRaises(ValueError):
             controls(config)
+
+    def test_rectangular_pack_volume_and_orientation(self):
+        """B9: radial side in the coil's plane, axial side along its normal."""
+        config = json.loads((ROOT/'examples/crewhat_ellipse_corc_pilot.json').read_text())
+        del config['winding_pack_side_m']
+        config.update(winding_pack_radial_m=0.67, winding_pack_axial_m=0.32)
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory/'c.json').write_text(json.dumps(config))
+            generate(directory/'c.json', directory/'out')
+            data = json.loads((directory/'out'/'current_path.json').read_text())
+            a, b = 4.0, 2.0
+            t = np.linspace(0, 2*np.pi, 100000, endpoint=False)
+            perimeter = np.sum(np.sqrt((a*np.sin(t))**2 + (b*np.cos(t))**2))*2*np.pi/len(t)
+            self.assertLess(abs(data['cad_volume_m3']/(perimeter*0.67*0.32)-1), .01)
+            self.assertAlmostEqual(data['bounds_m'][3], a+0.335, places=2)
+            self.assertAlmostEqual(data['bounds_m'][4], b+0.335, places=2)
+            self.assertAlmostEqual(data['bounds_m'][5], 0.16, places=2)
 
     def test_corc_variant_generates_with_smaller_volume(self):
         with tempfile.TemporaryDirectory() as tmp:

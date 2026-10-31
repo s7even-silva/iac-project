@@ -22,7 +22,10 @@ def face_keys(faces):
 def generate(source, output, padding=1., air_size=.3, optimize_threshold=.01, threads=1):
     if source.resolve() == output.resolve() or output.suffix != '.msh':
         raise ValueError('Use a distinct .msh output')
-    if not np.isfinite([padding, air_size, optimize_threshold]).all() or min(padding, air_size) <= 0:
+    # One margin for every axis, or one per axis (x, y, z): the array is flat in z,
+    # so a uniform margin wastes air in x/y to push the z faces out.
+    padding = np.broadcast_to(np.asarray(padding, dtype=float), 3)
+    if not np.isfinite([*padding, air_size, optimize_threshold]).all() or min(*padding, air_size) <= 0:
         raise ValueError('Require finite positive padding and air size')
     if not 0 < optimize_threshold <= 1 or threads < 1:
         raise ValueError('Require 0 < optimization threshold <= 1 and threads >= 1')
@@ -136,7 +139,7 @@ def generate(source, output, padding=1., air_size=.3, optimize_threshold=.01, th
         report = {'method': 'discrete_conductor_global_air', 'production_validated': False,
                   'source_sha256': digest(source), 'mesh_sha256': digest(output),
                   'generator_sha256': digest(Path(__file__)), 'gmsh': gmsh.__version__,
-                  'padding_m': padding, 'air_size_m': air_size,
+                  'padding_m': padding.tolist(), 'air_size_m': air_size,
                   'optimization_threshold': optimize_threshold, 'threads': threads,
                   'bounds_m': [lower.tolist(), upper.tolist()], 'air_volume_m3': air_volume,
                   'air_tetrahedra': len(air_tetra), 'interface_preserved': True,
@@ -154,11 +157,14 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('source', type=Path, help='Conductor-only .msh from mesh_swept.py')
     parser.add_argument('output', type=Path)
-    parser.add_argument('--padding', type=float, default=1., help='Box margin from conductor bounds, metres')
+    parser.add_argument('--padding', type=float, nargs='+', default=[1.],
+                        help='Box margin from conductor bounds, metres: one value, or x y z')
     parser.add_argument('--air-size', type=float, default=.3, help='Maximum air element size, metres')
     parser.add_argument('--optimize-threshold', type=float, default=.01,
                         help='Gmsh quality optimization target, not an accuracy tolerance')
     parser.add_argument('--threads', type=int, default=1)
     args = parser.parse_args()
+    if len(args.padding) not in (1, 3):
+        parser.error('--padding takes one value or three (x y z)')
     print(json.dumps(generate(args.source, args.output, args.padding, args.air_size,
                               args.optimize_threshold, args.threads), indent=2))

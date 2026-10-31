@@ -303,7 +303,13 @@ EOF
 
     log "Compilando Elmer FEM desde fuente en $ELMER_PREFIX (puede tardar 15-30+ min)"
     ELMER_SRC="$(mktemp -d -t elmerfem-src-XXXXXX)"
-    git clone --depth 1 https://www.github.com/ElmerCSC/elmerfem "$ELMER_SRC"
+    # Fijado al commit cuyo CoilSolver.F90 parchea field/build_coilsolver.py,
+    # para que el modulo local compile contra las mismas fuentes en todas las
+    # maquinas (antes se clonaba la ultima version). ELMER_COMMIT lo cambia.
+    ELMER_COMMIT="${ELMER_COMMIT:-063e7e9f0bd647386f8f3b14e86cd7cff9c7d895}"
+    git init -q "$ELMER_SRC"
+    git -C "$ELMER_SRC" fetch -q --depth 1 https://github.com/ElmerCSC/elmerfem "$ELMER_COMMIT"
+    git -C "$ELMER_SRC" checkout -q FETCH_HEAD
     # cmake vive en geant4_env (declarado en environment.yml), no se instala
     # por separado en el sistema -- sin activar el entorno aqui, este paso
     # fallaba con "cmake: command not found" en una distro sin cmake de

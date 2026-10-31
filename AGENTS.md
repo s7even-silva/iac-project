@@ -55,21 +55,36 @@ existe en el repo. Quien tenga un clon anterior debe hacer
 `git fetch --force --tags` y `git reset --hard origin/<rama>` (o clonar de
 nuevo).
 
-## Estado del plan piloto (2026-10-04)
+## Estado del plan piloto (2026-10-31)
 
 Plan vigente: [`docs/bitacora/plan_piloto.md`](docs/bitacora/plan_piloto.md)
-(P0–P6, decisiones D1–D9). Especificación del barrido:
+(P0–P7, decisiones D1–D9). Especificación del barrido:
 [`docs/bitacora/plan_barrido.md`](docs/bitacora/plan_barrido.md).
 
-- **Camino crítico:** P1 (desde el paso 0: geometría de bobinas de NIAC)
-  → mapa Elmer final → P3/P4/P5 → P6 → barrido. El
-  mapa Elmer es bloqueante y requiere una máquina con más RAM que la de
-  desarrollo (~5 GB; la solución anterior llegó a 7.3 GB).
-- **P1, paso 1 hecho con el patrón K=1, hay que repetirlo**
-  (`field/preselect_source_radius.py`): con la esfera fuente de 6.94 m, un
-  tercio de las direcciones a 67 MeV está mal representado. Candidatos con
-  K=1: **12, 14 y 16 m**; el mapa tendrá que cubrir ±14–17 m en z (hoy
-  ±7.6 m). Los números se rehacen con la geometría de NIAC (paso 0, nuevo).
+- **Camino crítico:** mapa final (Biot-Savart volumétrico) validado con
+  Elmer → P1 paso 3 → P3/P4/P5 → P6 → barrido. Elmer se corre en el
+  laboratorio de la facultad (más de 30 PCs con Windows, 32 GB cada una,
+  sin red entre ellas, algunas horas de día). La estrategia y su estado
+  están en `README.md`, «Cómputo en el laboratorio de la facultad».
+- **Campo de la v2: Biot-Savart volumétrico (2026-10-31)**
+  (`field/compute_field_volumetric.py`). Con μr = 1 es la solución de la
+  magnetostática para la corriente dada, sin dominio finito; cada bobinado
+  se reparte en 6 × 3 filamentos. Error de cuadratura medido: ≤0.3% a
+  5 cm–2 m del bobinado y ≤0.1% en el hábitat. Elmer queda como validación
+  independiente de una sola bobina (el problema es lineal), con corriente
+  de bobina de vueltas (`Normalize Coil Current = True`) y
+  `field/validate_volumetric_field.py --coil 0`. Paso del mapa propuesto:
+  0.25 m. Detalle en `field/README.md`, «Biot-Savart volumétrico».
+- **P1, paso 0 hecho (2026-10-31):** geometría de NIAC con 15.6 t por
+  bobina en `field/production/crewhat_niac_array.gdml`, desde
+  `field/examples/crewhat_niac_array.json`. Sentido de corriente y sección
+  del bobinado son supuestos propios declarados (los autores de NIAC no
+  respondieron). `.sif` de Elmer: `field/examples/crewhat_niac_array.sif`.
+- **P1, paso 1 rehecho con NIAC (2026-10-31)**
+  (`field/preselect_source_radius.py`, resultados en
+  `field/studies/p1_preseleccion_radio_niac_2026-10-31.json`). Candidatos:
+  **14, 16 y 18 m** (con K=1 eran 12, 14 y 16 m). La cola ∫B⊥·dl de NIAC
+  es 2–3 veces la de K=1, pero no predice las reentradas.
 - **Scorer por evento** (`/eventStats/*`, `EventStatsRunAction.cc`),
   integrado en `run_organ_sweep.py --event-stats`. Validado: el SE de una
   sola corrida es insesgado cuando VOV < 0.1 y hay ≥200 eventos con
@@ -80,22 +95,46 @@ Plan vigente: [`docs/bitacora/plan_piloto.md`](docs/bitacora/plan_piloto.md)
   **Todavía no en el coordinator/workers.**
 - **P0 listo para correr** (`tests/p0_normalizacion/`): tabla de
   referencia ICRP 116 por órgano extraída, órganos definidos como ICRP
-  (colon con recto; médula roja equivalente). Tolerancia D7: ±10% en
-  órganos grandes y ±15% en mama y tiroides, a ≥100 MeV/n. Falta que el
-  equipo apruebe D7. El zip de datos de ICRP no se versiona (derechos de
-  autor).
-- **Decisiones de equipo pendientes:** máquina para Elmer, D2 (δ_η, efecto
-  mínimo detectable), D3, D4, D7, y para D9 el sentido de corriente de
-  cada bobina y la sección del bobinado (la disposición de NIAC ya está
-  decidida).
-- **Coordinator sin actualizar e imagen Docker nueva pendiente**: se hacen
-  cuando los pilotos fijen la configuración.
+  (colon con recto; médula roja equivalente). Tolerancia D7 (decidida el
+  2026-10-31): ±10% en órganos grandes y ±30% en mama y tiroides, a
+  ≥100 MeV/n. El zip de datos de
+  ICRP no se versiona (derechos de autor).
+- **Decisiones del 2026-10-31:**
+  - **D2:** δ_η = 10 pp; resultado principal, la dosis equivalente efectiva
+    con Q(L) (ICRP 123); secundario, la médula roja.
+  - **D3:** B = 2.5%.
+  - **D4:** al menos 200 eventos con depósito, VOV < 0.1 y ningún evento
+    con más del 10% del total.
+  - **D5:** sí al fantoma AF.
+  - **D7:** ±10% en órganos grandes y ±30% en mama y tiroides.
+  - **P2:** diseño y criterios fijados.
+
+  Los valores numéricos están en
+  `geant4/ActiveShield_Sim/scripts/design_parameters.py`, y
+  `plan_piloto.md` («Cambiar δ_η más adelante») dice cómo cambiar δ_η sin
+  romper la metodología.
+- **Propuesta P7 (pendiente de decisión):** simulación en dos etapas, que
+  registra las partículas entre el casco y las bobinas y reusa la primera
+  etapa para los dos fantomas y las 5 posiciones (`plan_piloto.md`, P7).
+- **Hueco frente a la literatura:** el GCR solo tiene H y He, y los iones
+  pesados dominan la dosis equivalente detrás de blindajes delgados.
+  Decidir antes de congelar la configuración si se agregan iones
+  representativos o se restringe el resultado a H + He
+  (`docs/bitacora/comparacion_literatura_2026-10-31.md`).
+- **Coordinator: refactor completo pendiente.** No se le agregan funciones
+  nuevas (`--event-stats`, ley coseno, imagen Docker nueva) antes de tener
+  el mapa final; cuando toque, se rehace en lugar de parchearlo. En el
+  laboratorio los trabajos se reparten a mano.
 
 ## Índice de documentación
 
 - [`docs/bitacora/plan_piloto.md`](docs/bitacora/plan_piloto.md) — pilotos
   P0–P6, decisiones bloqueantes, verificaciones hechas (normalización de la
   fuente: 1.010 ± 0.020), criterio de cada piloto fijado de antemano.
+- [`docs/bitacora/comparacion_literatura_2026-10-31.md`](docs/bitacora/comparacion_literatura_2026-10-31.md)
+  — la metodología frente a SR2S, ARSSEM, NIAC, Ferrone 2020 y NASA:
+  ventajas, desventajas y huecos (iones pesados, estructura del imán,
+  comparación pasiva, validación externa).
 - [`docs/bitacora/plan_barrido.md`](docs/bitacora/plan_barrido.md) —
   configuración congelada, normalización, integración espectral, Q(L),
   estimadores y covarianzas (CRN para η), semillas v2, procedencia, tests
@@ -141,18 +180,29 @@ Detalle de interfaces en
   B9 en la auditoría):** la geometría de `field/production/` usa el patrón
   Halbach K=1, que pone 0.54 T dentro de la nave, mientras que CREW HaT
   suprime el campo en el hábitat; y cada bobina pesa 77.9 t frente a las
-  15.6 t de NIAC. La v2 regenera la geometría con la disposición de NIAC
-  (P1, paso 0; decisión D9 en `plan_piloto.md`) y compara con K=1. El arreglo de producción **nunca
-  usó la cinta de 12 mm**. Geom14/ARSSEM queda como propuesta no
+  15.6 t de NIAC. La v2 usa la disposición de NIAC
+  (`field/production/crewhat_niac_array.gdml`, 2026-10-31; decisión D9 en
+  `plan_piloto.md`) y compara con K=1. El arreglo K=1 **nunca usó la cinta
+  de 12 mm**. Geom14/ARSSEM queda como propuesta no
   implementada.
-- **Campo: Elmer FEM a escala real**
-  (`field/production/crewhat_elmer_fullscale.map`). Biot-Savart trata cada
-  bobina como un filamento con núcleo regularizado mucho menor que el
-  winding pack real; `crewhat_niac_max.map` se conserva solo para comparar.
-  La cifra histórica "Biot-Savart da 36–48% más dosis" **no se reprodujo**
-  (0.93 ± 0.08 a 562 MeV): no citarla. Los `.map`/GDML de producción y sus
-  manifiestos SHA256 se versionan en `field/production/` (excepción en
-  `.gitignore`).
+- **Campo.** En la v1 era Elmer FEM a escala real
+  (`field/production/crewhat_elmer_fullscale.map`, arreglo K=1).
+  - **En la v2, Biot-Savart volumétrico** (`field/compute_field_volumetric.py`),
+    con Elmer como validación. Motivo: con μr = 1, Biot-Savart es la
+    solución de la magnetostática, y el error de la v1 venía de poner
+    toda la corriente de cada bobina en un solo filamento, no de
+    Biot-Savart en sí.
+  - Materiales: el Hastelloy C-276 del CORC es paramagnético (Curie,
+    χ ≈ 0.091/T). A los 40 K de diseño, el bobinado tiene χ ≈ 4·10⁻⁴ y
+    cambia el campo en menos de 0.05%. Las corrientes de apantallamiento
+    del REBCO no las modela ningún método: es un supuesto declarado.
+  - La cifra histórica "Biot-Savart da 36–48% más dosis" **no se
+    reprodujo** (0.93 ± 0.08 a 562 MeV): no citarla.
+  - Los `.map`/GDML de producción y sus manifiestos SHA256 se versionan en
+    `field/production/` (excepción en `.gitignore`).
+  - Desde el 2026-10-31, la inicialización aborta si el mapa no contiene
+    la esfera fuente completa (fuera del mapa el campo es cero; ctest
+    `field_map_covers_source`).
 - **Physics list:** `Shielding`, vía `G4PhysListFactory`.
 - **Fuente:** espectros OLTARIS (BON2020 para GCR, eventos históricos Oct
   1989 / Feb 1956 para SEP), energía fija por bin
@@ -217,7 +267,9 @@ Diseño original e historia en el tag `v1-archivo`
   `jobs_v2` (`db_v2.py`, grilla parametrizable con `n_bins` en el `UNIQUE`,
   sube S1/S2/N). El barrido v2 se sembrará en `jobs_v2` con
   `seed_full_sweep_v2.py --n-bins` cuando los pilotos fijen los parámetros.
-  Antes hay que llevar `--event-stats` y la ley coseno a los workers.
+  Antes hay que llevar `--event-stats` y la ley coseno a los workers,
+  dentro del refactor completo del coordinator previsto (ver «Estado del
+  plan piloto»).
 - **Mecanismos operativos:** reencolado por progreso agotado o abandono,
   estimación de duración por especie/bin escalada por `cpu_score`,
   remote-kill y log bajo demanda vía heartbeat (el worker solo hace polling

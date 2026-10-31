@@ -1,0 +1,78 @@
+{
+  "components": [
+    {
+      "group": "crewhat_coil_0",
+      "mass_kg": 15598.946734419758,
+      "material": "crewhat_corc_niac_mass",
+      "tag": 1,
+      "triangles": 4576,
+      "volume_m3": 4.1541249076363185
+    },
+    {
+      "group": "crewhat_coil_1",
+      "mass_kg": 15598.971303567221,
+      "material": "crewhat_corc_niac_mass",
+      "tag": 2,
+      "triangles": 4576,
+      "volume_m3": 4.154131450597787
+    },
+    {
+      "group": "crewhat_coil_2",
+      "mass_kg": 15598.945728730336,
+      "material": "crewhat_corc_niac_mass",
+      "tag": 3,
+      "triangles": 4576,
+      "volume_m3": 4.154124639813141
+    },
+    {
+      "group": "crewhat_coil_3",
+      "mass_kg": 15598.965912570888,
+      "material": "crewhat_corc_niac_mass",
+      "tag": 4,
+      "triangles": 4576,
+      "volume_m3": 4.154130014932128
+    },
+    {
+      "group": "crewhat_coil_4",
+      "mass_kg": 15598.96417905199,
+      "material": "crewhat_corc_niac_mass",
+      "tag": 5,
+      "triangles": 4576,
+      "volume_m3": 4.154129553282111
+    },
+    {
+      "group": "crewhat_coil_5",
+      "mass_kg": 15598.972692074505,
+      "material": "crewhat_corc_niac_mass",
+      "tag": 6,
+      "triangles": 4576,
+      "volume_m3": 4.1541318203684385
+    },
+    {
+      "group": "crewhat_coil_6",
+      "mass_kg": 15598.953250341894,
+      "material": "crewhat_corc_niac_mass",
+      "tag": 7,
+      "triangles": 4576,
+      "volume_m3": 4.1541266428787615
+    },
+    {
+      "group": "crewhat_coil_7",
+      "mass_kg": 15598.94939692433,
+      "material": "crewhat_corc_niac_mass",
+      "tag": 8,
+      "triangles": 4576,
+      "volume_m3": 4.1541256166826885
+    }
+  ],
+  "converter_sha256": "c87a1fcb7ffe60f38df3452050b26f03f3af33071bea2d4eab42f7f07a038ba8",
+  "coordinate_frame": "Geant4 world, metres",
+  "gdml_sha256": "39c6a87632342fe37fe2f30dd910861dc7c697b060937dbfa2a2eca53d5dac80",
+  "gmsh": "4.15.2",
+  "materials_sha256": "6913cc8dfbc995ff1abbc42e850024408cdb113a69cc13710b2fb5a07bcf3524",
+  "mesh_sha256": "e92d3dc03287b78d652dd4aff03f090606a7f4837f17dd8b65cdfb2aceed06b8",
+  "numpy": "2.3.3",
+  "platform": "Linux-7.1.13+parrot7-amd64-x86_64-with-glibc2.41",
+  "python": "3.13.5",
+  "schema_version": 1
+}

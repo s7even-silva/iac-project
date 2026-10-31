@@ -37,6 +37,7 @@ from pathlib import Path
 import numpy as np
 
 from compute_field import field_at
+from generate_ellipse import pack_section
 from provenance import digest
 
 K_GV = 0.299792458  # GV por (T·m): θ = K·∫B⊥dl / R
@@ -64,7 +65,7 @@ class Coils:
         self.cur = np.concatenate(cur)
         self.bounds = data['bounds_m']
         pts = np.vstack(self.paths)
-        half_diag = data['config']['coil_template']['winding_pack_side_m']*math.sqrt(2)/2
+        half_diag = math.hypot(*pack_section(data['config']['coil_template']))/2
         self.r_material_max = float(np.linalg.norm(pts, axis=1).max()+half_diag)
 
     def field(self, points, chunk=96):

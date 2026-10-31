@@ -1,0 +1,31 @@
+{
+  "generator_sha256": "4c09b417b5dac90aee1f797289d64ce2e808c1d2f326685d420dbe2b22890a2a",
+  "gmsh": "4.15.2",
+  "mesh_sha256": "e92d3dc03287b78d652dd4aff03f090606a7f4837f17dd8b65cdfb2aceed06b8",
+  "platform": "Linux-7.1.13+parrot7-amd64-x86_64-with-glibc2.41",
+  "python": "3.13.5",
+  "settings": {
+    "General.NumThreads": 1,
+    "Mesh.Algorithm": 6,
+    "Mesh.Algorithm3D": 10,
+    "Mesh.Binary": 0,
+    "Mesh.ElementOrder": 1,
+    "Mesh.MaxNumThreads1D": 1,
+    "Mesh.MaxNumThreads2D": 1,
+    "Mesh.MaxNumThreads3D": 1,
+    "Mesh.MshFileVersion": 4.1,
+    "Mesh.RandomSeed": 1,
+    "Mesh.SaveAll": 1
+  },
+  "sources_sha256": {
+    "examples/crewhat_niac_array.json": "0e9e82f9080b12483e26f46a08bbe1a461617417435bcae2c0501e759932f57e",
+    "generated/crewhat_niac_array/halbach_array.brep": "7f0d531b4d2d35e4e3fb5fcc59f8c2ac250646c0c60a4a864099b61ad1443965",
+    "generated/crewhat_niac_array/halbach_array.geo": "a8dacaf834c7b9ed7f9023d04208e53e54ad31692b059a568723350eea5e4988"
+  },
+  "timings": {
+    "mesh_1d_s": 60.86262170500413,
+    "mesh_2d_s": 35.808039415001986,
+    "mesh_3d_s": 6.234489870999823,
+    "read_s": 1.242830513001536
+  }
+}

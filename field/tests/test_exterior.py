@@ -59,8 +59,12 @@ class ExteriorTests(unittest.TestCase):
                 gmsh.write(str(source))
             finally:
                 gmsh.finalize()
-            report = generate(source, output, padding=.3, air_size=.2)
+            # Per-axis margins (x, y, z): the box must grow by exactly each one.
+            report = generate(source, output, padding=(.3, .35, .4), air_size=.2)
             self.assertTrue(report['interface_preserved'])
+            both = np.vstack([nodes + np.array([2., 0., i*.4]) for i in range(2)])
+            np.testing.assert_allclose(report['bounds_m'][0], both.min(0)-[.3, .35, .4], atol=1e-12)
+            np.testing.assert_allclose(report['bounds_m'][1], both.max(0)+[.3, .35, .4], atol=1e-12)
             gmsh.initialize([], readConfigFiles=False)
             try:
                 gmsh.option.setNumber('General.Terminal', 0)

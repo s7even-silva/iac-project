@@ -33,19 +33,40 @@ from provenance import digest
 from cad_cleanup import remove_construction_entities
 from generate_dh import _conductor_profile
 
+# 'crewhat_niac_declared_assumptions': NIAC layout with our own declared
+# current senses and winding-pack section (plan_piloto.md, D9).
+STATUSES = ('computational_pilot_not_crewhat', 'crewhat_niac_declared_assumptions')
+
+
+def pack_section(c):
+    """(radial, axial) winding-pack size in metres: the square
+    `winding_pack_side_m`, or `winding_pack_radial_m` (in the coil's plane)
+    and `winding_pack_axial_m` (along its normal) for a rectangular pack."""
+    if 'winding_pack_radial_m' in c:
+        return c['winding_pack_radial_m'], c['winding_pack_axial_m']
+    return c['winding_pack_side_m'], c['winding_pack_side_m']
+
+
+def profile_config(c):
+    """_conductor_profile() sweeps a rectangle when it sees tape_width_m
+    (along the coil's radial direction) and tape_thickness_m (along its
+    normal); present the winding pack under those keys, no duplicated CAD."""
+    radial, axial = pack_section(c)
+    return {**c, 'tape_width_m': radial, 'tape_thickness_m': axial}
+
 
 def controls(c):
-    if c['schema_version'] != 1 or c['status'] != 'computational_pilot_not_crewhat':
+    if c['schema_version'] != 1 or c['status'] not in STATUSES:
         raise ValueError('This generator currently supports the labelled pilot only')
     a, b = c['semi_major_m'], c['semi_minor_m']
-    side, reg = c['winding_pack_side_m'], c['field_regularization_radius_m']
-    values = [a, b, side, reg, c['current_A'], c['mesh_size_m'], c['mesh_min_size_m'], *c['center_m']]
-    if not np.isfinite(values).all() or not (0 < b <= a and 0 < side and 0 < reg
+    (side, axial), reg = pack_section(c), c['field_regularization_radius_m']
+    values = [a, b, side, axial, reg, c['current_A'], c['mesh_size_m'], c['mesh_min_size_m'], *c['center_m']]
+    if not np.isfinite(values).all() or not (0 < b <= a and 0 < side and 0 < axial and 0 < reg
                                               and 0 < c['mesh_min_size_m'] <= c['mesh_size_m']):
         raise ValueError('Invalid ellipse or winding-pack dimensions')
     # Minimum radius of curvature of an ellipse is at the ends of its major
-    # axis: rho_min = b^2/a. A swept square cross-section of half-width
-    # side/2 self-intersects there once side/2 approaches rho_min -- this is
+    # axis: rho_min = b^2/a. A swept cross-section of in-plane (radial)
+    # half-width side/2 self-intersects there once side/2 approaches rho_min -- this is
     # a REAL geometric constraint of this coil shape, not a pilot-only
     # safeguard like generate_dh.py's "4x" margins (those had room to
     # spare; an ellipse this flat relative to its winding pack does not).
@@ -53,7 +74,7 @@ def controls(c):
     # revisit once a mesh-quality check exists for this generator.
     rho_min = b*b/a
     if side/2 >= rho_min/1.2:
-        raise ValueError(f'winding_pack_side_m={side} too large for this ellipse: '
+        raise ValueError(f'radial winding pack {side} m too large for this ellipse: '
                           f'half-width {side/2:.4g} m vs. minimum radius of curvature '
                           f'{rho_min:.4g} m at the major-axis ends (need >=1.2x margin)')
     for key, minimum in [('control_points', 64), ('field_segments', 128), ('mesh_points_per_circle', 8)]:
@@ -72,11 +93,7 @@ def generate(config, directory):
     c = json.loads(config.read_text())
     points = controls(c)
     directory.mkdir(parents=True, exist_ok=True)
-    # _conductor_profile() only checks for tape_width_m/tape_thickness_m to
-    # decide disk vs. rectangle -- reuse it as-is for the square winding
-    # pack by presenting the same two keys, no duplicated CAD logic.
-    c_profile = {**c, 'tape_width_m': c['winding_pack_side_m'],
-                 'tape_thickness_m': c['winding_pack_side_m']}
+    c_profile = profile_config(c)
     gmsh.initialize([], readConfigFiles=False)
     try:
         occ = gmsh.model.occ
@@ -149,7 +166,7 @@ def generate(config, directory):
               'current_A': c['current_A'],
               # NOT a real conductor radius -- see module docstring.
               'conductor_radius_m': c['field_regularization_radius_m'],
-              'winding_pack_side_m': c['winding_pack_side_m'],
+              'winding_pack_m': pack_section(c),
               'cad_volume_m3': cad_volume, 'bounds_m': bounds,
               'path_m': path.tolist()}
     (directory/'current_path.json').write_text(json.dumps(report, indent=2)+'\n')

@@ -43,7 +43,7 @@ ORGANS = {
 # D7 (plan_piloto.md, P0): IC95 del cociente dentro de 1 ± tolerancia, a
 # energías >= 100 MeV/n. Los demás órganos son descriptivos.
 TOLERANCE = {"Lungs": 0.10, "Colon": 0.10, "St-wall": 0.10, "Liver": 0.10, "R-marrow": 0.10,
-             "Breast": 0.15, "Thyroid": 0.15}
+             "Breast": 0.30, "Thyroid": 0.30}  # D7, 2026-10-31: ~2x the ICRP 116 error in each group
 MIN_ENERGY_PRIMARY = 100.0  # MeV/n
 
 

@@ -49,7 +49,7 @@ import platform
 import gmsh
 import numpy as np
 
-from generate_ellipse import controls as ellipse_controls
+from generate_ellipse import STATUSES, controls as ellipse_controls, profile_config
 from generate_dh import _conductor_profile
 from provenance import digest
 from cad_cleanup import remove_construction_entities
@@ -90,8 +90,7 @@ def _coil_solid(occ, coil_config, rotation, center, normal):
     cuts = [occ.addPoint(*p) for p in cut_points]
     fragments, _ = occ.fragment([(1, curve)], [(0, p) for p in cuts])
     occ.synchronize()
-    c_profile = {**coil_config, 'tape_width_m': coil_config['winding_pack_side_m'],
-                 'tape_thickness_m': coil_config['winding_pack_side_m']}
+    c_profile = profile_config(coil_config)
     pieces = []
     for dim, tag in fragments:
         if dim != 1:
@@ -115,7 +114,8 @@ def _coil_solid(occ, coil_config, rotation, center, normal):
 
 
 def _validate(array):
-    if array['schema_version'] != 1 or array['status'] != 'computational_pilot_halbach_not_crewhat':
+    if array['schema_version'] != 1 or array['status'] not in ('computational_pilot_halbach_not_crewhat',
+                                                                STATUSES[1]):
         raise ValueError('This generator currently supports the labelled Halbach pilot only')
     if not isinstance(array['n_coils'], int) or array['n_coils'] < 2:
         raise ValueError('Need at least 2 integer coils for a Halbach array')
