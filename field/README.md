@@ -629,6 +629,23 @@ por tetraedro medidos:
 | C | 6 | 0.15 | ~5.2 M | ~16 GB | ~1 h |
 | D | 8 | 0.20 | ~4.3 M | ~13 GB | ~45 min |
 
+**Resultados del laboratorio (2026-10-31)**, error relativo de Elmer frente
+a Biot-Savart (mediana / p95):
+
+| Nivel | Tetraedros de aire | Iteraciones | Solve | Junto a la bobina | Líneas radiales | Grilla del hábitat |
+|---|---|---|---|---|---|---|
+| A (margen 4 m, aire 0.20 m) | 0.88 M | 96 | 86 s | 7.8% / 21% | 42% / 130% | 63% / 100% |
+| D (margen 8 m, aire 0.20 m) | 4.1 M | 182 | 633 s | 5.8% / 16% | 9.4% / 29% | 20% / 33% |
+
+- **Al agrandar la caja, Elmer se acerca a Biot-Savart en todas las
+  zonas.** El cambio de A a D (7%, 30% y 48% de mediana) es mayor que lo
+  que a D le falta para llegar a Biot-Savart, como pide el criterio.
+- **En el laboratorio, OpenMP sí rinde:** ~10 veces más tiempo de CPU que
+  tiempo real.
+- **Falta B (margen 6 m)** para un tercer punto de la serie de la caja.
+- **Falta C (aire 0.15 m)** para ver la malla. Cerca del bobinado, lo que
+  queda (5.8%) debería bajar al refinar.
+
 El tiempo está extrapolado de lo medido en la laptop: ElmerSolver tarda 45 s
 con 270 mil tetraedros, y se supuso que las iteraciones crecen con el tamaño
 lineal. La parte de Biot-Savart de la comparación usa el núcleo compilado y

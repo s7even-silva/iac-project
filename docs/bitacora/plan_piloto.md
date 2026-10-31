@@ -374,6 +374,14 @@ Decidido: se amplían. El piloto fija cuánto. Herramienta disponible
      - En dos niveles gruesos de la laptop, la mediana del error de Elmer
        bajó de 22% a 15% junto a la bobina y de 82% a 29% en las líneas
        radiales: va hacia Biot-Savart y todavía no convergió.
+     - **Laboratorio (2026-10-31), niveles A (margen 4 m) y D (margen 8 m),
+       aire de 0.20 m:**
+       - la mediana del error bajó de 7.8% a 5.8% junto a la bobina y de
+         42% a 9.4% en las líneas radiales;
+       - el cambio de A a D es mayor que lo que le falta a D: cumple el
+         criterio para la caja.
+       - Faltan B (margen 6 m) y C (aire 0.15 m) para cerrar la caja con
+         tres puntos y probar la malla.
    - **Criterio, fijado antes:** la diferencia con Biot-Savart se achica al
      refinar Elmer y, en la corrida más fina, queda dentro del cambio entre
      las dos corridas más finas de Elmer.
