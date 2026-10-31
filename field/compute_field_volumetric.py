@@ -158,32 +158,37 @@ def interpolation_check(values, origin, step, seg, n, seed=20261031):
     return report
 
 
-def generate(source, output, half_size, spacing, n_radial, n_axial, processes, max_points, check_points):
-    if output.suffix != '.map' or output.resolve() == source.resolve():
-        raise ValueError('Use a distinct .map output')
+def grid(data, half_size, spacing, max_points):
     half = np.broadcast_to(np.asarray(half_size, dtype=float), 3)
-    data = json.loads(source.read_text())
     bounds = np.asarray(data['bounds_m'], dtype=float)
     if np.any(np.maximum(-bounds[:3], bounds[3:]) >= half):
         raise ValueError('Map must enclose the whole coil array on every axis')
     sizes, steps = zip(*(grid_shape(h, spacing) for h in half))
     if math.prod(sizes) > max_points:
         raise ValueError(f'{math.prod(sizes):,} nodes exceed --max-points={max_points:,}')
-    seg = Segments(data, n_radial, n_axial)
+    return half, sizes, steps
+
+
+def compute_planes(seg, half, sizes, steps, z_indices, processes):
+    """B on the z planes z_indices (ascending), as len(z_indices) x ny x nx x 3."""
     axes = [-h+s*np.arange(n) for h, s, n in zip(half, steps, sizes)]
-    print(f'[campo] {math.prod(sizes):,} nodos ({sizes[0]}x{sizes[1]}x{sizes[2]}), '
-          f'{len(seg.length):,} segmentos, {processes} procesos', file=sys.stderr, flush=True)
+    print(f'[campo] {len(z_indices)*sizes[0]*sizes[1]:,} nodos ({sizes[0]}x{sizes[1]}x{len(z_indices)} '
+          f'de {sizes[2]} planos z), {len(seg.length):,} segmentos, {processes} procesos',
+          file=sys.stderr, flush=True)
     start = time.monotonic()
     planes = []
     with mp.Pool(processes, initializer=_init, initargs=(seg,)) as pool:
-        for k, plane in enumerate(pool.imap(_plane, [(axes[0], axes[1], z) for z in axes[2]]), 1):
+        for k, plane in enumerate(pool.imap(_plane, [(axes[0], axes[1], axes[2][i]) for i in z_indices]), 1):
             planes.append(plane)
             elapsed = time.monotonic()-start
-            print(f'\r[campo] plano z {k}/{sizes[2]} ({100*k/sizes[2]:.0f}%), {elapsed/60:.1f} min, '
-                  f'faltan ~{elapsed*(sizes[2]/k-1)/60:.1f} min ', end='', file=sys.stderr, flush=True)
+            print(f'\r[campo] plano z {k}/{len(z_indices)} ({100*k/len(z_indices):.0f}%), {elapsed/60:.1f} min, '
+                  f'faltan ~{elapsed*(len(z_indices)/k-1)/60:.1f} min ', end='', file=sys.stderr, flush=True)
     print(file=sys.stderr)
-    elapsed = time.monotonic()-start
-    values = np.stack(planes).reshape(sizes[2], sizes[1], sizes[0], 3)
+    return np.stack(planes).reshape(len(z_indices), sizes[1], sizes[0], 3), time.monotonic()-start
+
+
+def write_map(source, output, data, seg, values, half, steps, n_radial, n_axial, check_points, extra):
+    sizes = values.shape[2::-1]
     print(f'[campo] escribiendo {output}', file=sys.stderr, flush=True)
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_suffix(output.suffix+'.tmp')
@@ -206,8 +211,7 @@ def generate(source, output, half_size, spacing, n_radial, n_axial, processes, m
               'half_size_m': half.tolist(), 'spacing_m': list(steps), 'shape': list(sizes),
               'filaments_radial_axial': [n_radial, n_axial], 'filament_core_radius_m': seg.core,
               'segments_total': len(seg.length), 'currents_A': [c['current_A'] for c in data['coils']],
-              'boundary_max_T': float(np.linalg.norm(values[edge], axis=1).max()),
-              'processes': processes, 'compute_seconds': elapsed}
+              'boundary_max_T': float(np.linalg.norm(values[edge], axis=1).max()), **extra}
     if check_points:
         print('[campo] comparando la interpolación con el cálculo directo', file=sys.stderr, flush=True)
         report['interpolation_check'] = interpolation_check(values, -half, np.array(steps), seg, check_points)
@@ -215,20 +219,99 @@ def generate(source, output, half_size, spacing, n_radial, n_axial, processes, m
     print(json.dumps(report, indent=2))
 
 
+def part_meta(source, half, steps, sizes, n_radial, n_axial):
+    """What every part of one map must share."""
+    return {'array_report_sha256': digest(source), 'generator_sha256': digest(Path(__file__)),
+            'half_size_m': half.tolist(), 'spacing_m': list(steps), 'shape': list(sizes),
+            'filaments_radial_axial': [n_radial, n_axial]}
+
+
+def generate(source, output, half_size, spacing, n_radial, n_axial, processes, max_points, check_points,
+             part=None):
+    """Whole map (.map), or part K of N of its z planes (.npz) for merge()."""
+    data = json.loads(source.read_text())
+    half, sizes, steps = grid(data, half_size, spacing, max_points)
+    seg = Segments(data, n_radial, n_axial)
+    if part is None:
+        if output.suffix != '.map' or output.resolve() == source.resolve():
+            raise ValueError('Use a distinct .map output')
+        values, elapsed = compute_planes(seg, half, sizes, steps, list(range(sizes[2])), processes)
+        write_map(source, output, data, seg, values, half, steps, n_radial, n_axial, check_points,
+                  {'processes': processes, 'compute_seconds': elapsed})
+        return
+    k, n = part
+    if not 1 <= k <= n or output.suffix != '.npz':
+        raise ValueError('--part K N needs 1 <= K <= N and a .npz output')
+    z_indices = np.array_split(np.arange(sizes[2]), n)[k-1].tolist()
+    values, elapsed = compute_planes(seg, half, sizes, steps, z_indices, processes)
+    meta = {**part_meta(source, half, steps, sizes, n_radial, n_axial), 'part': [k, n],
+            'z_indices': [z_indices[0], z_indices[-1]], 'processes': processes, 'compute_seconds': elapsed,
+            'platform': platform.platform()}
+    output.parent.mkdir(parents=True, exist_ok=True)
+    np.savez(output, values=values, meta=np.array(json.dumps(meta)))
+    print(f'[campo] parte {k}/{n} (planos z {z_indices[0]}-{z_indices[-1]}) en {output}', file=sys.stderr)
+
+
+def merge(source, output, part_files, check_points):
+    """Join the parts of one map, checking they are the same map and cover every z plane once."""
+    if output.suffix != '.map':
+        raise ValueError('Use a .map output')
+    parts = []
+    for path in part_files:
+        with np.load(path) as f:
+            parts.append((json.loads(str(f['meta'])), f['values']))
+    parts.sort(key=lambda p: p[0]['z_indices'][0])
+    first = parts[0][0]
+    shared = ('array_report_sha256', 'generator_sha256', 'half_size_m', 'spacing_m', 'shape',
+              'filaments_radial_axial')
+    for meta, _ in parts:
+        if any(meta[key] != first[key] for key in shared):
+            raise ValueError('Parts come from different maps (input, code version, grid or filaments)')
+    if first['array_report_sha256'] != digest(source):
+        raise ValueError('array_report differs from the one the parts were computed with')
+    expected, covered = 0, []
+    for meta, _ in parts:
+        lo, hi = meta['z_indices']
+        if lo != expected:
+            raise ValueError(f'z planes {expected}..{lo-1} missing or duplicated; check the parts')
+        expected = hi+1
+        covered.append(meta['part'])
+    if expected != first['shape'][2]:
+        raise ValueError(f'z planes {expected}..{first["shape"][2]-1} missing')
+    data = json.loads(source.read_text())
+    n_radial, n_axial = first['filaments_radial_axial']
+    seg = Segments(data, n_radial, n_axial)
+    values = np.concatenate([v for _, v in parts])
+    extra = {'parts': [{key: meta[key] for key in ('part', 'z_indices', 'processes', 'compute_seconds', 'platform')}
+                       for meta, _ in parts],
+             'compute_seconds': sum(meta['compute_seconds'] for meta, _ in parts)}
+    write_map(source, output, data, seg, values, np.array(first['half_size_m']), first['spacing_m'],
+              n_radial, n_axial, check_points, extra)
+
+
 if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('array_report', type=Path, help='array_current_paths.json from generate_ellipse_array.py')
-    p.add_argument('output', type=Path)
-    p.add_argument('--half-size', type=float, nargs='+', required=True, help='metres: one value, or x y z')
-    p.add_argument('--spacing', type=float, required=True, help='maximum grid step in metres')
-    p.add_argument('--filaments', type=int, nargs=2, required=True, metavar=('RADIAL', 'AXIAL'))
+    p.add_argument('output', type=Path, help='.map (whole map or merge) or .npz (--part)')
+    p.add_argument('--half-size', type=float, nargs='+', help='metres: one value, or x y z')
+    p.add_argument('--spacing', type=float, help='maximum grid step in metres')
+    p.add_argument('--filaments', type=int, nargs=2, metavar=('RADIAL', 'AXIAL'))
+    p.add_argument('--part', type=int, nargs=2, metavar=('K', 'N'),
+                   help='compute only part K of N of the z planes (one per PC), into a .npz')
+    p.add_argument('--merge', type=Path, nargs='+', metavar='PART_NPZ',
+                   help='join the .npz parts into the .map output instead of computing')
     p.add_argument('--processes', type=int, default=os.cpu_count())
     p.add_argument('--max-points', type=int, default=20000000,
                    help='guard against accidental huge maps (±30 m at 0.25 m is 14 M nodes, ~630 MB)')
     p.add_argument('--check-points', type=int, default=0,
                    help='random points per region where the trilinear map is compared with direct evaluation')
     a = p.parse_args()
-    if len(a.half_size) not in (1, 3):
-        p.error('--half-size takes one value or three (x y z)')
-    generate(a.array_report, a.output, a.half_size, a.spacing, *a.filaments, a.processes,
-             a.max_points, a.check_points)
+    if a.merge:
+        merge(a.array_report, a.output, a.merge, a.check_points)
+    else:
+        if a.half_size is None or a.spacing is None or a.filaments is None:
+            p.error('--half-size, --spacing and --filaments are required unless --merge is given')
+        if len(a.half_size) not in (1, 3):
+            p.error('--half-size takes one value or three (x y z)')
+        generate(a.array_report, a.output, a.half_size, a.spacing, *a.filaments, a.processes,
+                 a.max_points, a.check_points, a.part)

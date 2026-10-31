@@ -460,10 +460,17 @@ fuente.
 
 ```bash
 # Desde field/. Mapa (el tiempo es solo de esta generación; Geant4 lee el
-# .map igual que antes, con la misma interpolación trilineal):
-.venv/bin/python compute_field_volumetric.py generated/crewhat_niac_array/array_current_paths.json \
-  generated/mapa_bs_niac/niac_bs_20m_0.5.map --half-size 20 --spacing 0.5 --filaments 6 3 \
+# .map igual que antes, con la misma interpolación trilineal). Las
+# trayectorias de corriente están versionadas, así que no hace falta Gmsh:
+.venv/bin/python compute_field_volumetric.py production/crewhat_niac_array_current_paths.json \
+  generated/mapa_bs_niac/niac_bs_30m_0.25.map --half-size 30 --spacing 0.25 --filaments 6 3 \
   --check-points 1000
+# Repartido entre 4 PCs: cada una calcula su cuarta parte de los planos z...
+.venv/bin/python compute_field_volumetric.py production/crewhat_niac_array_current_paths.json \
+  parte1.npz --half-size 30 --spacing 0.25 --filaments 6 3 --part 1 4   # 2, 3 y 4 en las otras
+# ...y una sola PC junta las partes (en cualquier orden) en el .map:
+.venv/bin/python compute_field_volumetric.py production/crewhat_niac_array_current_paths.json \
+  generated/mapa_bs_niac/niac_bs_30m_0.25.map --merge parte*.npz --check-points 1000
 # Autoconvergencia y, en el laboratorio, comparación con Elmer:
 .venv/bin/python validate_volumetric_field.py generated/crewhat_niac_array/array_current_paths.json \
   salida.json --filaments 3 2 6 3 12 6 24 12 [--vtu elmer_grueso.vtu elmer_fino.vtu]
@@ -496,6 +503,14 @@ proceso evalúa 1.5·10⁷ pares segmento-punto por segundo, y cada nodo suma
   procesos y la máquina ocupada, tardó 29 min;
 - paso de 0.25 m (4.2 M nodos): ~2.8 h en un proceso, unos 10–20 min en
   una PC del laboratorio con 20 procesos.
+
+**Repartir entre PCs.** Con `--part K N`, cada PC calcula un bloque
+contiguo de planos z y lo guarda en un `.npz` (~84 MB por parte con 4 PCs).
+`--merge` comprueba que todas las partes vengan del mismo mapa (mismas
+trayectorias de corriente, misma versión del script, misma grilla y mismos
+filamentos) y que cubran cada plano z una sola vez; si falta o sobra
+alguno, se niega a juntar. El `.map` resultante es idéntico byte a byte al
+calculado en una sola PC (`tests/test_field_volumetric.py`).
 
 Un mapa de **±30 m con paso de 0.25 m** (14 M nodos, ~630 MB) deja margen
 para esferas fuente de hasta 30 m. Tarda unos 30–45 min en una PC del

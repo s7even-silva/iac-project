@@ -16,7 +16,12 @@ manifiestos (`crewhat_niac_array.manifest.json`, `.mesh-manifest.json`,
 por bobina), generada desde `field/examples/crewhat_niac_array.json` (ver
 `field/README.md`, «Disposición de NIAC»). SHA256 del GDML:
 `39c6a87632342fe37fe2f30dd910861dc7c697b060937dbfa2a2eca53d5dac80`.
-**Todavía no tiene mapa de campo:** el mapa Elmer sale de P1, paso 2.
+`crewhat_niac_array_current_paths.json` son sus trayectorias de corriente
+(SHA256 `705de9e8…71e53`), la entrada de `compute_field_volumetric.py`:
+con ella, todas las PCs calculan el mismo mapa sin correr Gmsh.
+**Todavía no tiene mapa de campo versionado:** el mapa (Biot-Savart
+volumétrico) pesa cientos de MB y se regenera o se copia; solo se versiona
+su manifiesto cuando P1 lo apruebe.
 
 **Aviso (2026-10-04): los demás archivos no son la geometría de la v2.**
 El arreglo `crewhat_corc_array` y sus mapas usan el patrón Halbach K=1, que
