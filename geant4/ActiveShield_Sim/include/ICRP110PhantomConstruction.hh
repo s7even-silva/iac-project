@@ -97,6 +97,7 @@ class ICRP110PhantomConstruction : public G4VUserDetectorConstruction
   G4double fPhantomOffsetX;    // Offset across the ship's XY cross-section (m; see ICRP110PhantomConstruction.cc)
   G4double fPhantomOffsetY;
   G4double fSourceSphereRadius = 0.; // >0: fija el radio de la esfera fuente (/spacecraft/sourceSphereRadius)
+  G4double fEnvelopeMaxTrackLength = 0.; // >0: fija el límite de traza en MagnetEnvelope; 0 = 3 diámetros de la esfera
   std::vector<std::pair<G4String, G4double>> fPassiveLayers;
   std::shared_ptr<const MagneticFieldMap> fFieldMap;
  // std::vector<G4Material*> fMaterials;

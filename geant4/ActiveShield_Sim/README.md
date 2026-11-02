@@ -147,16 +147,22 @@ de sus propios comandos `/vis/...`. Ver
 /spacecraft/phantomOffsetX 0 m
 /spacecraft/phantomOffsetY 0 m
 /spacecraft/sourceSphereRadius 0 m
+/spacecraft/envelopeMaxTrackLength 0 m
 ```
 
 - `sourceSphereRadius` (2026-10-01): radio de la esfera donde nacen los
   primarios. Con 0 (default) se usa la fórmula histórica: semidiagonal de
   la nave + casco + 20 cm (6.94 m en producción), que corta el arreglo de
   bobinas (radio 5.67–10.34 m). Si el radio no cabe en `MagnetEnvelope`, la
-  construcción aborta. El límite de longitud de traza (3·2R) escala solo.
+  construcción aborta. El límite de longitud de traza (3·2R) escala solo,
+  salvo que se fije con `envelopeMaxTrackLength`.
   El agregador usa el radio en el peso `π R² Φ`: pasarle el mismo valor
   con `aggregate_organ_doses.py --source-sphere-radius-m`. Lo
   necesita el piloto P1 de `docs/bitacora/plan_piloto.md`.
+- `envelopeMaxTrackLength` (2026-10-31): fija el límite de longitud de traza
+  de `MagnetEnvelope`; 0 (default) deja 3 diámetros de la esfera fuente. El
+  paso 3 de P1 lo fija en 108 m para variar el radio sin variar el límite.
+  La construcción imprime el radio y el límite usados.
 - `hullThickness`: positivo y menor de 100 cm, dimensiones exteriores fijas.
 - `shipRadius`/`shipHalfLength`: radio y semilongitud del cilindro de la
   nave (por defecto 2,8m/5m, tamaño de Geom14/ARSSEM). CREW HaT usa
@@ -169,7 +175,9 @@ de sus propios comandos `/vis/...`. Ver
   límites de envolvente/mapa y solapamientos antes del transporte.
 - `worldHalfSize`: mínimo solicitado, mayor de 6 m; para mapas se amplía
   por eje hasta `max(mínimo, abs(límites del mapa) + 1 m)`.
-- `fieldMap`: omitir para no cargar campo. Un mapa inválido causa error fatal;
+- `fieldMap`: omitir para no cargar campo. Acepta el formato de texto y el
+  binario `.bmap` (float32, `field/map_to_binary.py`), que pesa 3.6 veces
+  menos y se lee sin pasar por texto. Un mapa inválido causa error fatal;
   debe extenderse más allá de todo el hábitat en X, Y y Z, y contener la
   esfera fuente completa (`sourceSphereRadius`) en los tres ejes: fuera del
   mapa el campo es cero. CTest `field_map_covers_source` comprueba que un

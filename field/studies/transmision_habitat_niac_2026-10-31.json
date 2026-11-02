@@ -1,0 +1,404 @@
+{
+ "report": "production/crewhat_niac_array_current_paths.json",
+ "filaments": [
+  6,
+  3
+ ],
+ "n": 300,
+ "r_escape_m": 40.0,
+ "max_length_m": 300.0,
+ "rows": [
+  {
+   "layout": "NIAC",
+   "point": "x=0",
+   "proton_MeV": 20,
+   "rigidity_GV": 0.19475851714366693,
+   "n": 300,
+   "transmission": 0.9966666666666667,
+   "transmission_ci95": [
+    0.9813633061033494,
+    0.9994113422846503
+   ],
+   "crosses_pack_no_field": 0.08,
+   "crosses_pack": 0.0033333333333333335
+  },
+  {
+   "layout": "NIAC",
+   "point": "x=0",
+   "proton_MeV": 70,
+   "rigidity_GV": 0.3691315212766312,
+   "n": 300,
+   "transmission": 1.0,
+   "transmission_ci95": [
+    0.9873570285785234,
+    1.0
+   ],
+   "crosses_pack_no_field": 0.08,
+   "crosses_pack": 0.03666666666666667
+  },
+  {
+   "layout": "NIAC",
+   "point": "x=0",
+   "proton_MeV": 150,
+   "rigidity_GV": 0.5513452638773639,
+   "n": 300,
+   "transmission": 1.0,
+   "transmission_ci95": [
+    0.9873570285785234,
+    1.0
+   ],
+   "crosses_pack_no_field": 0.08,
+   "crosses_pack": 0.07666666666666666
+  },
+  {
+   "layout": "NIAC",
+   "point": "x=0",
+   "proton_MeV": 300,
+   "rigidity_GV": 0.8080613838069483,
+   "n": 300,
+   "transmission": 1.0,
+   "transmission_ci95": [
+    0.9873570285785234,
+    1.0
+   ],
+   "crosses_pack_no_field": 0.08,
+   "crosses_pack": 0.06666666666666667
+  },
+  {
+   "layout": "NIAC",
+   "point": "x=0",
+   "proton_MeV": 600,
+   "rigidity_GV": 1.2189858079567621,
+   "n": 300,
+   "transmission": 1.0,
+   "transmission_ci95": [
+    0.9873570285785234,
+    1.0
+   ],
+   "crosses_pack_no_field": 0.08,
+   "crosses_pack": 0.06
+  },
+  {
+   "layout": "NIAC",
+   "point": "x=0",
+   "proton_MeV": 1000,
+   "rigidity_GV": 1.6960377354292564,
+   "n": 300,
+   "transmission": 1.0,
+   "transmission_ci95": [
+    0.9873570285785234,
+    1.0
+   ],
+   "crosses_pack_no_field": 0.08,
+   "crosses_pack": 0.07666666666666666
+  },
+  {
+   "layout": "NIAC",
+   "point": "x=0",
+   "proton_MeV": 2000,
+   "rigidity_GV": 2.7844367473512484,
+   "n": 300,
+   "transmission": 1.0,
+   "transmission_ci95": [
+    0.9873570285785234,
+    1.0
+   ],
+   "crosses_pack_no_field": 0.08,
+   "crosses_pack": 0.09
+  },
+  {
+   "layout": "NIAC",
+   "point": "x=4 m",
+   "proton_MeV": 20,
+   "rigidity_GV": 0.19475851714366693,
+   "n": 300,
+   "transmission": 0.9666666666666667,
+   "transmission_ci95": [
+    0.9397381739273791,
+    0.9817950527459094
+   ],
+   "crosses_pack_no_field": 0.13666666666666666,
+   "crosses_pack": 0.056666666666666664
+  },
+  {
+   "layout": "NIAC",
+   "point": "x=4 m",
+   "proton_MeV": 70,
+   "rigidity_GV": 0.3691315212766312,
+   "n": 300,
+   "transmission": 1.0,
+   "transmission_ci95": [
+    0.9873570285785234,
+    1.0
+   ],
+   "crosses_pack_no_field": 0.13666666666666666,
+   "crosses_pack": 0.12666666666666668
+  },
+  {
+   "layout": "NIAC",
+   "point": "x=4 m",
+   "proton_MeV": 150,
+   "rigidity_GV": 0.5513452638773639,
+   "n": 300,
+   "transmission": 1.0,
+   "transmission_ci95": [
+    0.9873570285785234,
+    1.0
+   ],
+   "crosses_pack_no_field": 0.13666666666666666,
+   "crosses_pack": 0.14666666666666667
+  },
+  {
+   "layout": "NIAC",
+   "point": "x=4 m",
+   "proton_MeV": 300,
+   "rigidity_GV": 0.8080613838069483,
+   "n": 300,
+   "transmission": 1.0,
+   "transmission_ci95": [
+    0.9873570285785234,
+    1.0
+   ],
+   "crosses_pack_no_field": 0.13666666666666666,
+   "crosses_pack": 0.15333333333333332
+  },
+  {
+   "layout": "NIAC",
+   "point": "x=4 m",
+   "proton_MeV": 600,
+   "rigidity_GV": 1.2189858079567621,
+   "n": 300,
+   "transmission": 1.0,
+   "transmission_ci95": [
+    0.9873570285785234,
+    1.0
+   ],
+   "crosses_pack_no_field": 0.13666666666666666,
+   "crosses_pack": 0.13
+  },
+  {
+   "layout": "NIAC",
+   "point": "x=4 m",
+   "proton_MeV": 1000,
+   "rigidity_GV": 1.6960377354292564,
+   "n": 300,
+   "transmission": 1.0,
+   "transmission_ci95": [
+    0.9873570285785234,
+    1.0
+   ],
+   "crosses_pack_no_field": 0.13666666666666666,
+   "crosses_pack": 0.12
+  },
+  {
+   "layout": "NIAC",
+   "point": "x=4 m",
+   "proton_MeV": 2000,
+   "rigidity_GV": 2.7844367473512484,
+   "n": 300,
+   "transmission": 1.0,
+   "transmission_ci95": [
+    0.9873570285785234,
+    1.0
+   ],
+   "crosses_pack_no_field": 0.13666666666666666,
+   "crosses_pack": 0.14
+  },
+  {
+   "layout": "toroide",
+   "point": "x=0",
+   "proton_MeV": 20,
+   "rigidity_GV": 0.19475851714366693,
+   "n": 300,
+   "transmission": 0.9866666666666667,
+   "transmission_ci95": [
+    0.9662244695197068,
+    0.9948030382967227
+   ],
+   "crosses_pack_no_field": 0.08,
+   "crosses_pack": 0.06
+  },
+  {
+   "layout": "toroide",
+   "point": "x=0",
+   "proton_MeV": 70,
+   "rigidity_GV": 0.3691315212766312,
+   "n": 300,
+   "transmission": 0.9966666666666667,
+   "transmission_ci95": [
+    0.9813633061033494,
+    0.9994113422846503
+   ],
+   "crosses_pack_no_field": 0.08,
+   "crosses_pack": 0.07333333333333333
+  },
+  {
+   "layout": "toroide",
+   "point": "x=0",
+   "proton_MeV": 150,
+   "rigidity_GV": 0.5513452638773639,
+   "n": 300,
+   "transmission": 1.0,
+   "transmission_ci95": [
+    0.9873570285785234,
+    1.0
+   ],
+   "crosses_pack_no_field": 0.08,
+   "crosses_pack": 0.08333333333333333
+  },
+  {
+   "layout": "toroide",
+   "point": "x=0",
+   "proton_MeV": 300,
+   "rigidity_GV": 0.8080613838069483,
+   "n": 300,
+   "transmission": 1.0,
+   "transmission_ci95": [
+    0.9873570285785234,
+    1.0
+   ],
+   "crosses_pack_no_field": 0.08,
+   "crosses_pack": 0.09666666666666666
+  },
+  {
+   "layout": "toroide",
+   "point": "x=0",
+   "proton_MeV": 600,
+   "rigidity_GV": 1.2189858079567621,
+   "n": 300,
+   "transmission": 1.0,
+   "transmission_ci95": [
+    0.9873570285785234,
+    1.0
+   ],
+   "crosses_pack_no_field": 0.08,
+   "crosses_pack": 0.09333333333333334
+  },
+  {
+   "layout": "toroide",
+   "point": "x=0",
+   "proton_MeV": 1000,
+   "rigidity_GV": 1.6960377354292564,
+   "n": 300,
+   "transmission": 1.0,
+   "transmission_ci95": [
+    0.9873570285785234,
+    1.0
+   ],
+   "crosses_pack_no_field": 0.08,
+   "crosses_pack": 0.12666666666666668
+  },
+  {
+   "layout": "toroide",
+   "point": "x=0",
+   "proton_MeV": 2000,
+   "rigidity_GV": 2.7844367473512484,
+   "n": 300,
+   "transmission": 1.0,
+   "transmission_ci95": [
+    0.9873570285785234,
+    1.0
+   ],
+   "crosses_pack_no_field": 0.08,
+   "crosses_pack": 0.12333333333333334
+  },
+  {
+   "layout": "toroide",
+   "point": "x=4 m",
+   "proton_MeV": 20,
+   "rigidity_GV": 0.19475851714366693,
+   "n": 300,
+   "transmission": 0.9866666666666667,
+   "transmission_ci95": [
+    0.9662244695197068,
+    0.9948030382967227
+   ],
+   "crosses_pack_no_field": 0.13666666666666666,
+   "crosses_pack": 0.05
+  },
+  {
+   "layout": "toroide",
+   "point": "x=4 m",
+   "proton_MeV": 70,
+   "rigidity_GV": 0.3691315212766312,
+   "n": 300,
+   "transmission": 1.0,
+   "transmission_ci95": [
+    0.9873570285785234,
+    1.0
+   ],
+   "crosses_pack_no_field": 0.13666666666666666,
+   "crosses_pack": 0.16666666666666666
+  },
+  {
+   "layout": "toroide",
+   "point": "x=4 m",
+   "proton_MeV": 150,
+   "rigidity_GV": 0.5513452638773639,
+   "n": 300,
+   "transmission": 1.0,
+   "transmission_ci95": [
+    0.9873570285785234,
+    1.0
+   ],
+   "crosses_pack_no_field": 0.13666666666666666,
+   "crosses_pack": 0.19666666666666666
+  },
+  {
+   "layout": "toroide",
+   "point": "x=4 m",
+   "proton_MeV": 300,
+   "rigidity_GV": 0.8080613838069483,
+   "n": 300,
+   "transmission": 1.0,
+   "transmission_ci95": [
+    0.9873570285785234,
+    1.0
+   ],
+   "crosses_pack_no_field": 0.13666666666666666,
+   "crosses_pack": 0.18333333333333332
+  },
+  {
+   "layout": "toroide",
+   "point": "x=4 m",
+   "proton_MeV": 600,
+   "rigidity_GV": 1.2189858079567621,
+   "n": 300,
+   "transmission": 1.0,
+   "transmission_ci95": [
+    0.9873570285785234,
+    1.0
+   ],
+   "crosses_pack_no_field": 0.13666666666666666,
+   "crosses_pack": 0.13333333333333333
+  },
+  {
+   "layout": "toroide",
+   "point": "x=4 m",
+   "proton_MeV": 1000,
+   "rigidity_GV": 1.6960377354292564,
+   "n": 300,
+   "transmission": 1.0,
+   "transmission_ci95": [
+    0.9873570285785234,
+    1.0
+   ],
+   "crosses_pack_no_field": 0.13666666666666666,
+   "crosses_pack": 0.16
+  },
+  {
+   "layout": "toroide",
+   "point": "x=4 m",
+   "proton_MeV": 2000,
+   "rigidity_GV": 2.7844367473512484,
+   "n": 300,
+   "transmission": 1.0,
+   "transmission_ci95": [
+    0.9873570285785234,
+    1.0
+   ],
+   "crosses_pack_no_field": 0.13666666666666666,
+   "crosses_pack": 0.14
+  }
+ ]
+}

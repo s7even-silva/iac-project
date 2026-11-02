@@ -77,7 +77,21 @@ Plan vigente: [`docs/bitacora/plan_piloto.md`](docs/bitacora/plan_piloto.md)
   0.25 m. Detalle en `field/README.md`, «Biot-Savart volumétrico».
 - **Mapa candidato (2026-10-31):** ±30 m con paso de 0.25 m, verificado.
   Pesa 609 MB, no está en git: está en el Drive del equipo, con su
-  manifiesto y SHA256 en `field/production/`.
+  manifiesto y SHA256 en `field/production/`. Versión binaria `.bmap`
+  (float32, 168 MB, 114 MB con gzip; `field/map_to_binary.py`): Geant4 la
+  lee directo y arranca en la mitad del tiempo. Es la que se usa desde ahora
+  y la que bajarán los workers.
+- **Cómo actúa el campo (2026-10-31, `plan_piloto.md`, P1):** fuera del
+  casco no reduce el flujo (Liouville: en vacío, todas las direcciones desde
+  el hábitat escapan, también con un toroide ideal). La reducción viene del
+  campo dentro del hábitat sobre protones frenados por el casco: en
+  corridas cortas, D_campo/D_control = 0.22 a 70 MeV, 0.49 a 100 MeV y
+  0.83 a 150 MeV en x = 0. Es de esperar η grande para SEP y chico para
+  GCR; discutirlo en equipo antes del barrido.
+- **P1 paso 3 listo para correr** (`tests/p1_radio/`): protones de 70 y
+  100 MeV, x = 0 y 4 m, R = 14/16/18 m con límite de traza fijo
+  (`/spacecraft/envelopeMaxTrackLength`), decisión con cuerpo entero y ±B.
+  Unas 2–3 h de todo el laboratorio; la sonda da el costo real.
 - **Validación con Elmer (4 niveles en el laboratorio):** la malla y la
   caja convergen hacia Biot-Savart, pero el criterio literal del paso 2 no
   cierra por poco.
@@ -228,7 +242,8 @@ Detalle de interfaces en
 Una partícula cargada de baja energía puede quedar girando indefinidamente
 en el vacío de `MagnetEnvelope` (caso real: un SEP_p de ~19 keV corrió más
 de 10 h). Se corta con `G4UserLimits::SetUserMaxTrackLength()` en
-`MagnetEnvelope` (3 × diámetro de la esfera fuente, escala sola) más
+`MagnetEnvelope` (3 × diámetro de la esfera fuente, escala sola, o fijo con
+`/spacecraft/envelopeMaxTrackLength`) más
 `G4StepLimiterPhysics` registrado en `ICRP110phantoms.cc`, sin el cual el
 límite no se respeta. Si una corrida es anormalmente lenta tras cambiar la
 geometría o el campo, este es el primer sospechoso. El scorer por evento

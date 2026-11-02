@@ -399,6 +399,11 @@ Decidido: se amplían. El piloto fija cuánto. Herramienta disponible
        el manifiesto; 1000 nodos al azar coinciden con el recálculo directo
        en 5·10⁻⁸; Geant4 lo carga con una esfera de 18 m en 42 s y 1 GB.
        El manifiesto está en `field/production/`.
+     - **Versión binaria (`.bmap`, 2026-10-31):** el mismo mapa en float32
+       pesa 168 MB en vez de 609 MB (114 MB con gzip), difiere del texto en
+       6·10⁻⁸ como máximo, y una corrida de Geant4 arranca en 27 s en vez
+       de 57 s. Es el que usan el paso 3 y lo que sigue
+       (`field/map_to_binary.py`; manifiesto en `field/production/`).
    - **Criterio, fijado antes:** la diferencia con Biot-Savart se achica al
      refinar Elmer y, en la corrida más fina, queda dentro del cambio entre
      las dos corridas más finas de Elmer.
@@ -419,7 +424,9 @@ Decidido: se amplían. El piloto fija cuánto. Herramienta disponible
    malla y dominio va a pesar más que con K=1.
 3. **Convergencia de la dosis:** x=0 y una posición fuera del eje, en las
    energías más sensibles al campo (cerca del corte del escudo), para
-   R₁ < R₂ < R₃.
+   R₁ < R₂ < R₃. **Script listo (2026-10-31), sin correr:**
+   `geant4/ActiveShield_Sim/tests/p1_radio/p1_radio.py`. Ver «Diseño del
+   paso 3» más abajo.
 4. **Comparación de disposiciones (nuevo, 2026-10-04):** η a x = 0 con la
    disposición de NIAC y con K=1; detalle en «Disposición de las bobinas
    (D9)».
@@ -569,6 +576,92 @@ Todos los pares malos fueron reentradas; ninguno quedó atrapado.
   estrategia en el `README.md` raíz.
 - **Costo en Geant4:** la fracción de primarios que tocan el fantoma cae
   como 1/R². A 16 m es unas 5 veces menor que a 6.94 m.
+
+#### Cómo actúa el campo sobre la dosis (2026-10-31)
+
+Se estudió para elegir las energías del paso 3 y cambia lo que se puede
+esperar de η.
+
+- **Fuera del casco, el campo no reduce el flujo.** Por el teorema de
+  Liouville, en vacío, un flujo isótropo llega a un punto con la intensidad
+  del espacio libre en toda dirección cuya traza hacia atrás escapa al
+  infinito. Se trazaron 300 direcciones por energía desde x = 0 y
+  x = 4 m (`field/studies/transmision_habitat_niac_2026-10-31.txt`):
+  escapan todas de 70 MeV a 2 GeV (IC95 inferior 0.987), y el 97–99.7% a
+  20 MeV. Lo mismo con un toroide ideal (las ocho normales azimutales): no
+  depende de los sentidos de corriente supuestos en D9, sino de que un
+  anillo alrededor de un cilindro abierto no encierra el hábitat. El campo
+  de las bobinas desvía las partículas, pero otras ocupan su lugar.
+- **Sí cambia por dónde entran.** Sin campo, el 8% de las direcciones desde
+  x = 0 cruza el bobinado (120–250 g/cm²); con campo, el 0.3% a 20 MeV, el
+  3.7% a 70 MeV y el 6–9% desde 150 MeV. En x = 4 m, 13.7% sin campo y
+  12–15% con campo desde 70 MeV.
+- **El efecto grande está dentro del casco.** El casco frena los protones
+  de 70–100 MeV a unos pocos MeV, y el campo del hábitat (0.45 T junto a la
+  pared, casi nulo en el eje) los curva antes de que lleguen al fantoma.
+  Corridas cortas en la laptop (R = 16 m, 1.5·10⁵ primarios, fantoma AM,
+  cuerpo entero; exploratorias, no son un piloto):
+
+  | Protones | x | D_campo/D_control |
+  |---|---|---|
+  | 70 MeV | 0 | 0.22 ± 0.08 |
+  | 70 MeV | 4 m | 0.22 ± 0.13 |
+  | 100 MeV | 0 | 0.49 ± 0.10 |
+  | 150 MeV | 0 | 0.83 ± 0.14 |
+
+- **Consecuencias.**
+  - Con esta disposición, el blindaje actúa en una ventana angosta sobre el
+    corte del casco (hasta ~150 MeV). Es de esperar un η chico para GCR y
+    uno grande para SEP, cuyo espectro cae rápido; el barrido lo dirá.
+  - El mecanismo depende del campo residual del hábitat. Es la parte que el
+    mapa resuelve peor (error de interpolación de 1.2%, p95) y donde la
+    validación con Elmer quedó más lejos de cerrar (grilla del hábitat).
+  - Para el paper, η de SEP y de GCR se van a explicar por mecanismos
+    distintos. Conviene discutirlo en equipo antes del barrido; no cambia
+    el método.
+
+#### Diseño del paso 3 (2026-10-31, fijado antes de correr)
+
+`tests/p1_radio/p1_radio.py` (README en esa carpeta). Umbrales de
+`design_parameters.py`.
+
+- **Casos:** protones de 70 y 100 MeV, fantoma AM, en x = 0 y x = 4 m
+  (frente a la bobina 0). Son las energías donde la dosis más depende del
+  campo (tabla de arriba) y las de menor rigidez con dosis, las que más
+  desvía la cola (paso 1). 150 MeV queda fuera: el efecto ya es chico y la
+  corrida cuesta más.
+- **Corridas por caso, independientes:**
+  - escudo con R = 14, 16 y 18 m;
+  - límite de traza fijo en 108 m para todos los radios (el que tendría
+    18 m), con el comando nuevo `/spacecraft/envelopeMaxTrackLength`, así
+    que solo varía el radio;
+  - un control sin campo con R = 16 m, que da D0 para escalar B.
+- **Métrica de decisión:** dosis absorbida de cuerpo entero. Las demás
+  categorías y B_SECONDARY se reportan y no deciden. Con ±2.5% por
+  categoría harían falta unos 25 millones de eventos con depósito por
+  corrida (la mama masculina recibe el 0.24% de los de cuerpo entero).
+- **Prueba:**
+  - Δ = (D(Ri) − D(Rj))/D0, con D ∝ R²·S1/M;
+  - equivalentes si el IC95 de Δ cae entero dentro de ±B;
+  - si alguna corrida no pasa D4, la comparación no concluye.
+- **Decisión:**
+  - 14 m se acepta si es equivalente a 16 y a 18 m en los cuatro casos;
+  - si no, se corre 20 m (reserva del paso 1) y se juzga 16 m contra 18 y
+    20 m, y 14 m queda descartado.
+- **Eventos:**
+  - una sonda de 5·10⁵ primarios por caso, con R = 16 m, mide la SD por
+    primario;
+  - N se fija para que SE(Δ) ≤ B/4: en cada comparación, 96% de
+    probabilidad de aprobar si la dosis no cambia;
+  - margen de 1.25 por el error de la sonda;
+  - los N quedan en `sonda.json` y no se extienden mirando Δ.
+- **Costo estimado con las corridas de arriba:** unas 1400 horas-núcleo
+  de la laptop, sobre todo 70 MeV en x = 4 m (~450 h). Son unas 2–3 horas
+  de todo el laboratorio. La sonda da el número real antes de empezar. Si
+  hay que recortar: SE(Δ) ≤ B/3 cuesta 0.56 veces lo anterior, pero la
+  probabilidad de aprobar cada comparación baja a 70%.
+- **Reparto:** cada corrida se parte entre PCs (`--parts N --part K`,
+  semilla propia por parte) y `analyze` suma las partes.
 
 ### P2 — Validación del estimador de incertidumbre por evento
 
@@ -925,6 +1018,8 @@ corrida con campo hecha antes del mapa final es reutilizable.
       dominio de P1) generado, versionado en
       `field/production/` con su manifiesto y hash, y cargado en Geant4 sin
       truncamiento dentro de la esfera fuente ni del `MagnetEnvelope`.
+      Candidato ±30 m generado y verificado, también en binario (`.bmap`);
+      falta cerrar el paso 2 y correr el paso 3 (script listo).
 - [ ] Scorer nuevo y coordinator con procedencia, con tests.
 - [ ] P0–P4 y P6 aprobados; P5 aprobado solo si se usará sesgo (si no,
       registrar «no aplica» y usar ley coseno sin sesgo).

@@ -136,6 +136,13 @@ ICRP110PhantomConstruction::ICRP110PhantomConstruction():
   srcR.SetParameterName("radius", false);
   srcR.SetRange("radius>=0");
   srcR.SetStates(G4State_PreInit);
+  // P1 paso 3 varía el radio con el límite fijo, para no confundir la
+  // convergencia de la fuente con trazas cortadas (plan_piloto.md, P1).
+  auto& maxLen = fSpacecraftMessenger->DeclarePropertyWithUnit("envelopeMaxTrackLength", "m", fEnvelopeMaxTrackLength);
+  maxLen.SetGuidance("Límite de longitud de traza en MagnetEnvelope; 0 (default) = 3 diámetros de la esfera fuente.");
+  maxLen.SetParameterName("length", false);
+  maxLen.SetRange("length>=0");
+  maxLen.SetStates(G4State_PreInit);
   // Register field accuracy commands before /run/initialize; setup is thread local.
   G4FieldBuilder::Instance();
 }
@@ -390,7 +397,10 @@ G4VPhysicalVolume* ICRP110PhantomConstruction::Construct()
   // radially at the origin only ever needs on the order of one source-sphere
   // diameter to reach the hull; capping at a small multiple of that (not of
   // the whole world envelope) bounds the trapped case ~13x tighter.
-  const G4double envelopeMaxTrackLength = 3.0 * (2.0 * GetSourceSphereRadius());
+  const G4double envelopeMaxTrackLength =
+    fEnvelopeMaxTrackLength > 0. ? fEnvelopeMaxTrackLength : 3.0 * (2.0 * GetSourceSphereRadius());
+  G4cout << "Source sphere radius [m]: " << GetSourceSphereRadius()/m
+         << "; MagnetEnvelope max track length [m]: " << envelopeMaxTrackLength/m << G4endl;
   auto* envelopeLimits = new G4UserLimits();
   envelopeLimits->SetUserMaxTrackLength(envelopeMaxTrackLength);
   logicEnvelope->SetUserLimits(envelopeLimits);
