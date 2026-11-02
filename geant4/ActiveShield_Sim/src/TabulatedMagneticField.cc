@@ -2,59 +2,99 @@
 #include "G4SystemOfUnits.hh"
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <fstream>
 #include <limits>
 #include <sstream>
 #include <stdexcept>
 
 MagneticFieldMap::MagneticFieldMap(const std::string& filename) {
-  std::ifstream input(filename);
+  std::ifstream input(filename, std::ios::binary);
   if (!input) throw std::runtime_error("Cannot open field map: " + filename);
-  // Strip comments before parsing; reject malformed, incomplete or extra data.
-  std::stringstream data;
-  for (std::string line; std::getline(input, line);)
-    data << line.substr(0, line.find('#')) << '\n';
-  const auto read = [&]() {
-    double value;
-    if (!(data >> value) || !std::isfinite(value))
-      throw std::runtime_error("Invalid or incomplete field map: " + filename);
-    return value;
-  };
-  std::size_t count = 1;
-  for (auto& size : fSize) {
-    const double value = read();
-    if (value < 2 || value > 100000 || std::floor(value) != value)
-      throw std::runtime_error("Each field grid dimension must be an integer >= 2");
-    size = static_cast<std::size_t>(value);
-    if (count > std::numeric_limits<std::size_t>::max() / size)
-      throw std::runtime_error("Field grid size overflow");
-    count *= size;
+  char magic[8] = {};
+  if (input.read(magic, sizeof magic) && std::string(magic, sizeof magic) == "IACBMAP1") {
+    ReadBinary(input, filename);
+  } else {
+    input.clear();
+    input.seekg(0);
+    // Strip comments before parsing; reject malformed, incomplete or extra data.
+    std::stringstream data;
+    for (std::string line; std::getline(input, line);)
+      data << line.substr(0, line.find('#')) << '\n';
+    const auto read = [&]() {
+      double value;
+      if (!(data >> value) || !std::isfinite(value))
+        throw std::runtime_error("Invalid or incomplete field map: " + filename);
+      return value;
+    };
+    double grid[9];
+    for (auto& value : grid) value = read();
+    SetGrid(grid, grid + 3, grid + 6);
+    // No reserve from an untrusted size: a truncated file fails before allocating
+    // its declared full grid. Ordering: x fastest, then y, then z.
+    for (std::size_t i = 0; i < fSize[0] * fSize[1] * fSize[2]; ++i) {
+      G4ThreeVector b;
+      for (int axis = 0; axis < 3; ++axis) b[axis] = read() * tesla;
+      fValues.push_back(b);
+    }
+    std::string extra;
+    if (data >> extra) throw std::runtime_error("Unexpected extra field map data");
   }
-  for (int axis = 0; axis < 3; ++axis) fMinimum[axis] = read() * m;
+  for (std::size_t z = 0; z < fSize[2]; ++z)
+    for (std::size_t y = 0; y < fSize[1]; ++y)
+      for (std::size_t x = 0; x < fSize[0]; ++x) {
+        const auto& b = fValues[(z * fSize[1] + y) * fSize[0] + x];
+        if (!std::isfinite(b.mag2())) throw std::runtime_error("Invalid field magnitude");
+        if (x == 0 || y == 0 || z == 0 || x == fSize[0]-1 ||
+            y == fSize[1]-1 || z == fSize[2]-1)
+          fBoundaryMaximum = std::max(fBoundaryMaximum, b.mag());
+      }
+}
+
+void MagneticFieldMap::SetGrid(const double size[3], const double minimum[3], const double spacing[3]) {
+  std::size_t count = 1;
   for (int axis = 0; axis < 3; ++axis) {
-    fSpacing[axis] = read() * m;
-    if (fSpacing[axis] <= 0)
+    if (!(size[axis] >= 2 && size[axis] <= 100000) || std::floor(size[axis]) != size[axis])
+      throw std::runtime_error("Each field grid dimension must be an integer >= 2");
+    fSize[axis] = static_cast<std::size_t>(size[axis]);
+    if (count > std::numeric_limits<std::size_t>::max() / fSize[axis])
+      throw std::runtime_error("Field grid size overflow");
+    count *= fSize[axis];
+    fMinimum[axis] = minimum[axis] * m;
+    fSpacing[axis] = spacing[axis] * m;
+    if (!(fSpacing[axis] > 0))
       throw std::runtime_error("Field grid spacing must be positive");
     fMaximum[axis] = fMinimum[axis] + (fSize[axis] - 1) * fSpacing[axis];
     if (!std::isfinite(fMinimum[axis]) || !std::isfinite(fMaximum[axis]) ||
         fMaximum[axis] <= fMinimum[axis])
       throw std::runtime_error("Invalid field grid extent");
   }
-  // No reserve from an untrusted size: a truncated file fails before allocating
-  // its declared full grid. Ordering: x fastest, then y, then z.
-  for (std::size_t z = 0; z < fSize[2]; ++z)
-    for (std::size_t y = 0; y < fSize[1]; ++y)
-      for (std::size_t x = 0; x < fSize[0]; ++x) {
-        G4ThreeVector b;
-        for (int axis = 0; axis < 3; ++axis) b[axis] = read() * tesla;
-        if (!std::isfinite(b.mag2())) throw std::runtime_error("Invalid field magnitude");
-        fValues.push_back(b);
-        if (x == 0 || y == 0 || z == 0 || x == fSize[0]-1 ||
-            y == fSize[1]-1 || z == fSize[2]-1)
-          fBoundaryMaximum = std::max(fBoundaryMaximum, b.mag());
-      }
-  std::string extra;
-  if (data >> extra) throw std::runtime_error("Unexpected extra field map data");
+}
+
+void MagneticFieldMap::ReadBinary(std::istream& input, const std::string& filename) {
+  const std::uint16_t probe = 1;
+  if (*reinterpret_cast<const unsigned char*>(&probe) != 1)
+    throw std::runtime_error("Binary field maps are little-endian; this host is not");
+  std::uint64_t size[3];
+  double grid[6];
+  if (!input.read(reinterpret_cast<char*>(size), sizeof size) ||
+      !input.read(reinterpret_cast<char*>(grid), sizeof grid))
+    throw std::runtime_error("Invalid or incomplete field map: " + filename);
+  const double sizes[3] = {double(size[0]), double(size[1]), double(size[2])};
+  SetGrid(sizes, grid, grid + 3);
+  // Size check before allocating: a truncated or padded file is rejected.
+  const auto start = input.tellg();
+  input.seekg(0, std::ios::end);
+  const auto count = fSize[0] * fSize[1] * fSize[2];
+  if (input.tellg() - start != static_cast<std::streamoff>(3 * count * sizeof(float)))
+    throw std::runtime_error("Field map size does not match its grid: " + filename);
+  input.seekg(start);
+  std::vector<float> raw(3 * count);
+  if (!input.read(reinterpret_cast<char*>(raw.data()), raw.size() * sizeof(float)))
+    throw std::runtime_error("Invalid or incomplete field map: " + filename);
+  fValues.reserve(count);
+  for (std::size_t i = 0; i < count; ++i)
+    fValues.emplace_back(raw[3*i] * tesla, raw[3*i+1] * tesla, raw[3*i+2] * tesla);
 }
 
 G4ThreeVector MagneticFieldMap::Evaluate(const G4ThreeVector& point) const {

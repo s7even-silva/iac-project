@@ -34,6 +34,13 @@ de Biot-Savart volumétrico.
   - 1000 nodos al azar coinciden con un recálculo directo en 5·10⁻⁸ (el
     redondeo a 7 cifras);
   - Geant4 lo carga en 42 s, con 1.05 GB de RAM y una esfera de 18 m.
+- **Versión binaria (`.bmap`, 2026-10-31):** el mismo mapa en float32,
+  168 MB (114 MB con gzip); Geant4 la lee directo y arranca en la mitad del
+  tiempo. Manifiesto: `crewhat_niac_bs_30m_0.25.bmap-manifest.json`, con el
+  sha256 del texto de origen y la diferencia máxima con él (6·10⁻⁸).
+  SHA256 del `.bmap`: `6149d2103e3368b23c2097ab31583ff54c15c5c7f21f7b288489cc9daa32ba75`.
+  Se obtiene con `field/map_to_binary.py` desde el `.map`, o directo del
+  generador con una salida `.bmap`.
 - **Para regenerarlo** (idéntico salvo el redondeo):
   ```bash
   field/.venv/bin/python field/compute_field_volumetric.py field/production/crewhat_niac_array_current_paths.json \

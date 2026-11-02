@@ -269,18 +269,63 @@ def compute_planes(seg, half, sizes, steps, z_indices, processes, checkpoint=Non
     return np.stack([planes[i] for i in z_indices]), time.monotonic()-start
 
 
+BINARY_MAGIC = b'IACBMAP1'
+
+
+def write_binary(f, values, origin, steps):
+    """.bmap for TabulatedMagneticField.cc: magic, nx ny nz (uint64), minimum and spacing in m
+    (float64), then B in T as float32 in the text order (x fastest, then y, then z); little-endian.
+    float32 rounds at ~6e-8 relative, far below the interpolation error, and the file is ~3.6x
+    smaller than the text map."""
+    f.write(BINARY_MAGIC+np.array(values.shape[2::-1], '<u8').tobytes()
+            + np.array([*origin, *steps], '<f8').tobytes())
+    f.write(np.ascontiguousarray(values, '<f4').data)
+
+
+def read_map(path):
+    """(values[nz, ny, nx, 3] in T, minimum, spacing) of a .map or .bmap; a .bmap is memory-mapped."""
+    with open(path, 'rb') as f:
+        if f.read(8) == BINARY_MAGIC:
+            nx, ny, nz = map(int, np.frombuffer(f.read(24), '<u8'))
+            grid = np.frombuffer(f.read(48), '<f8')
+            return np.memmap(path, '<f4', 'r', offset=80, shape=(nz, ny, nx, 3)), grid[:3], grid[3:]
+    with open(path) as f:
+        header = text_header(f)
+        values = np.loadtxt(f, comments='#').reshape(*header[0][::-1], 3)
+    return values, np.array(header[1]), np.array(header[2])
+
+
+def text_header(f):
+    """Sizes, minimum and spacing of a text map, leaving f at the first value line."""
+    rows = []
+    while len(rows) < 3:
+        line = f.readline()
+        if not line:
+            raise ValueError('incomplete map header')
+        if line.split('#')[0].split():
+            rows.append([float(v) for v in line.split('#')[0].split()])
+    return [int(v) for v in rows[0]], rows[1], rows[2]
+
+
+def manifest_path(output):
+    return output.with_suffix('.bmap-manifest.json' if output.suffix == '.bmap' else '.field-manifest.json')
+
+
 def write_map(source, output, data, seg, values, half, steps, n_radial, n_axial, check_points, extra):
     sizes = values.shape[2::-1]
     print(f'[campo] escribiendo {output}', file=sys.stderr, flush=True)
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_suffix(output.suffix+'.tmp')
     try:
-        with temporary.open('w') as f:
-            f.write(f'# Volumetric Biot-Savart, {len(data["coils"])} coils, {n_radial}x{n_axial} filaments; '
-                    'm and T; not production\n')
-            f.write(' '.join(map(str, sizes))+'\n'+' '.join(f'{-h}' for h in half)+'\n'
-                    + ' '.join(map(str, steps))+'\n')
-            np.savetxt(f, values.reshape(-1, 3), fmt='%.7e')
+        with temporary.open('wb' if output.suffix == '.bmap' else 'w') as f:
+            if output.suffix == '.bmap':
+                write_binary(f, values, -half, steps)
+            else:
+                f.write(f'# Volumetric Biot-Savart, {len(data["coils"])} coils, {n_radial}x{n_axial} filaments; '
+                        'm and T; not production\n')
+                f.write(' '.join(map(str, sizes))+'\n'+' '.join(f'{-h}' for h in half)+'\n'
+                        + ' '.join(map(str, steps))+'\n')
+                np.savetxt(f, values.reshape(-1, 3), fmt='%.7e')
         temporary.replace(output)
     finally:
         temporary.unlink(missing_ok=True)
@@ -288,7 +333,8 @@ def write_map(source, output, data, seg, values, half, steps, n_radial, n_axial,
     edge[1:-1, 1:-1, 1:-1] = False
     report = {'model': 'volumetric_biot_savart', 'production_validated': False,
               'array_report_sha256': digest(source), 'generator_sha256': digest(Path(__file__)),
-              'map_sha256': digest(output), 'python': platform.python_version(),
+              'map_sha256': digest(output), 'format': 'IACBMAP1 float32' if output.suffix == '.bmap' else 'text',
+              'python': platform.python_version(),
               'numpy': np.__version__, 'platform': platform.platform(),
               'half_size_m': half.tolist(), 'spacing_m': list(steps), 'shape': list(sizes),
               'filaments_radial_axial': [n_radial, n_axial], 'filament_core_radius_m': seg.core,
@@ -297,7 +343,7 @@ def write_map(source, output, data, seg, values, half, steps, n_radial, n_axial,
     if check_points:
         print('[campo] comparando la interpolación con el cálculo directo', file=sys.stderr, flush=True)
         report['interpolation_check'] = interpolation_check(values, -half, np.array(steps), seg, check_points)
-    output.with_suffix('.field-manifest.json').write_text(json.dumps(report, indent=2)+'\n')
+    manifest_path(output).write_text(json.dumps(report, indent=2)+'\n')
     print(json.dumps(report, indent=2))
 
 
@@ -310,7 +356,7 @@ def part_meta(source, half, steps, sizes, n_radial, n_axial):
 
 def generate(source, output, half_size, spacing, n_radial, n_axial, processes, max_points, check_points,
              part=None):
-    """Whole map (.map), or part K of N of its z planes (.npz) for merge()."""
+    """Whole map (.map text, .bmap binary), or part K of N of its z planes (.npz) for merge()."""
     data = json.loads(source.read_text())
     half, sizes, steps = grid(data, half_size, spacing, max_points)
     seg = Segments(data, n_radial, n_axial)
@@ -318,8 +364,8 @@ def generate(source, output, half_size, spacing, n_radial, n_axial, processes, m
     key = {'array_report_sha256': digest(source), 'half_size_m': half.tolist(), 'spacing_m': list(steps),
            'filaments_radial_axial': [n_radial, n_axial]}
     if part is None:
-        if output.suffix != '.map' or output.resolve() == source.resolve():
-            raise ValueError('Use a distinct .map output')
+        if output.suffix not in ('.map', '.bmap') or output.resolve() == source.resolve():
+            raise ValueError('Use a distinct .map or .bmap output')
         checkpoint = output.with_name(output.name+'.planos')
         values, elapsed = compute_planes(seg, half, sizes, steps, list(range(sizes[2])), processes,
                                          checkpoint, key)
@@ -344,8 +390,8 @@ def generate(source, output, half_size, spacing, n_radial, n_axial, processes, m
 
 def merge(source, output, part_files, check_points):
     """Join the parts of one map, checking they are the same map and cover every z plane once."""
-    if output.suffix != '.map':
-        raise ValueError('Use a .map output')
+    if output.suffix not in ('.map', '.bmap'):
+        raise ValueError('Use a .map or .bmap output')
     parts = []
     for path in part_files:
         with np.load(path) as f:
@@ -382,7 +428,7 @@ def merge(source, output, part_files, check_points):
 if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('array_report', type=Path, help='array_current_paths.json from generate_ellipse_array.py')
-    p.add_argument('output', type=Path, help='.map (whole map or merge) or .npz (--part)')
+    p.add_argument('output', type=Path, help='.map text or .bmap binary (whole map or merge), or .npz (--part)')
     p.add_argument('--half-size', type=float, nargs='+', help='metres: one value, or x y z')
     p.add_argument('--spacing', type=float, help='maximum grid step in metres')
     p.add_argument('--filaments', type=int, nargs=2, metavar=('RADIAL', 'AXIAL'))

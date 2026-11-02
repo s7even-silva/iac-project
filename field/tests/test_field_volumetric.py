@@ -1,6 +1,8 @@
 """Volumetric Biot-Savart (compute_field_volumetric.py) against closed forms."""
 from pathlib import Path
 import json
+import struct
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -8,7 +10,7 @@ import unittest
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from compute_field_volumetric import Segments, field, filaments, generate, merge
+from compute_field_volumetric import Segments, field, filaments, generate, merge, read_map, write_binary
 
 MU0 = 4e-7*np.pi
 
@@ -97,6 +99,37 @@ class VolumetricTests(unittest.TestCase):
             (stale/'key.json').write_text(json.dumps({'other': 'map'}))
             with self.assertRaises(ValueError):
                 generate(report, tmp/'whole2.map', **args)
+
+    def test_binary_map_layout_and_text_equivalence(self):
+        """The .bmap layout that TabulatedMagneticField.cc reads (tests/test_field_map.cc writes the
+        same one), and the same field as the text map: generated directly or converted."""
+        values = np.arange(4*3*2*3, dtype=float).reshape(4, 3, 2, 3)  # nz, ny, nx, 3
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            with open(tmp/'small.bmap', 'wb') as f:
+                write_binary(f, values, [-1., -2., -3.], [0.5, 1., 2.])
+            expected = (b'IACBMAP1'+struct.pack('<3Q6d', 2, 3, 4, -1, -2, -3, 0.5, 1, 2)
+                        + struct.pack(f'<{values.size}f', *values.ravel()))
+            self.assertEqual((tmp/'small.bmap').read_bytes(), expected)
+
+            report = tmp/'report.json'
+            report.write_text(json.dumps(circle_report(1.0, 0.2, 0.1, 1e4, segments=64)))
+            args = dict(half_size=[1.5], spacing=0.5, n_radial=2, n_axial=1, processes=1,
+                        max_points=10**6, check_points=0)
+            generate(report, tmp/'m.map', **args)
+            generate(report, tmp/'m.bmap', **args)
+            subprocess.run([sys.executable, str(Path(__file__).resolve().parents[1]/'map_to_binary.py'),
+                            str(tmp/'m.map'), str(tmp/'c.bmap')], check=True, capture_output=True)
+            text, origin, steps = read_map(tmp/'m.map')
+            for name in ('m.bmap', 'c.bmap'):
+                binary, origin2, steps2 = read_map(tmp/name)
+                np.testing.assert_array_equal(origin2, origin)
+                np.testing.assert_array_equal(steps2, steps)
+                np.testing.assert_allclose(binary, text, rtol=2e-7, atol=1e-12)
+            self.assertTrue((tmp/'m.bmap-manifest.json').is_file() and (tmp/'m.field-manifest.json').is_file())
+            converted = json.loads((tmp/'c.bmap-manifest.json').read_text())
+            self.assertEqual(converted['format'], 'IACBMAP1 float32')
+            self.assertLess(converted['max_relative_difference_vs_source'], 1e-6)
 
 
 if __name__ == '__main__':

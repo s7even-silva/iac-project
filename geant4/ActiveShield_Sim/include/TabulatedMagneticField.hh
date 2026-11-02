@@ -10,6 +10,9 @@
 
 // Immutable regular Cartesian grid shared by the master and worker threads.
 // File coordinates are metres, field components tesla, in the Geant4 world frame.
+// Text maps, or binary maps (.bmap, field/compute_field_volumetric.py) that
+// start with "IACBMAP1": uint64 nx ny nz, float64 minimum and spacing, then
+// float32 values in the text order; little-endian.
 class MagneticFieldMap {
  public:
   explicit MagneticFieldMap(const std::string& filename);
@@ -19,6 +22,8 @@ class MagneticFieldMap {
   double BoundaryMaximum() const { return fBoundaryMaximum; }
 
  private:
+  void SetGrid(const double size[3], const double minimum[3], const double spacing[3]);
+  void ReadBinary(std::istream& input, const std::string& filename);
   std::array<std::size_t, 3> fSize;
   G4ThreeVector fMinimum, fMaximum, fSpacing;
   std::vector<G4ThreeVector> fValues;

@@ -534,6 +534,26 @@ de 0.25 m (241³ nodos), 6 × 3 filamentos.
 El mapa queda candidato hasta que la validación con Elmer y el paso 3 de P1
 lo aprueben.
 
+**Mapa binario `.bmap` (2026-10-31).** Mismo orden y grilla que el texto,
+componentes en float32 (redondeo relativo de 6·10⁻⁸, muy por debajo del
+1.2% de la interpolación). Geant4 lo reconoce por su encabezado
+(`IACBMAP1`), sin importar la extensión. Formato, en little-endian: 8 bytes
+`IACBMAP1`, nx ny nz (uint64), mínimo y paso en m (float64), y después los
+valores (float32, x más rápido, luego y, luego z).
+- `compute_field_volumetric.py` lo escribe directo si la salida termina en
+  `.bmap` (también con `--merge`); el manifiesto queda en
+  `<mapa>.bmap-manifest.json`.
+- `map_to_binary.py` convierte un `.map` existente: lee el texto por
+  bloques, relee el binario, lo compara con el texto y copia el manifiesto
+  con el sha256 nuevo. El candidato tardó 25 s en la laptop.
+- Mapa candidato: 609 MB en texto, **168 MB** en binario y 114 MB con
+  gzip, para subirlo o bajarlo (`gzip -k` / `gunzip -k`; Geant4 no lee el
+  `.gz`). Una corrida de Geant4 arranca en 27 s en vez de 57 s.
+
+```bash
+.venv/bin/python map_to_binary.py ../drive-download/niac_bs_30m_0.25.map ../drive-download/niac_bs_30m_0.25.bmap
+```
+
 Un mapa de **±30 m con paso de 0.25 m** (14 M nodos, ~630 MB) deja margen
 para esferas fuente de hasta 30 m. Con el núcleo compilado son unos 20 min
 en la laptop, y menos en una PC del laboratorio, así que alcanza con una
@@ -695,6 +715,19 @@ Biot-Savart (mediana / p95):**
 - Cerca del bobinado, la malla gruesa lo deja 10–30% por debajo. Junto a
   las caras de una caja chica, la frontera `AV=0` encierra el flujo y lo
   deja por encima.
+
+## Transmisión magnética al hábitat (2026-10-31)
+
+`studies/transmision_habitat_niac_2026-10-31.py` (unos 9 min en la laptop)
+traza hacia atrás protones desde x = 0 y x = 4 m en direcciones isótropas,
+en vacío. Por Liouville, la fracción que escapa al infinito es la
+transmisión del flujo isótropo. Da 1 de 70 MeV a 2 GeV con la disposición
+de NIAC y con un toroide ideal: el anillo no encierra el hábitat, y fuera
+del casco el campo no reduce el flujo. También cuenta cuántas trazas cruzan
+el bobinado, con y sin campo. Lo que sí reduce la dosis es el campo dentro
+del casco sobre los protones que el casco frenó; las corridas de Geant4 y
+la lectura están en `docs/bitacora/plan_piloto.md`, P1, «Cómo actúa el
+campo sobre la dosis».
 
 ## Elmer en el laboratorio (32 GB por PC)
 
