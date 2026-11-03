@@ -688,6 +688,28 @@ cambia menos de 1% en esas zonas.
   - La convergencia es monótona, pero con dos o tres niveles por
     dirección no alcanza para cerrarla formalmente.
 
+**La caja de Elmer, calculada (2026-11-03).** Elmer impone B·n = 0 en la
+caja, así que no resuelve el mismo problema que Biot-Savart en espacio
+libre. `studies/elmer_caja_2026-11-03.py` calcula la solución exacta de
+Biot-Savart dentro de esa misma caja: Biot-Savart menos el gradiente de un
+potencial armónico con su flujo en las caras, por series de cosenos en
+cada cara, sin parámetros ajustables. Usa las carpetas de los niveles
+(`validacion.json` y `domain.mesh-manifest.json`) y tarda ~30 s:
+
+```bash
+.venv/bin/python studies/elmer_caja_2026-11-03.py NIVEL_A NIVEL_B ... > studies/elmer_caja_2026-11-03.txt
+```
+
+- Con la caja descontada, Elmer y Biot-Savart coinciden en 0.7% en el
+  hábitat y 0.9% en las líneas radiales (mediana) en todos los niveles,
+  incluido el de 10 m del 2026-11-02.
+- Junto a la bobina queda el error de malla de Elmer (2–4%), que baja al
+  refinar.
+- Elmer da 0.6–0.75% menos en todos los niveles: una diferencia de escala
+  sin investigar.
+
+Tabla y lectura en `docs/bitacora/plan_piloto.md`, P1 paso 2.
+
 **Tiempos reales en el laboratorio.** OpenMP rinde ~10 veces más tiempo de
 CPU que tiempo real. Las estimaciones de abajo, de 10–60 min por nivel,
 quedaron largas.

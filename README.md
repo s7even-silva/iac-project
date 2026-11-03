@@ -42,9 +42,10 @@ cargue las mismas instrucciones sin duplicar su contenido.
   sirve para la v2. La cifra histórica "Biot-Savart da 36–48% más dosis" no
   se reprodujo (0.93 ± 0.08 a 562 MeV). Ver
   [`modelo_realista.md`](geant4/ActiveShield_Sim/docs/modelo_realista.md).
-- **Bloqueante:** el mapa Elmer de la disposición de NIAC, en el dominio que
-  fije P1. Se resolverá en el laboratorio de la facultad (ver abajo).
-- **Physics list:** `Shielding`.
+- **Campo de la v2:** Biot-Savart volumétrico de la disposición de NIAC,
+  validado con Elmer (`docs/bitacora/plan_piloto.md`, P1 paso 2).
+- **Physics list:** `QGSP_INCLXX_HP` desde el 2026-11-03 (antes
+  `Shielding`), a confirmar con P0b (`plan_piloto.md`, P0).
 - **Incertidumbre:** scorer por evento con autodiagnóstico VOV (ver
   [`metodo_autodiagnostico_incertidumbre.md`](docs/bitacora/metodo_autodiagnostico_incertidumbre.md)).
 
@@ -128,14 +129,14 @@ Plan de trabajo vivo: se corrige a medida que se use el laboratorio.
 
 **Recursos.**
 - Más de 30 PCs de laboratorio con Windows, Intel i7 o i9 de unos 22 hilos
-  (las i9 no están garantizadas) y 32 GB de RAM cada una.
+  (las i9 no están garantizadas) y 32 GB de RAM (algunas solo 16 GB).
 - Hay internet y permisos de administrador; WSL2 se puede instalar.
 - No forman un clúster: no están conectadas entre sí para cálculo
   paralelo.
 - El acceso es de algunas horas, de día y en días distintos.
 
 **Qué implica.**
-- Cada trabajo tiene que caber en una sola PC (32 GB) y terminar en una
+- Cada trabajo tiene que caber en una sola PC (16 o 32 GB) y terminar en una
   sesión, o poder retomarse en la siguiente.
 - El paralelismo sale de muchos trabajos independientes: por ejemplo, un
   dominio de Elmer por PC, o un punto de energía de Geant4 por PC.
@@ -180,7 +181,11 @@ hay permisos de administrador):
   (niveles propuestos en `field/README.md`). Al final, las
   `validacion.json` de cada PC se juntan con
   `validate_volumetric_field.py --tendencia`.
-- **Geant4 (P0 y después P2):** un punto de energía o una semilla por PC.
+- **Antes de correr Geant4 (desde el 2026-11-03):** `git pull` y
+  `cmake --build build` en cada PC (o una imagen nueva). El binario usa
+  ahora `QGSP_INCLXX_HP`, y los scripts de P1 y P2 se niegan a correr con
+  un binario anterior o con sondas hechas con otra lista.
+- **Geant4 (P0b, P1 paso 3 y P2):** un punto de energía o una semilla por PC.
   En `p0_icrp116.py run`, `--points` elige qué puntos corre cada PC, y los
   puntos ya terminados se saltan, así que una corrida cortada se retoma con
   el mismo comando.

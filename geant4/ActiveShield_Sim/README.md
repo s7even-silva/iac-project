@@ -327,8 +327,15 @@ referencia dosimétrica, no equivalente al riesgo epidemiológico en mujeres.
 
 ### Physics list
 
-`Shielding`, vía `G4PhysListFactory` en `ICRP110phantoms.cc`. Solo para
-pruebas de sensibilidad (2026-11-02, P0 a alta energía), la variable de
-entorno `PHYSLIST` la cambia por otra lista de referencia, por ejemplo
-`PHYSLIST=FTFP_BERT python3 p0_icrp116.py run ...`; el `run.log` registra
-la lista usada (`Physics list: ...`). Producción no la define.
+`QGSP_INCLXX_HP` desde el 2026-11-03 (antes `Shielding`), vía
+`G4PhysListFactory` en `ICRP110phantoms.cc`. El motivo es P0: el QMD de
+`Shielding` daba −19% y −31% en helio de 1 y 3 GeV/n, e INCL++ corrige
+además el protón de 10 GeV. Queda a confirmar con P0b
+(`docs/bitacora/plan_piloto.md`, P0).
+
+Solo para pruebas de sensibilidad, la variable de entorno `PHYSLIST` la
+cambia por otra lista de referencia, por ejemplo
+`PHYSLIST=FTFP_BERT python3 p0_icrp116.py run ...`. El `run.log` registra la
+lista usada (`Physics list: ...`). Los scripts de P1 y P2 comprueban que sea
+la de `scripts/design_parameters.py` (`PHYSICS_LIST`) y se detienen si no lo
+es; `p0_icrp116.py analyze` la anota en su tabla.

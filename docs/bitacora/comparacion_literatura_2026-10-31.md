@@ -62,7 +62,8 @@ huecos frente al estándar, por orden de impacto:
    activo.
 4. **Validación física externa:** un caso comparado con OLTARIS/HZETRN o
    con una medición (MSL/RAD), y la sensibilidad a la physics list en
-   2–3 puntos.
+   2–3 puntos (hecha en P0 contra ICRP 116, 2026-11-02: llevó a cambiar a
+   `QGSP_INCLXX_HP`; ver `plan_piloto.md`, P0).
 
 Ninguno de los cuatro invalida lo hecho hasta ahora: la geometría, el campo
 y los pilotos P0–P7 siguen valiendo. El primero sí cambia el alcance del

@@ -7,6 +7,13 @@ Usa el scorer por evento (`/eventStats/*`).
 
 **Resultado (2026-11-02):** `resultados_2026-11-02.csv` y lectura en
 `plan_piloto.md` (P0): no aprueba a 10 GeV(/n) ni en helio de 1 GeV/n.
+Fue con `Shielding`.
+
+**P0b (fijado el 2026-11-03, sin correr):** las mismas corridas con la
+lista nueva, `QGSP_INCLXX_HP` (el default del binario desde ese día), en
+otra carpeta; criterio en `plan_piloto.md`, P0. `analyze` anota la lista de
+cada corrida en la columna `lista_fisica` (de `run.log`) y se niega a
+mezclar listas en un `--out-dir`.
 
 **Parámetros (2026-10-31).** D7 está decidido: ±10% en órganos
 grandes y ±30% en mama y tiroides. También están fijadas las 8 energías de

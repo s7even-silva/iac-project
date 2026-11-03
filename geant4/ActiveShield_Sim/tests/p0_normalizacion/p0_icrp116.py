@@ -33,6 +33,7 @@ Uso:
 import argparse
 import csv
 import math
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -121,6 +122,9 @@ def analyze(a):
     rows = []
     for particle, energy in POINTS:
         for stats in sorted((a.out_dir/f"{particle}_{energy:g}").glob("seed_*/EventStats.tsv")):
+            # Los binarios anteriores a PHYSLIST no imprimen la lista: usaban Shielding.
+            used = re.search(r"Physics list: (\S+)", (stats.parent/"run.log").read_text())
+            physics_list = used[1] if used else "Shielding"
             lines = (l for l in open(stats) if not l.startswith("#"))
             for r in csv.DictReader(lines, delimiter="\t"):
                 if r["checkpoint"] != "-1" or r["kind"] != "category":
@@ -147,9 +151,12 @@ def analyze(a):
                              "coef_icrp116_pGy_cm2": ref if ref else "",
                              "cociente": d/ref if ref else "", "ic95_lo": lo if ref else "",
                              "ic95_hi": hi if ref else "", "tolerancia": tol if tol else "",
-                             "veredicto": verdict})
+                             "veredicto": verdict, "lista_fisica": physics_list})
     if not rows:
         raise SystemExit("Sin corridas en --out-dir")
+    lists = {r["lista_fisica"] for r in rows}
+    if len(lists) != 1:
+        raise SystemExit(f"--out-dir mezcla listas de física: {sorted(lists)}")
     out = a.out_dir/"p0_resumen.csv"
     with open(out, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0]))
@@ -160,7 +167,7 @@ def analyze(a):
             print(f"{r['particula']:6s} {r['energia_mev_por_nucleon']:>8g} {r['organo_icrp']:9s} "
                   f"cociente={r['cociente']:.3f} [{r['ic95_lo']:.3f},{r['ic95_hi']:.3f}] "
                   f"tol=±{r['tolerancia']:.0%} vov={float(r['vov']):.3f} -> {r['veredicto']}")
-    print(f"{len(rows)} filas -> {out}")
+    print(f"{len(rows)} filas ({lists.pop()}) -> {out}")
 
 
 def main():

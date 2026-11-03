@@ -61,17 +61,19 @@ int main(int argc,char** argv)
   auto userPhantom = new ICRP110PhantomConstruction();
   runManager -> SetUserInitialization(userPhantom);
   
-  // Shielding en vez de QGSP_BIC_HP: decision de equipo para produccion,
-  // mismo physics list que GCR_SEP_Sim (ver main.cc de ese proyecto y
-  // AGENTS.md) -- factory en vez de "new Shielding()" directo, mismo
-  // patron ya usado ahi.
-  // PHYSLIST (variable de entorno) cambia la lista solo para pruebas de
-  // sensibilidad, como la de P0 a alta energía; producción usa Shielding.
+  // QGSP_INCLXX_HP desde el 2026-11-03, en vez de Shielding: en P0, el QMD
+  // de Shielding dio -19% y -31% en helio de 1 y 3 GeV/n frente a ICRP 116,
+  // e INCL++ corrige además el protón de 10 GeV (plan_piloto.md, P0). Queda
+  // como candidata hasta que P0 completo con ella (P0b) la confirme.
+  // PHYSLIST (variable de entorno) la cambia solo para pruebas de
+  // sensibilidad; los scripts de los pilotos comprueban en run.log que se
+  // usó la de design_parameters.py (PHYSICS_LIST).
   G4PhysListFactory physListFactory;
-  const char* physListName = std::getenv("PHYSLIST");
-  auto* physicsList = physListFactory.GetReferencePhysList(physListName ? physListName : "Shielding");
+  const char* physListEnv = std::getenv("PHYSLIST");
+  const G4String physListName = physListEnv ? physListEnv : "QGSP_INCLXX_HP";
+  auto* physicsList = physListFactory.GetReferencePhysList(physListName);
   if (!physicsList) G4Exception("main", "UnknownPhysList", FatalException, "PHYSLIST no es una lista de referencia");
-  G4cout << "Physics list: " << (physListName ? physListName : "Shielding") << G4endl;
+  G4cout << "Physics list: " << physListName << G4endl;
   // Bug found 2026-09-13: a low-energy charged primary (SEP_p, ~19 keV) ran
   // for 10+ hours instead of seconds -- trapped in the magnetic field inside
   // vacuum MagnetEnvelope (tiny gyroradius, no material to lose energy to).

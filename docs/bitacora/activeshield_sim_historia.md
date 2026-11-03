@@ -469,7 +469,8 @@ fuentes y pendientes en
   una interfaz de escenarios nueva.
 - **Física de producción decidida (2026-09-11): `Shielding`**, no
   `QGSP_BIC_HP` — mismo physics list que el piloto GCR_SEP_Sim, vía
-  `G4PhysListFactory` en `ICRP110phantoms.cc`.
+  `G4PhysListFactory` en `ICRP110phantoms.cc`. Reemplazada el 2026-11-03
+  por `QGSP_INCLXX_HP` después de P0 (`plan_piloto.md`, P0).
 - La posible novedad del artículo requiere revisión bibliográfica; calcular B
   dentro o fuera de Geant4 no demuestra por sí mismo una contribución novedosa.
 - **CREW HaT (2026-09-10): decidido desarrollar en paralelo a Geom14, no

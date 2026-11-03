@@ -9,10 +9,10 @@ piloto o esa decisión (sección 9).
 
 | Elemento | Valor | Fuente |
 |---|---|---|
-| Physics list | `Shielding` + `G4StepLimiterPhysics` | `ICRP110phantoms.cc` |
+| Physics list | `QGSP_INCLXX_HP` + `G4StepLimiterPhysics` (desde el 2026-11-03; antes `Shielding`) | `ICRP110phantoms.cc`, `design_parameters.PHYSICS_LIST`; *(P0b)* |
 | Nave | cilindro G4_Al, radio 4.5 m, semilongitud 5 m, casco 1.5 cm; cabina de aire 0.001 g/cm³ | `run_organ_sweep.py` |
 | Bobinas | Disposición de CREW HaT según NIAC, masa corregida (D9; hallazgos A4 y B9 de la auditoría). **El `crewhat_corc_array.gdml` actual es el patrón K=1 y no sirve para la v2** | GDML nuevo versionado, P1 paso 0 |
-| Campo | mapa Elmer del dominio aprobado en P1, global, B=0 fuera del mapa | *(P1)*, sha256 en procedencia |
+| Campo | mapa Biot-Savart volumétrico validado con Elmer, dominio aprobado en P1, global, B=0 fuera del mapa | *(P1)*, sha256 en procedencia |
 | Esfera fuente | radio aprobado en P1 | *(P1)* |
 | Dirección de entrada | ley coseno respecto a la normal interior | D1 |
 | Fantoma | ICRP110 AM (y AF si D5) | *(D5)* |
@@ -291,6 +291,7 @@ nuevos).
 | Parámetros del sesgo de fuente | P5 |
 | Validez de R=1 | P2 |
 | Presupuesto B, umbrales de convergencia, tolerancia de P0 | D3, D4, D7 (decididos el 2026-10-31; `design_parameters.py`) |
+| Lista de física e incertidumbre de modelo del tramo FTF (helio > 3 GeV/n, protones > 15 GeV) | P0b y decisión «cómo cerrar P0» (`plan_piloto.md`, P0) |
 | Endpoint primario y δ_η | D2 (decidido el 2026-10-31: E con Q(L), δ_η = 10 pp) |
 | AF | D5 (sí, 2026-10-31; cómo: P7) |
 | Posiciones | D6 |

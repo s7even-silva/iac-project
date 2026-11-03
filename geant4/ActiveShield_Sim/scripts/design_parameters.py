@@ -27,6 +27,11 @@ MIN_NONZERO_EVENTS = 200
 MAX_VOV = 0.1
 MAX_EVENT_FRACTION = 0.10  # largest single event / S1
 
+# Production physics list (2026-11-03): the binary's default
+# (ICRP110phantoms.cc). Candidate until P0 rerun with it (P0b) confirms it;
+# plan_piloto.md, P0. Pilot scripts check run.log against this name.
+PHYSICS_LIST = "QGSP_INCLXX_HP"
+
 # P2 pass criteria (2026-10-31), over batches that pass D4.
 P2_BATCHES = 40
 P2_MIN_COVERAGE = 0.90

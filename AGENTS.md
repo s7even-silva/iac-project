@@ -55,7 +55,7 @@ existe en el repo. Quien tenga un clon anterior debe hacer
 `git fetch --force --tags` y `git reset --hard origin/<rama>` (o clonar de
 nuevo).
 
-## Estado del plan piloto (2026-10-31)
+## Estado del plan piloto (2026-11-03)
 
 Plan vigente: [`docs/bitacora/plan_piloto.md`](docs/bitacora/plan_piloto.md)
 (P0–P7, decisiones D1–D9). Especificación del barrido:
@@ -63,7 +63,7 @@ Plan vigente: [`docs/bitacora/plan_piloto.md`](docs/bitacora/plan_piloto.md)
 
 - **Camino crítico:** mapa final (Biot-Savart volumétrico) validado con
   Elmer → P1 paso 3 → P3/P4/P5 → P6 → barrido. Elmer se corre en el
-  laboratorio de la facultad (más de 30 PCs con Windows, 32 GB cada una,
+  laboratorio de la facultad (más de 30 PCs con Windows, 16–32 GB cada una,
   sin red entre ellas, algunas horas de día). La estrategia y su estado
   están en `README.md`, «Cómputo en el laboratorio de la facultad».
 - **Campo de la v2: Biot-Savart volumétrico (2026-10-31)**
@@ -80,7 +80,8 @@ Plan vigente: [`docs/bitacora/plan_piloto.md`](docs/bitacora/plan_piloto.md)
   manifiesto y SHA256 en `field/production/`. Versión binaria `.bmap`
   (float32, 168 MB, 114 MB con gzip; `field/map_to_binary.py`): Geant4 la
   lee directo y arranca en la mitad del tiempo. Es la que se usa desde ahora
-  y la que bajarán los workers.
+  y la que bajarán los workers. Está en el release
+  `campo-niac-bs-30m-v1` de GitHub (`field/production/README.md`).
 - **Cómo actúa el campo (2026-10-31, `plan_piloto.md`, P1):** fuera del
   casco no reduce el flujo (Liouville: en vacío, todas las direcciones desde
   el hábitat escapan, también con un toroide ideal). La reducción viene del
@@ -92,12 +93,9 @@ Plan vigente: [`docs/bitacora/plan_piloto.md`](docs/bitacora/plan_piloto.md)
   100 MeV, x = 0 y 4 m, R = 14/16/18 m con límite de traza fijo
   (`/spacecraft/envelopeMaxTrackLength`), decisión con cuerpo entero y ±B.
   Unas 2–3 h de todo el laboratorio; la sonda da el costo real.
-- **Validación con Elmer (4 niveles en el laboratorio):** la malla y la
-  caja convergen hacia Biot-Savart, pero el criterio literal del paso 2 no
-  cierra por poco.
-  - Opciones: un nivel más en el próximo laboratorio, o aceptar el mapa
-    declarándolo (`plan_piloto.md`, P1 paso 2).
-  - El paso 3 puede avanzar con este mapa.
+- **Validación con Elmer (5 niveles en el laboratorio; ver el 2026-11-03
+  abajo):** comparado con Biot-Savart dentro de la misma caja, Elmer
+  coincide en 0.7% en el hábitat. El paso 3 puede avanzar con este mapa.
 - **P1, paso 0 hecho (2026-10-31):** geometría de NIAC con 15.6 t por
   bobina en `field/production/crewhat_niac_array.gdml`, desde
   `field/examples/crewhat_niac_array.json`. Sentido de corriente y sección
@@ -126,11 +124,30 @@ Plan vigente: [`docs/bitacora/plan_piloto.md`](docs/bitacora/plan_piloto.md)
     producción (candidata `QGSP_INCLXX_HP`, a verificar con P0 completo)
     y cómo cerrar P0. `PHYSLIST` cambia la lista solo para estas pruebas.
   - **Paso 2 de P1:** el nivel de 10 m sigue convergiendo hacia
-    Biot-Savart; el criterio literal no cierra, pero la extrapolación a
-    caja infinita deja ~4–7%, del orden del error de malla de Elmer.
-    Recomendación: aceptar el mapa declarándolo.
+    Biot-Savart, pero el criterio literal no cierra (resuelto el
+    2026-11-03, abajo).
   - **Sondas de P1 paso 3 y de P2a hechas:** P1 paso 3 son ~26 horas-PC
-    (35 partes de ~1 h); P2a, 0.2–3 h por caso.
+    (35 partes de ~1 h); P2a, 0.2–3 h por caso. Fueron con `Shielding`:
+    se repiten con la lista nueva.
+- **2026-11-03** (detalle en `plan_piloto.md`):
+  - **Lista de física: `QGSP_INCLXX_HP`**, default del binario, a confirmar
+    con P0b (P0 completo con ella, criterio fijado antes de correr).
+    - Los scripts de P1 y P2 comprueban en `run.log` que se usó
+      `design_parameters.PHYSICS_LIST`, y rechazan sondas de otra lista.
+    - Qué se rehace y qué no: `plan_piloto.md`, P0, «Qué cambia con la
+      lista nueva». Antes del próximo laboratorio, actualizar el repo y
+      recompilar en cada PC.
+  - **Elmer, paso 2:** la diferencia con Biot-Savart era la caja de Elmer
+    (B·n = 0 en sus caras). `field/studies/elmer_caja_2026-11-03.py` la
+    calcula sin parámetros ajustables. Con la caja descontada:
+    - quedan 0.7% en el hábitat y 0.9% en las líneas radiales, en todos
+      los niveles;
+    - junto a la bobina, 2–4%, que baja con la malla;
+    - Elmer da 0.65% menos, una diferencia de escala sin investigar.
+
+    Es un análisis hecho después de ver los datos, declarado como tal.
+    Recomendación: dar el paso 2 por cerrado (decisión del equipo).
+    Confirmación opcional: un nivel de margen 4 m y aire 0.10 m.
 - **P0** (`tests/p0_normalizacion/`): tabla de
   referencia ICRP 116 por órgano extraída, órganos definidos como ICRP
   (colon con recto; médula roja equivalente). Tolerancia D7 (decidida el
@@ -241,7 +258,9 @@ Detalle de interfaces en
   - Desde el 2026-10-31, la inicialización aborta si el mapa no contiene
     la esfera fuente completa (fuera del mapa el campo es cero; ctest
     `field_map_covers_source`).
-- **Physics list:** `Shielding`, vía `G4PhysListFactory`.
+- **Physics list:** `QGSP_INCLXX_HP` desde el 2026-11-03 (antes `Shielding`),
+  vía `G4PhysListFactory`; a confirmar con P0b. `PHYSLIST` la cambia solo
+  para pruebas.
 - **Fuente:** espectros OLTARIS (BON2020 para GCR, eventos históricos Oct
   1989 / Feb 1956 para SEP), energía fija por bin
   (`/gun/fixedEnergyMeV`), ley coseno (`/gun/angularDistribution cosine`)

@@ -20,7 +20,9 @@ que en el barrido.
 **P2** (`plan_piloto.md`): `p2_estimador.py` corre y analiza el piloto con el
 diseño y los criterios fijados el 2026-10-31 (`sonda`, `run` y `analyze`; una
 PC por caso). `test_p2_analisis.py` comprueba el análisis con datos
-sintéticos.
+sintéticos. `sonda` y `run` exigen que `run.log` muestre la lista de física
+de `design_parameters.PHYSICS_LIST` (`QGSP_INCLXX_HP` desde el 2026-11-03),
+y `run` rechaza una sonda hecha con otra lista.
 
 `EventStats.tsv` tiene una fila por (checkpoint, órgano o categoría), con
 estas columnas:

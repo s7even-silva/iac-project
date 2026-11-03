@@ -40,7 +40,12 @@ de Biot-Savart volumétrico.
   sha256 del texto de origen y la diferencia máxima con él (6·10⁻⁸).
   SHA256 del `.bmap`: `6149d2103e3368b23c2097ab31583ff54c15c5c7f21f7b288489cc9daa32ba75`.
   Se obtiene con `field/map_to_binary.py` desde el `.map`, o directo del
-  generador con una salida `.bmap`.
+  generador con una salida `.bmap`. Está publicado sin comprimir en el
+  release
+  [`campo-niac-bs-30m-v1`](https://github.com/s7even-silva/iac-project/releases/tag/campo-niac-bs-30m-v1)
+  de GitHub (2026-11-02):
+  `gh release download campo-niac-bs-30m-v1 -p niac_bs_30m_0.25.bmap`, y
+  después comprobar el SHA256 con `sha256sum`.
 - **Para regenerarlo** (idéntico salvo el redondeo):
   ```bash
   field/.venv/bin/python field/compute_field_volumetric.py field/production/crewhat_niac_array_current_paths.json \

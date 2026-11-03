@@ -408,19 +408,69 @@ grandes:
   - **Helio de 1 GeV/n: `Shielding` da ~12% menos que las otras listas**
     (física de iones propia). Con INCL++ queda en 0.98. 1 GeV/n está
     cerca del pico del espectro de He del GCR.
-- **Decisiones para el equipo:**
-  1. **Lista de física de producción.** Candidata: una con INCL++ y
-     neutrones HP (`QGSP_INCLXX_HP`), que corrige el protón de 10 GeV y
-     el helio de 1 GeV/n. Geant4 la marca como experimental; antes de
-     adoptarla, repetir P0 completo con ella en el laboratorio (3·10⁶
-     eventos) y medir su costo. Hay que decidirlo antes de P3–P6 y,
-     idealmente, antes de las corridas del paso 3 de P1.
-  2. **Cómo cerrar P0.** Con cualquier lista, el helio de 10 GeV/n queda
-     en +20% (FTF). Opciones: declararlo como incertidumbre de modelo
-     sobre la parte de la dosis de GCR que viene de ahí, o restringir D7
-     (cambio hecho después de ver los datos, que se declara así).
+- **Decisiones:**
+  1. **Lista de física de producción: `QGSP_INCLXX_HP` (2026-11-03), a
+     confirmar con P0b** (abajo). INCL++ con neutrones HP: corrige el
+     protón de 10 GeV y el helio de 1 GeV/n. Geant4 la marca como
+     experimental.
+     - Es el default del binario desde ese día. `PHYSLIST` la cambia solo
+       para pruebas.
+     - Los scripts de P1 y P2 se niegan a correr si `run.log` muestra otra
+       lista o un binario anterior (`design_parameters.PHYSICS_LIST`).
+     - Costo: en la laptop, las corridas de 3·10⁵ eventos de P0 tardaron lo
+       mismo o menos que con `Shielding` (helio de 3 GeV/n: 120 s frente a
+       180 s). P0b mide el costo real.
+  2. **Cómo cerrar P0 (pendiente).** Con cualquier lista, el helio de
+     10 GeV/n queda en +20% (FTF). Opciones:
+     - declararlo como incertidumbre de modelo sobre la parte de la dosis
+       de GCR que viene de ahí (propuesta: ±20% sobre el helio de más de
+       3 GeV/n, ~±3% de la dosis de helio y ~±1% de la de H + He);
+     - o restringir D7 (cambio hecho después de ver los datos, que se
+       declara así).
 - En η, un error común a escudo y control se cancela; afecta sobre todo
   a la dosis absoluta.
+
+#### P0b: P0 completo con `QGSP_INCLXX_HP` (fijado el 2026-11-03, antes de correr)
+
+- **Diseño:** el de P0 sin cambios: las 8 energías, 3·10⁶ eventos, las
+  mismas semillas, una energía por PC, en una carpeta nueva:
+
+  ```bash
+  python3 p0_icrp116.py run --out-dir ~/p0b --events 3000000 --threads $(nproc) --points proton_100
+  ```
+
+  `analyze` anota la lista de cada corrida (columna `lista_fisica`, leída
+  de `run.log`) y se niega a mezclar listas en una carpeta.
+- **Qué puntos son prueba independiente.** La lista se eligió mirando la
+  médula roja en la laptop (3·10⁵ eventos):
+  - **Usados para elegirla:** protones de 1, 3 y 10 GeV, helio de 1 y
+    10 GeV/n (y el de 3 GeV/n, exploratorio). P0b los repite con 10 veces
+    más eventos y todos los órganos: es una confirmación, no una prueba
+    independiente.
+  - **No usados:** protones de 100 y 300 MeV, helio de 100 MeV/n, y todos
+    los órganos salvo la médula roja. Son la prueba independiente: si
+    INCL++ empeorara algo que `Shielding` hacía bien, se vería ahí.
+- **Criterio:** se adopta la lista si ningún órgano con tolerancia queda
+  «fuera» de D7 en los puntos no usados ni en los del dominio de INCL++
+  (protones de 1, 3 y 10 GeV, helio de 1 GeV/n). Un «inconcluso» se
+  reporta, como en P0. El helio de 10 GeV/n se espera fuera (+20%, FTF) y
+  no decide la lista: es la decisión 2.
+- **Si falla un punto no usado:** se investiga antes de seguir (`Shielding`
+  no es la salida: falla más puntos). Las corridas hechas con la lista
+  nueva quedan a la espera.
+
+#### Qué cambia con la lista nueva (2026-11-03)
+
+| Qué | Qué hay que hacer |
+|---|---|
+| P0 | P0b (arriba). |
+| P1 paso 3 | Todavía no se corrió: corre con la lista nueva. Las sondas del 2026-11-02 eran con `Shielding`: repetirlas (5·10⁵ primarios, minutos) en una carpeta nueva. `run` rechaza un `sonda.json` sin la lista. N puede cambiar algo: a 70–100 MeV, INCL++ reemplaza a Bertini en el casco y el fantoma. |
+| P2a | Igual: repetir las sondas (2·10⁵ eventos) y correr con la lista nueva. La sonda da el costo de he1000 y h10000, que dependen del modelo hadrónico. |
+| P2b, P3–P6, barrido | Con la lista nueva desde el principio; nada hecho todavía. |
+| Resultados exploratorios con `Shielding` | No se rehacen: «Cómo actúa el campo» (D_campo/D_control), las pruebas por lotes y la validación del VOV (el método no depende de la lista; P2 lo confirma con la nueva) y el costo de P2 del 2026-10-01. |
+| Iones pesados (si se agregan) | Con esta lista, INCL++ cubre todos los iones hasta 3 GeV/n y FTFP desde 2.9 GeV/n (tabla de procesos de `run.log`). P0 solo prueba H y He, e ICRP 116 no tabula iones pesados: haría falta otra validación. |
+| Workers y coordinator | La lista va en el binario: la imagen nueva la trae (refactor del coordinator). Los paquetes conda de Geant4 incluyen los datos de INCL++ (`G4INCL`, verificado en `geant4_env`). `run_organ_sweep.py` no comprueba la lista: el refactor la registra en la procedencia (ya era requisito). |
+| Paper | Declarar la lista, las tablas de P0 y P0b y la incertidumbre de modelo del tramo FTF. |
 
 ### P1 — Dominio del campo y radio de la esfera fuente
 
@@ -503,7 +553,68 @@ Decidido: se amplían. El piloto fija cuánto. Herramienta disponible
          tetraedro: ~h/L ≈ 0.2 m / 4 m = 5%). No aparece un resto que
          apunte a un error de Biot-Savart.
        - **Recomendación:** aceptar el mapa declarando esta validación en
-         el paper. Lo decide el equipo.
+         el paper. Lo decide el equipo. (Reemplazada por la del punto
+         siguiente.)
+     - **La caja de Elmer explica la diferencia (2026-11-03; análisis hecho
+       después de ver los datos, declarado como tal).**
+       - **Por qué:** el criterio comparaba a Elmer con Biot-Savart en
+         espacio libre, pero Elmer resuelve otro problema. Impone `AV = 0`
+         en la caja (`case.sif`), es decir B·n = 0, así que el flujo que
+         afuera cerraría lejos vuelve por dentro.
+       - **Cálculo:** la solución exacta de ese problema es Biot-Savart menos
+         el gradiente de un potencial armónico que tiene en las caras el
+         flujo de Biot-Savart. Se calcula sin parámetros ajustables
+         (`field/studies/elmer_caja_2026-11-03.py`, 30 s en la laptop).
+       - **Resultado:** Elmer frente a Biot-Savart en la misma caja, con
+         todas las sondas dentro de cada caja (mediana / p95):
+
+       | Margen, aire | Junto a la bobina | Hábitat | Líneas radiales |
+       |---|---|---|---|
+       | 4 m, 0.20 m | 2.9 / 13.2% | 0.9 / 1.8% | 1.1 / 3.3% |
+       | 6 m, 0.20 m | 3.1 / 17.2% | 0.8 / 1.5% | 0.8 / 3.2% |
+       | 6 m, 0.15 m | 2.0 / 9.7% | 0.7 / 1.2% | 0.8 / 2.0% |
+       | 8 m, 0.20 m | 3.5 / 15.8% | 0.7 / 1.5% | 1.0 / 4.5% |
+       | 10 m, 0.20 m | 4.2 / 15.1% | 0.7 / 1.4% | 0.9 / 2.8% |
+
+       - **En el hábitat, la diferencia era casi entera la caja.** Era un
+         campo uniforme a lo largo de la normal de la bobina, opuesto a su
+         momento dipolar: −80, −45, −26 y −16 mT de 4 a 10 m. La caja
+         predice −81, −46, −26 y −16 mT. No depende de la malla (−45 mT con
+         aire de 0.20 y de 0.15 m).
+       - **Lo que queda es el error de Elmer.**
+         - Junto a la bobina baja con la malla: de 3.1% a 2.0% al pasar de
+           0.20 a 0.15 m (elementos de primer orden). A igual malla sube
+           algo con la caja (de 2.9% a 4.2% entre 4 y 10 m), quizás por cómo
+           se gradúa la malla o por la tolerancia del solver en un dominio
+           mayor; no se investigó.
+         - En el hábitat y las líneas radiales, Elmer da entre 0.6% y 0.75%
+           menos en todos los niveles y las dos mallas. Es una diferencia
+           sistemática chica entre la bobina que malla Elmer (CAD) y la de
+           Biot-Savart (filamentos), sin investigar. Es menor que el error
+           de interpolación del mapa en el hábitat (1.2%, p95).
+       - **No es circular:** las dos soluciones tienen B·n = 0 en las caras,
+         así que su diferencia solo puede venir de que las corrientes
+         difieran. Un error de Biot-Savart en la corriente, el signo o la
+         geometría seguiría apareciendo.
+       - **El criterio del paso 2, aplicado a esta comparación** (la malla
+         más fina frente al cambio entre las dos mallas de 6 m):
+         - se cumple junto a la bobina (2.0% frente a un cambio de 3.7%) y,
+           en p95, en los tres grupos;
+         - en mediana, el hábitat y las radiales quedan al nivel del cambio
+           (0.7% frente a 0.6%, y 0.8% frente a 0.8%), por esa escala de
+           −0.65%.
+       - **Recomendación:** dar el paso 2 por cerrado con esta lectura,
+         declarada como hecha después de ver los datos. Lo decide el
+         equipo.
+       - **Confirmación opcional:** un nivel con caja chica y malla fina
+         (margen 4 m, aire 0.10 m, unos 7 M de tetraedros: una PC de 16 GB
+         con swap, ~1 h). La predicción se escribe antes de correr:
+         - hábitat y radiales ≤ 1% en mediana;
+         - junto a la bobina, menos de 2%;
+         - escala de −0.65 ± 0.2%.
+
+         Como la caja ya se calcula, no hace falta agrandarla: toda la
+         memoria va a la malla.
      - **Mapa candidato verificado en la laptop:** el SHA256 coincide con
        el manifiesto; 1000 nodos al azar coinciden con el recálculo directo
        en 5·10⁻⁸; Geant4 lo carga con una esfera de 18 m en 42 s y 1 GB.
@@ -723,8 +834,9 @@ esperar de η.
     corte del casco (hasta ~150 MeV). Es de esperar un η chico para GCR y
     uno grande para SEP, cuyo espectro cae rápido; el barrido lo dirá.
   - El mecanismo depende del campo residual del hábitat. Es la parte que el
-    mapa resuelve peor (error de interpolación de 1.2%, p95) y donde la
-    validación con Elmer quedó más lejos de cerrar (grilla del hábitat).
+    mapa resuelve peor (error de interpolación de 1.2%, p95). La validación
+    con Elmer parecía lejos de cerrar ahí, pero con la caja de Elmer
+    calculada coinciden en 0.7% (paso 2, 2026-11-03).
   - Para el paper, η de SEP y de GCR se van a explicar por mecanismos
     distintos. Conviene discutirlo en equipo antes del barrido; no cambia
     el método.
@@ -785,7 +897,8 @@ del manifiesto).** Horas de una PC de 24 hilos por corrida:
 Unas 26 horas-PC en total, menos que lo estimado con la laptop: en
 partes de ~1 h son 35 trabajos, ~1.3 h con 30 PCs. Los cocientes de la
 sonda (60–260 eventos con depósito) confirman el mecanismo de «Cómo actúa
-el campo».
+el campo». Estas sondas usaron `Shielding`: con la lista nueva se repiten
+antes de las corridas («Qué cambia con la lista nueva», en P0).
 
 ### P2 — Validación del estimador de incertidumbre por evento
 
@@ -886,7 +999,8 @@ Repite la Fase 7 con el scorer nuevo.
 | h10000 | 4.5·10⁻³ | 8.9·10⁴ | 3.6·10⁶ | 1.3 |
 
 Cada corrida va en una PC; `run` no se parte ni se retoma, así que he1000
-necesita 3 h seguidas.
+necesita 3 h seguidas. Estas sondas usaron `Shielding`: con la lista nueva
+se repiten antes de las corridas.
 
 #### Costo estimado de P2 con cuerpo entero (2026-10-01)
 
@@ -1154,8 +1268,10 @@ corrida con campo hecha antes del mapa final es reutilizable.
       dominio de P1) generado, versionado en
       `field/production/` con su manifiesto y hash, y cargado en Geant4 sin
       truncamiento dentro de la esfera fuente ni del `MagnetEnvelope`.
-      Candidato ±30 m generado y verificado, también en binario (`.bmap`);
-      falta cerrar el paso 2 y correr el paso 3 (script listo).
+      Candidato ±30 m generado y verificado, también en binario (`.bmap`).
+      Paso 2 cerrado con la caja de Elmer calculada (2026-11-03), si el
+      equipo acepta esa lectura; falta correr el paso 3 con la lista nueva.
+- [ ] Lista de física de producción confirmada con P0b.
 - [ ] Scorer nuevo y coordinator con procedencia, con tests.
 - [ ] P0–P4 y P6 aprobados; P5 aprobado solo si se usará sesgo (si no,
       registrar «no aplica» y usar ley coseno sin sesgo).

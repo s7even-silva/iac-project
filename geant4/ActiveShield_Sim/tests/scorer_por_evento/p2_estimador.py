@@ -120,8 +120,12 @@ def simulate(a, work, events, seed_offset):
     with open(work/"run.log", "w") as log:
         subprocess.run([str(build/"ICRP110phantoms"), "run.mac"], cwd=work, stdout=log,
                        stderr=subprocess.STDOUT, check=True)
+    text = (work/"run.log").read_text()
+    used = re.search(r"Physics list: (\S+)", text)  # un binario anterior al 2026-11-03 no la imprime
+    if not used or used[1] != dp.PHYSICS_LIST:
+        sys.exit(f"{work}: la lista de física no es {dp.PHYSICS_LIST} (recompilar, o quitar PHYSLIST)")
     # Tiempo de los eventos sin la inicialización: "Real=...s" del resumen de la corrida.
-    real = re.findall(r"Real=([0-9.]+)s", (work/"run.log").read_text())
+    real = re.findall(r"Real=([0-9.]+)s", text)
     return float(real[-1]) if real else time.time()-start
 
 
@@ -151,7 +155,8 @@ def sonda(a):
     nonzero = len(values["total_body"])
     report = {"case": a.case, "probe_events": n_total, "events_with_deposit": nonzero,
               "fraction_with_deposit": f, "M": m, "N": dp.P2_BATCHES*m, "probe_event_seconds": seconds,
-              "threads": a.threads, "estimated_run_hours": seconds/n_total*dp.P2_BATCHES*m/3600}
+              "threads": a.threads, "estimated_run_hours": seconds/n_total*dp.P2_BATCHES*m/3600,
+              "physics_list": dp.PHYSICS_LIST}
     (a.out_dir/a.case/"sonda.json").write_text(json.dumps(report, indent=2)+"\n")
     print(json.dumps(report, indent=2))
     print(f"Horas estimadas con {a.threads} hilos, sin contar la inicialización.")
@@ -159,6 +164,8 @@ def sonda(a):
 
 def run(a):
     probe = json.loads((a.out_dir/a.case/"sonda.json").read_text())
+    if probe.get("physics_list") != dp.PHYSICS_LIST:
+        sys.exit(f"La sonda de {a.case} no se hizo con {dp.PHYSICS_LIST}: repetirla")
     events = a.events or probe["N"]
     seconds = simulate(a, a.out_dir/a.case/"corrida", events, seed_offset=0)
     (a.out_dir/a.case/"corrida"/"tiempo.json").write_text(

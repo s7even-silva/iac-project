@@ -148,7 +148,7 @@ def simulate(a, case, name, events, work, part=1, parts=1):
     seed1 = SEED_BASE+1000*(part-1)+20*list(CASES).index(case)+2*RUN_INDEX[name]
     config = {"case": case, "run": name, "part": part, "parts": parts, "proton_MeV": energy, "x_m": x,
               "radius_m": radius, "max_track_length_m": MAX_TRACK_LENGTH_M, "events": events,
-              "threads": a.threads, "seeds": [seed1, seed1+1]}
+              "threads": a.threads, "seeds": [seed1, seed1+1], "physics_list": dp.PHYSICS_LIST}
     field = ""
     if with_field(name):
         if not a.field_map:
@@ -170,6 +170,9 @@ def simulate(a, case, name, events, work, part=1, parts=1):
     got = re.search(r"Source sphere radius \[m\]: (\S+); MagnetEnvelope max track length \[m\]: (\S+)", text)
     if not got or abs(float(got[1])-radius) > 1e-6 or abs(float(got[2])-MAX_TRACK_LENGTH_M) > 1e-6:
         sys.exit(f"{work}: el radio o el límite de traza no son los pedidos (ver run.log)")
+    used = re.search(r"Physics list: (\S+)", text)  # un binario anterior al 2026-11-03 no la imprime
+    if not used or used[1] != dp.PHYSICS_LIST:
+        sys.exit(f"{work}: la lista de física no es {dp.PHYSICS_LIST} (recompilar, o quitar PHYSLIST)")
     real = re.findall(r"Real=([0-9.]+)s", text)
     return float(real[-1]) if real else time.time()-start
 
@@ -259,7 +262,8 @@ def sonda(a):
         events[f"R{r:g}"] = math.ceil(EVENT_MARGIN*((r/CONTROL_RADIUS_M)*sd1/(SHIELD_REL_SE*mu0))**2)
     hours = {name: n*probe["sonda_escudo" if with_field(name) else "sonda_control"]["seconds_per_event"]/3600
              for name, n in events.items()}
-    report = {"case": a.case, "threads": a.threads, "probe": probe, "events": events, "estimated_hours": hours}
+    report = {"case": a.case, "threads": a.threads, "physics_list": dp.PHYSICS_LIST, "probe": probe,
+              "events": events, "estimated_hours": hours}
     (a.out_dir/a.case/"sonda.json").write_text(json.dumps(report, indent=2)+"\n")
     print(json.dumps(report, indent=2))
     print(f"Horas estimadas con {a.threads} hilos, sin la inicialización (~30 s con el mapa .bmap).")
@@ -269,6 +273,8 @@ def run(a):
     if not 1 <= a.part <= a.parts:
         sys.exit("--part tiene que estar entre 1 y --parts")
     probe = None if a.events else json.loads((a.out_dir/a.case/"sonda.json").read_text())
+    if probe and probe.get("physics_list") != dp.PHYSICS_LIST:
+        sys.exit(f"La sonda de {a.case} no se hizo con {dp.PHYSICS_LIST}: repetirla")
     for name in a.runs:
         work = a.out_dir/a.case/name/f"parte_{a.part}_de_{a.parts}"
         if (work/"EventStats.tsv").is_file():
@@ -309,6 +315,9 @@ def analyze(a):
         sys.exit("No hay casos completos en --out-dir")
     if len(maps) != 1 or None in maps:
         sys.exit(f"Las corridas con escudo no usaron un mismo mapa: {maps}")
+    lists = {json.loads(p.read_text()).get("physics_list") for p in a.out_dir.glob("*/*/parte_*/config.json")}
+    if lists != {dp.PHYSICS_LIST}:
+        sys.exit(f"Las partes no usaron todas {dp.PHYSICS_LIST}: {lists}")
     complete = len(pairs) == len(CASES) and len({tuple(r) for r in radii_by_case.values()}) == 1
     radii = next(iter(radii_by_case.values()))
     chosen = decide(pairs, radii) if complete else None

@@ -5,10 +5,12 @@ y 18 m, con el mapa final, en protones de 70 y 100 MeV sobre el fantoma AM en
 x = 0 y x = 4 m. Diseño, criterio y costo en `docs/bitacora/plan_piloto.md`
 (P1, «Diseño del paso 3»), fijados el 2026-10-31 antes de correr.
 
-Necesita el binario compilado después del 2026-10-31 (comando
-`/spacecraft/envelopeMaxTrackLength`; si falta, la corrida se detiene) y el
+Necesita el binario compilado después del 2026-11-03 (lista de física
+`QGSP_INCLXX_HP` y comando `/spacecraft/envelopeMaxTrackLength`; si falta
+alguno, la corrida se detiene) y el
 mapa candidato, de preferencia en binario (`niac_bs_30m_0.25.bmap`, en
-Drive; manifiesto en `field/production/`).
+el release `campo-niac-bs-30m-v1` de GitHub; manifiesto y comando de
+descarga en `field/production/`).
 
 ```bash
 cd geant4/ActiveShield_Sim
@@ -29,6 +31,13 @@ un caso necesita el `sonda.json` de ese caso (copiar `DIR/<caso>/sonda.json`).
 cortada se retoma con el mismo comando. Cada parte lleva su semilla, el
 radio, el límite de traza y el sha256 del mapa en `config.json`; `analyze`
 rechaza mezclas de mapas y casos con partes faltantes.
+
+**Lista de física (2026-11-03).** Cada corrida exige que `run.log` muestre
+la lista de `design_parameters.PHYSICS_LIST` (`QGSP_INCLXX_HP`); con un
+binario anterior o con `PHYSLIST` puesta, se detiene. La lista queda en
+`sonda.json` y en el `config.json` de cada parte: `run` rechaza una sonda
+de otra lista (las del 2026-11-02 eran con `Shielding`: repetirlas) y
+`analyze`, partes de listas distintas.
 
 `test_p1_analisis.py` comprueba el análisis con corridas sintéticas:
 equivalencia con la misma dosis, rechazo con un 6% de diferencia, D4 y la
