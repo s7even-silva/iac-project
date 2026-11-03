@@ -366,29 +366,39 @@ grandes:
   hecha después de ver el resultado; `PHYSLIST`, ver el README de
   `ActiveShield_Sim`), médula roja:
 
-  | Punto | Shielding | FTFP_BERT | QGSP_BIC |
-  |---|---|---|---|
-  | protón 10 GeV | 1.22 | 1.19 ± 0.04 | 1.22 ± 0.04 |
-  | helio 1 GeV/n | 0.81 | 0.92 ± 0.03 | 0.92 ± 0.03 |
-  | helio 10 GeV/n | 1.25 | 1.22 ± 0.03 | 1.25 ± 0.03 |
+  | Punto | Shielding | FTFP_BERT | QGSP_BIC | QGSP_INCLXX |
+  |---|---|---|---|---|
+  | protón 1 GeV | 0.97 | — | — | 1.05 ± 0.05 |
+  | protón 3 GeV | 0.94 | — | — | 1.01 ± 0.06 |
+  | protón 10 GeV | 1.22 | 1.19 ± 0.04 | 1.22 ± 0.04 | 0.95 ± 0.05 |
+  | helio 1 GeV/n | 0.81 | 0.92 ± 0.03 | 0.92 ± 0.03 | 0.98 ± 0.04 |
+  | helio 10 GeV/n | 1.25 | 1.22 ± 0.03 | 1.25 ± 0.03 | 1.20 ± 0.05 |
 
+  (FTFP_INCLXX da lo mismo que QGSP_INCLXX hasta 10 GeV: las dos usan
+  INCL++ ahí.)
 - **Lectura:**
-  - **A 10 GeV(/n), las tres listas dan +20–25%.** No es de `Shielding`:
-    es Geant4 frente a la referencia, o algo del montaje que solo pesa a
-    esas energías. Pendiente: revisar qué dice ICRP 116 de la dispersión
-    entre códigos ahí y hasta qué energía llega la comparación de Yeom et
-    al. (2019).
-  - **Helio de 1 GeV/n: `Shielding` da ~12% menos que las otras dos
-    listas**, que quedan en 0.92 (casi dentro). Es la física de iones de
-    `Shielding`, y 1 GeV/n está cerca del pico del espectro de He del GCR.
+  - **El exceso de 10 GeV(/n) es del modelo FTF de Geant4 11.4**, que usan
+    las tres primeras listas a esa energía. Con INCL++, que cubre
+    esa energía, el protón de 10 GeV queda en 0.95.
+    El helio de 10 GeV/n (40 GeV en total) cae fuera de INCL++ y sigue en
+    +20%. Concuerda con la literatura: FLUKA reciente coincide «muy bien»
+    con ICRP 116 a alta energía para partículas cargadas, y Yeom et al.
+    (Geant4 10.04, QGSP_BIC_HP) ven cocientes de 0.9–1.1 sobre 100 MeV.
+    La referencia no es el problema.
+  - **Helio de 1 GeV/n: `Shielding` da ~12% menos que las otras listas**
+    (física de iones propia). Con INCL++ queda en 0.98. 1 GeV/n está
+    cerca del pico del espectro de He del GCR.
 - **Decisiones para el equipo:**
-  1. Cómo cerrar P0: aceptarlo para la normalización (su objetivo) y
-     declarar las diferencias de alta energía, o investigar más antes. Si
-     se restringe D7 a ≤3 GeV/n, es un cambio hecho después de ver los
-     datos y se declara así.
-  2. Lista de física de producción: seguir con `Shielding` o cambiar la
-     física de iones (por ejemplo, `QGSP_BIC_HP`, la de Yeom et al.).
-     Hay que decidirlo antes de P3–P6: cambiarla después rehace todo.
+  1. **Lista de física de producción.** Candidata: una con INCL++ y
+     neutrones HP (`QGSP_INCLXX_HP`), que corrige el protón de 10 GeV y
+     el helio de 1 GeV/n. Geant4 la marca como experimental; antes de
+     adoptarla, repetir P0 completo con ella en el laboratorio (3·10⁶
+     eventos) y medir su costo. Hay que decidirlo antes de P3–P6 y,
+     idealmente, antes de las corridas del paso 3 de P1.
+  2. **Cómo cerrar P0.** Con cualquier lista, el helio de 10 GeV/n queda
+     en +20% (FTF). Opciones: declararlo como incertidumbre de modelo
+     sobre la parte de la dosis de GCR que viene de ahí, o restringir D7
+     (cambio hecho después de ver los datos, que se declara así).
 - En η, un error común a escudo y control se cancela; afecta sobre todo
   a la dosis absoluta.
 

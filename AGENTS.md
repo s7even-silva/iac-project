@@ -119,10 +119,12 @@ Plan vigente: [`docs/bitacora/plan_piloto.md`](docs/bitacora/plan_piloto.md)
 - **Laboratorio del 2026-11-02** (detalle en `plan_piloto.md`):
   - **P0 corrido, no aprueba tal como se fijó:** la normalización está
     bien (protones de 100 MeV a 3 GeV dentro de ±6%), pero a 10 GeV(/n)
-    Geant4 da +20–25% con tres listas de física, y el helio de 1 GeV/n da
-    −19% con `Shielding` (−8% con FTFP_BERT y QGSP_BIC). Decisiones
-    pendientes: cómo cerrar P0 y qué lista de física usar en producción.
-    `PHYSLIST` cambia la lista solo para estas pruebas.
+    Geant4 da +20–25% con las listas que usan FTF ahí, y el helio de
+    1 GeV/n da −19% con `Shielding`. Con INCL++ (`QGSP_INCLXX`) el protón
+    de 10 GeV queda en 0.95 y el helio de 1 GeV/n en 0.98; el helio de
+    10 GeV/n sigue en +20%. Decisiones pendientes: lista de física de
+    producción (candidata `QGSP_INCLXX_HP`, a verificar con P0 completo)
+    y cómo cerrar P0. `PHYSLIST` cambia la lista solo para estas pruebas.
   - **Paso 2 de P1:** el nivel de 10 m sigue convergiendo hacia
     Biot-Savart; el criterio literal no cierra, pero la extrapolación a
     caja infinita deja ~4–7%, del orden del error de malla de Elmer.
