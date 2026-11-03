@@ -1,11 +1,14 @@
-# P0: dosis absoluta frente a ICRP 116 (preparado, sin correr)
+# P0: dosis absoluta frente a ICRP 116 (corrido el 2026-11-02)
 
 `p0_icrp116.py` corre el fantoma AM desnudo con fuente isótropa (ley
 coseno) en las energías candidatas de P0 y calcula el coeficiente de dosis
 absorbida por unidad de fluencia de cada categoría, en pGy·cm², con su SE.
 Usa el scorer por evento (`/eventStats/*`).
 
-**Listo para correr (2026-10-31).** D7 está decidido: ±10% en órganos
+**Resultado (2026-11-02):** `resultados_2026-11-02.csv` y lectura en
+`plan_piloto.md` (P0): no aprueba a 10 GeV(/n) ni en helio de 1 GeV/n.
+
+**Parámetros (2026-10-31).** D7 está decidido: ±10% en órganos
 grandes y ±30% en mama y tiroides. También están fijadas las 8 energías de
 `POINTS`, 3·10⁶ eventos por energía y una semilla
 (`plan_piloto.md`, P0).

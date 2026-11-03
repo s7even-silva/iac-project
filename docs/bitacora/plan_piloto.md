@@ -341,6 +341,57 @@ Pendientes:
 - **Bloquea:** todo resultado absoluto. Si falla, hay un error de
   normalización o de física que resolver antes de seguir.
 
+#### Resultado de P0 (laboratorio, 2026-11-02): no aprueba tal como se fijó
+
+Las 8 energías, 3·10⁶ eventos cada una, `Shielding`. Tabla completa en
+`tests/p0_normalizacion/resultados_2026-11-02.csv`. Cociente
+simulado/ICRP 116 en médula roja (IC95 de ±1–2%) y rango en los órganos
+grandes:
+
+| Partícula | Energía | Médula roja | Órganos grandes | Veredicto |
+|---|---|---|---|---|
+| protón | 100 MeV | 1.01 | 0.95–1.01 | dentro (estómago inconcluso) |
+| protón | 300 MeV | 1.02 | 0.99–1.03 | dentro |
+| protón | 1 GeV | 0.97 | 0.95–0.96 | dentro |
+| protón | 3 GeV | 0.94 | 0.91–0.96 | dentro (estómago inconcluso) |
+| protón | 10 GeV | 1.22 | 1.17–1.24 | **fuera** |
+| helio | 100 MeV/n | 0.96 | 0.92–0.94 | dentro (2 inconclusos) |
+| helio | 1 GeV/n | 0.81 | 0.80–0.82 | **fuera** |
+| helio | 10 GeV/n | 1.25 | 1.24–1.32 | **fuera** |
+
+- **La normalización está bien:** de 100 MeV a 3 GeV los protones caen
+  dentro de ±6%, y un error de normalización movería todas las energías
+  por igual.
+- **Prueba de sensibilidad a la lista de física** (laptop, 3·10⁵ eventos,
+  hecha después de ver el resultado; `PHYSLIST`, ver el README de
+  `ActiveShield_Sim`), médula roja:
+
+  | Punto | Shielding | FTFP_BERT | QGSP_BIC |
+  |---|---|---|---|
+  | protón 10 GeV | 1.22 | 1.19 ± 0.04 | 1.22 ± 0.04 |
+  | helio 1 GeV/n | 0.81 | 0.92 ± 0.03 | 0.92 ± 0.03 |
+  | helio 10 GeV/n | 1.25 | 1.22 ± 0.03 | 1.25 ± 0.03 |
+
+- **Lectura:**
+  - **A 10 GeV(/n), las tres listas dan +20–25%.** No es de `Shielding`:
+    es Geant4 frente a la referencia, o algo del montaje que solo pesa a
+    esas energías. Pendiente: revisar qué dice ICRP 116 de la dispersión
+    entre códigos ahí y hasta qué energía llega la comparación de Yeom et
+    al. (2019).
+  - **Helio de 1 GeV/n: `Shielding` da ~12% menos que las otras dos
+    listas**, que quedan en 0.92 (casi dentro). Es la física de iones de
+    `Shielding`, y 1 GeV/n está cerca del pico del espectro de He del GCR.
+- **Decisiones para el equipo:**
+  1. Cómo cerrar P0: aceptarlo para la normalización (su objetivo) y
+     declarar las diferencias de alta energía, o investigar más antes. Si
+     se restringe D7 a ≤3 GeV/n, es un cambio hecho después de ver los
+     datos y se declara así.
+  2. Lista de física de producción: seguir con `Shielding` o cambiar la
+     física de iones (por ejemplo, `QGSP_BIC_HP`, la de Yeom et al.).
+     Hay que decidirlo antes de P3–P6: cambiarla después rehace todo.
+- En η, un error común a escudo y control se cancela; afecta sobre todo
+  a la dosis absoluta.
+
 ### P1 — Dominio del campo y radio de la esfera fuente
 
 Decidido: se amplían. El piloto fija cuánto. Herramienta disponible
@@ -395,6 +446,34 @@ Decidido: se amplían. El piloto fija cuánto. Herramienta disponible
          - o aceptar el mapa declarando ese límite.
        - **En cualquiera de los dos casos, el mapa no cambia:** Elmer solo
          valida. El paso 3 puede avanzar con él.
+     - **Nivel extra (2026-11-02): margen de 10 m, aire de 0.20 m**, 7.1 M
+       tetraedros, 68 min en una PC de 16 GB con swap. Serie de cajas con
+       aire de 0.20 m (mediana / p95 del error frente a Biot-Savart, en las
+       sondas comunes a los cuatro niveles):
+
+       | Margen | Junto a la bobina | Hábitat | Líneas radiales |
+       |---|---|---|---|
+       | 4 m | 7.8 / 20.6% | 62.9 / 100% | 41.7 / 130% |
+       | 6 m | 6.2 / 18.5% | 37.5 / 55.8% | 18.5 / 50.5% |
+       | 8 m | 5.8 / 15.8% | 20.1 / 32.9% | 9.4 / 28.6% |
+       | 10 m | 4.4 / 15.1% | 12.1 / 20.7% | 6.0 / 16.8% |
+
+       - **Criterio literal:** se cumple junto a la bobina (4.4% frente a un
+         cambio de 4.9% entre 8 y 10 m), pero no en el hábitat (12.1%
+         frente a 8.3%) ni en las líneas radiales (6.0% frente a 5.3%).
+       - **Lectura (análisis hecho después de ver los datos, declarado
+         como tal):** la diferencia baja en cada nivel con un factor de
+         ~0.6. Con ese ritmo, lo que falta después del último nivel es ~1.5
+         veces el último cambio, así que el criterio literal no podía
+         cumplirse sin cajas mucho mayores. Extrapolando cada sonda a caja
+         infinita (Aitken con 6, 8 y 10 m), la diferencia que queda es
+         6.8% (hábitat), 4.4% (radiales) y ~5% junto a la bobina, en
+         mediana. Es del orden del error esperable de los elementos de
+         Elmer de primer orden con aire de 0.20 m (B constante en cada
+         tetraedro: ~h/L ≈ 0.2 m / 4 m = 5%). No aparece un resto que
+         apunte a un error de Biot-Savart.
+       - **Recomendación:** aceptar el mapa declarando esta validación en
+         el paper. Lo decide el equipo.
      - **Mapa candidato verificado en la laptop:** el SHA256 coincide con
        el manifiesto; 1000 nodos al azar coinciden con el recálculo directo
        en 5·10⁻⁸; Geant4 lo carga con una esfera de 18 m en 42 s y 1 GB.
@@ -663,6 +742,21 @@ esperar de η.
 - **Reparto:** cada corrida se parte entre PCs (`--parts N --part K`,
   semilla propia por parte) y `analyze` suma las partes.
 
+**Sondas (laboratorio, 2026-11-02, 24 hilos, mapa `.bmap` con el sha256
+del manifiesto).** Horas de una PC de 24 hilos por corrida:
+
+| Caso | D_campo/D_control (sonda) | control | R14 | R16 | R18 | Total |
+|---|---|---|---|---|---|---|
+| p70_x0 | 0.38 | 0.7 | 1.3 | 1.7 | 2.1 | 5.8 |
+| p100_x0 | 0.62 | 0.1 | 0.7 | 0.9 | 1.2 | 2.9 |
+| p70_x4 | 0.29 | 1.9 | 2.6 | 3.3 | 4.2 | 12.0 |
+| p100_x4 | 0.69 | 0.3 | 1.3 | 1.7 | 2.2 | 5.5 |
+
+Unas 26 horas-PC en total, menos que lo estimado con la laptop: en
+partes de ~1 h son 35 trabajos, ~1.3 h con 30 PCs. Los cocientes de la
+sonda (60–260 eventos con depósito) confirman el mecanismo de «Cómo actúa
+el campo».
+
 ### P2 — Validación del estimador de incertidumbre por evento
 
 Repite la Fase 7 con el scorer nuevo.
@@ -751,6 +845,18 @@ Repite la Fase 7 con el scorer nuevo.
   no hace exacta la varianza estimada ni valida automáticamente un IC normal.
 - **Bloquea:** usar R=1. Si falla, investigar el scorer y las colas antes
   de elegir más repeticiones; no extrapolar el factor histórico 0.08/0.48.
+
+#### Sondas de P2a (laboratorio, 2026-11-02, 24 hilos)
+
+| Caso | Fracción con depósito | M | N = 40·M | Horas |
+|---|---|---|---|---|
+| sep70 | 3.1·10⁻⁴ | 1.29·10⁶ | 5.2·10⁷ | 0.6 |
+| sep150 | 5.7·10⁻⁴ | 7.1·10⁵ | 2.8·10⁷ | 0.2 |
+| he1000 | 2.4·10⁻³ | 1.7·10⁵ | 6.7·10⁶ | 3.0 |
+| h10000 | 4.5·10⁻³ | 8.9·10⁴ | 3.6·10⁶ | 1.3 |
+
+Cada corrida va en una PC; `run` no se parte ni se retoma, así que he1000
+necesita 3 h seguidas.
 
 #### Costo estimado de P2 con cuerpo entero (2026-10-01)
 

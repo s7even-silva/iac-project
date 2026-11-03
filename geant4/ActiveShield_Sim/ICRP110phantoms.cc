@@ -38,6 +38,7 @@
 #include "ICRP110UserScoreWriter.hh"
 #include "ICRP110PhantomVisAction.hh"
 #include "G4PhysListFactory.hh"
+#include <cstdlib>
 #include "G4StepLimiterPhysics.hh"
 #include "G4RunManagerFactory.hh"
 
@@ -64,8 +65,13 @@ int main(int argc,char** argv)
   // mismo physics list que GCR_SEP_Sim (ver main.cc de ese proyecto y
   // AGENTS.md) -- factory en vez de "new Shielding()" directo, mismo
   // patron ya usado ahi.
+  // PHYSLIST (variable de entorno) cambia la lista solo para pruebas de
+  // sensibilidad, como la de P0 a alta energía; producción usa Shielding.
   G4PhysListFactory physListFactory;
-  auto* physicsList = physListFactory.GetReferencePhysList("Shielding");
+  const char* physListName = std::getenv("PHYSLIST");
+  auto* physicsList = physListFactory.GetReferencePhysList(physListName ? physListName : "Shielding");
+  if (!physicsList) G4Exception("main", "UnknownPhysList", FatalException, "PHYSLIST no es una lista de referencia");
+  G4cout << "Physics list: " << (physListName ? physListName : "Shielding") << G4endl;
   // Bug found 2026-09-13: a low-energy charged primary (SEP_p, ~19 keV) ran
   // for 10+ hours instead of seconds -- trapped in the magnetic field inside
   // vacuum MagnetEnvelope (tiny gyroradius, no material to lose energy to).

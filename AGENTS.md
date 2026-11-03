@@ -116,7 +116,20 @@ Plan vigente: [`docs/bitacora/plan_piloto.md`](docs/bitacora/plan_piloto.md)
   validación en
   [`metodo_autodiagnostico_incertidumbre.md`](docs/bitacora/metodo_autodiagnostico_incertidumbre.md).
   **Todavía no en el coordinator/workers.**
-- **P0 listo para correr** (`tests/p0_normalizacion/`): tabla de
+- **Laboratorio del 2026-11-02** (detalle en `plan_piloto.md`):
+  - **P0 corrido, no aprueba tal como se fijó:** la normalización está
+    bien (protones de 100 MeV a 3 GeV dentro de ±6%), pero a 10 GeV(/n)
+    Geant4 da +20–25% con tres listas de física, y el helio de 1 GeV/n da
+    −19% con `Shielding` (−8% con FTFP_BERT y QGSP_BIC). Decisiones
+    pendientes: cómo cerrar P0 y qué lista de física usar en producción.
+    `PHYSLIST` cambia la lista solo para estas pruebas.
+  - **Paso 2 de P1:** el nivel de 10 m sigue convergiendo hacia
+    Biot-Savart; el criterio literal no cierra, pero la extrapolación a
+    caja infinita deja ~4–7%, del orden del error de malla de Elmer.
+    Recomendación: aceptar el mapa declarándolo.
+  - **Sondas de P1 paso 3 y de P2a hechas:** P1 paso 3 son ~26 horas-PC
+    (35 partes de ~1 h); P2a, 0.2–3 h por caso.
+- **P0** (`tests/p0_normalizacion/`): tabla de
   referencia ICRP 116 por órgano extraída, órganos definidos como ICRP
   (colon con recto; médula roja equivalente). Tolerancia D7 (decidida el
   2026-10-31): ±10% en órganos grandes y ±30% en mama y tiroides, a

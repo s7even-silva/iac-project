@@ -327,4 +327,8 @@ referencia dosimétrica, no equivalente al riesgo epidemiológico en mujeres.
 
 ### Physics list
 
-`Shielding`, vía `G4PhysListFactory` en `ICRP110phantoms.cc`.
+`Shielding`, vía `G4PhysListFactory` en `ICRP110phantoms.cc`. Solo para
+pruebas de sensibilidad (2026-11-02, P0 a alta energía), la variable de
+entorno `PHYSLIST` la cambia por otra lista de referencia, por ejemplo
+`PHYSLIST=FTFP_BERT python3 p0_icrp116.py run ...`; el `run.log` registra
+la lista usada (`Physics list: ...`). Producción no la define.
