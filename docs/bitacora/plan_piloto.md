@@ -375,7 +375,27 @@ grandes:
   | helio 10 GeV/n | 1.25 | 1.22 ± 0.03 | 1.25 ± 0.03 | 1.20 ± 0.05 |
 
   (FTFP_INCLXX da lo mismo que QGSP_INCLXX hasta 10 GeV: las dos usan
-  INCL++ ahí.)
+  INCL++ ahí.) Punto extra, exploratorio (no estaba en P0): helio de
+  3 GeV/n, médula roja 0.69 con `Shielding` y 1.12 con `QGSP_INCLXX`.
+
+  **Qué modelo cubre cada energía** (tabla de procesos del `run.log`):
+  - `Shielding`: protones con Bertini hasta 6 GeV y FTF desde 3 GeV;
+    helio con Binary Cascade hasta 110 MeV/n, QMD de 100 MeV/n a 6 GeV/n
+    y FTF desde 6 GeV/n.
+  - `QGSP_INCLXX`: protones con INCL++ hasta 20 GeV y QGS desde 15 GeV;
+    helio con INCL++ hasta 3 GeV/n y FTF desde 2.9 GeV/n.
+
+  **Cuánto pesa cada tramo** (espectros BON2020 de `data/sources/oltaris`
+  plegados con los coeficientes de médula roja de ICRP 116, en espacio
+  libre): por encima de 15 GeV va el 3–4% de la dosis de protones; por
+  encima de 3 GeV/n, el 14–18% de la de helio; de 0.5 a 5 GeV/n, la mitad
+  de la de helio. Con `Shielding`, el QMD (−19% a 1 GeV/n, −31% a 3 GeV/n)
+  pesa sobre esa mitad. Con `QGSP_INCLXX`, lo que queda en FTF (+12% a
+  +20%) cambia la dosis de helio en ~+2–3% y la de H + He en ~1%.
+  Extender INCL++ más allá de su rango sería usar el modelo fuera de su
+  física, y elegirlo porque coincide con ICRP 116 en un punto sería
+  ajustarlo a la referencia; con ese peso, basta declararlo como
+  incertidumbre de modelo.
 - **Lectura:**
   - **El exceso de 10 GeV(/n) es del modelo FTF de Geant4 11.4**, que usan
     las tres primeras listas a esa energía. Con INCL++, que cubre
